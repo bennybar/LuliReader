@@ -9,6 +9,7 @@ import '../notifiers/preview_lines_notifier.dart';
 import '../notifiers/starred_refresh_notifier.dart';
 import '../notifiers/unread_refresh_notifier.dart';
 import '../notifiers/swipe_prefs_notifier.dart';
+import '../notifiers/last_sync_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
@@ -206,6 +207,7 @@ class _HomeTabState extends State<_HomeTab> {
   DateTime? _lastSync;
   bool _swipeAllowsDelete = false;
   final SwipePrefsNotifier _swipePrefsNotifier = SwipePrefsNotifier.instance;
+  final LastSyncNotifier _lastSyncNotifier = LastSyncNotifier.instance;
   final UnreadRefreshNotifier _unreadNotifier = UnreadRefreshNotifier.instance;
 
   @override
@@ -215,6 +217,7 @@ class _HomeTabState extends State<_HomeTab> {
     _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
     _unreadNotifier.addListener(_handleUnreadChanged);
     _swipePrefsNotifier.addListener(_handleSwipePrefsChanged);
+    _lastSyncNotifier.addListener(_handleLastSyncChanged);
     _initialize();
   }
 
@@ -223,6 +226,7 @@ class _HomeTabState extends State<_HomeTab> {
     _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
     _unreadNotifier.removeListener(_handleUnreadChanged);
     _swipePrefsNotifier.removeListener(_handleSwipePrefsChanged);
+    _lastSyncNotifier.removeListener(_handleLastSyncChanged);
     super.dispose();
   }
 
@@ -260,6 +264,10 @@ class _HomeTabState extends State<_HomeTab> {
   void _handleSwipePrefsChanged() {
     _loadSwipePreferences();
     _loadSwipeDeleteSetting();
+  }
+
+  void _handleLastSyncChanged() {
+    _loadLastSyncTime();
   }
 
   Future<void> _maybeSyncOnLaunch() async {
@@ -427,7 +435,7 @@ class _HomeTabState extends State<_HomeTab> {
     
     return Scaffold(
       appBar: PlatformAppBar(
-        title: _buildTitle(),
+        titleWidget: _buildTitleWidget(),
         actions: const [
           // Sync button will be added here if needed
         ],
@@ -472,11 +480,44 @@ class _HomeTabState extends State<_HomeTab> {
     );
   }
 
-  String _buildTitle() {
-    if (_lastSync == null) return 'All Articles';
-    final time = TimeOfDay.fromDateTime(_lastSync!.toLocal());
-    final formatted = time.format(context);
-    return 'All Articles · $formatted';
+  Widget _buildTitleWidget() {
+    final theme = Theme.of(context);
+
+    final children = <Widget>[
+      Text(
+        'All Articles',
+        style: theme.textTheme.titleLarge,
+      ),
+    ];
+
+    if (_lastSync != null) {
+      children.add(
+        Text(
+          _formatRelativeSyncTime(_lastSync!),
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 11,
+            color: Colors.grey[600],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: children,
+    );
+  }
+
+  String _formatRelativeSyncTime(DateTime ts) {
+    final now = DateTime.now();
+    final diff = now.difference(ts);
+
+    if (diff.inMinutes < 1) return 'Synced just now';
+    if (diff.inMinutes < 60) return 'Synced ${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return 'Synced ${diff.inHours} h ago';
+    if (diff.inDays == 1) return 'Synced yesterday';
+    return 'Synced ${diff.inDays} d ago';
   }
 
   Widget _buildSwipeableCard(Article article) {

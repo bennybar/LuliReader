@@ -5,6 +5,7 @@ import 'offline_cache_service.dart';
 import 'notification_service.dart';
 import '../notifiers/unread_refresh_notifier.dart';
 import '../notifiers/starred_refresh_notifier.dart';
+import '../notifiers/last_sync_notifier.dart';
 import 'storage_service.dart';
 
 class SyncService {
@@ -68,7 +69,9 @@ class SyncService {
       // Refresh offline cache (unread) and cleanup expired caches
       await _offlineCacheService.refreshAndCleanup();
 
-      // Notify listeners so all tabs can refresh their views
+      // Persist last sync and notify listeners so all tabs can refresh
+      await _storage.saveLastSyncTimestamp(DateTime.now());
+      LastSyncNotifier.instance.ping();
       UnreadRefreshNotifier.instance.ping();
       StarredRefreshNotifier.instance.ping();
 

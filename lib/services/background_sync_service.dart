@@ -18,12 +18,8 @@ void callbackDispatcher() {
         final syncService = SyncService();
         syncService.setUserConfig(config);
         
-        // Perform sync
+        // Perform sync (also updates last sync timestamp and badges)
         await syncService.syncAll(fetchFullContent: true);
-
-        // Persist last sync time and update badge count after sync
-        await storage.saveLastSyncTimestamp(DateTime.now());
-        await NotificationService.updateBadgeCount();
       }
       
       return Future.value(true);

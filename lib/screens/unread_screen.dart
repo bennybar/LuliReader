@@ -13,6 +13,7 @@ import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import '../notifiers/swipe_prefs_notifier.dart';
+import '../notifiers/last_sync_notifier.dart';
 import '../utils/article_text_utils.dart';
 import '../widgets/article_card.dart';
 import '../widgets/platform_app_bar.dart';
@@ -43,6 +44,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
   DateTime? _lastSync;
   bool _swipeAllowsDelete = false;
   final SwipePrefsNotifier _swipePrefsNotifier = SwipePrefsNotifier.instance;
+  final LastSyncNotifier _lastSyncNotifier = LastSyncNotifier.instance;
 
   @override
   void initState() {
@@ -51,6 +53,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
     _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
     _unreadNotifier.addListener(_handleUnreadRefresh);
     _swipePrefsNotifier.addListener(_handleSwipePrefsChanged);
+    _lastSyncNotifier.addListener(_handleLastSyncChanged);
     _initialize();
   }
 
@@ -59,6 +62,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
     _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
     _unreadNotifier.removeListener(_handleUnreadRefresh);
     _swipePrefsNotifier.removeListener(_handleSwipePrefsChanged);
+    _lastSyncNotifier.removeListener(_handleLastSyncChanged);
     super.dispose();
   }
 
@@ -94,6 +98,10 @@ class _UnreadScreenState extends State<UnreadScreen> {
   void _handleSwipePrefsChanged() {
     _loadSwipePreferences();
     _loadSwipeDeleteSetting();
+  }
+
+  void _handleLastSyncChanged() {
+    _loadLastSyncTime();
   }
 
   Future<void> _maybeSyncOnLaunch() async {
@@ -270,7 +278,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: PlatformAppBar(
-        title: _buildTitle(),
+        titleWidget: _buildTitleWidget(),
         actions: [
           _buildSyncAction(context),
         ],
@@ -402,11 +410,44 @@ class _UnreadScreenState extends State<UnreadScreen> {
     );
   }
 
-  String _buildTitle() {
-    if (_lastSync == null) return 'Unread';
-    final time = TimeOfDay.fromDateTime(_lastSync!.toLocal());
-    final formatted = time.format(context);
-    return 'Unread · $formatted';
+  Widget _buildTitleWidget() {
+    final theme = Theme.of(context);
+
+    final children = <Widget>[
+      Text(
+        'Unread',
+        style: theme.textTheme.titleLarge,
+      ),
+    ];
+
+    if (_lastSync != null) {
+      children.add(
+        Text(
+          _formatRelativeSyncTime(_lastSync!),
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 11,
+            color: Colors.grey[600],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: children,
+    );
+  }
+
+  String _formatRelativeSyncTime(DateTime ts) {
+    final now = DateTime.now();
+    final diff = now.difference(ts);
+
+    if (diff.inMinutes < 1) return 'Synced just now';
+    if (diff.inMinutes < 60) return 'Synced ${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return 'Synced ${diff.inHours} h ago';
+    if (diff.inDays == 1) return 'Synced yesterday';
+    return 'Synced ${diff.inDays} d ago';
   }
 }
 

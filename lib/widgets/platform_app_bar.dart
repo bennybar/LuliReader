@@ -4,6 +4,7 @@ import '../utils/platform_utils.dart';
 
 class PlatformAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String? title;
+  final Widget? titleWidget;
   final List<Widget>? actions;
   final Widget? leading;
   final bool automaticallyImplyLeading;
@@ -11,6 +12,7 @@ class PlatformAppBar extends StatelessWidget implements PreferredSizeWidget {
   const PlatformAppBar({
     super.key,
     this.title,
+    this.titleWidget,
     this.actions,
     this.leading,
     this.automaticallyImplyLeading = true,
@@ -30,7 +32,7 @@ class PlatformAppBar extends StatelessWidget implements PreferredSizeWidget {
     final isDark = brightness == Brightness.dark;
     
     return CupertinoNavigationBar(
-      middle: title != null ? Text(title!) : null,
+      middle: titleWidget ?? (title != null ? Text(title!) : null),
       trailing: actions != null && actions!.isNotEmpty
           ? Row(
               mainAxisSize: MainAxisSize.min,
@@ -59,7 +61,7 @@ class PlatformAppBar extends StatelessWidget implements PreferredSizeWidget {
     final isDark = brightness == Brightness.dark;
     
     return AppBar(
-      title: title != null ? Text(title!) : null,
+      title: titleWidget ?? (title != null ? Text(title!) : null),
       actions: actions,
       leading: leading,
       automaticallyImplyLeading: automaticallyImplyLeading,
