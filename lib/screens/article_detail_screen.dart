@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
@@ -259,6 +260,146 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   ui.TextDirection _getTextDirection(String text) =>
       _isRTLText(text) ? ui.TextDirection.rtl : ui.TextDirection.ltr;
 
+  String _resolveContentImageUrl(String rawUrl) {
+    final trimmed = rawUrl.trim();
+    if (trimmed.isEmpty) return '';
+
+    Uri? base;
+    if (_article.link != null) {
+      base = Uri.tryParse(_article.link!);
+    }
+
+    Uri? resolved;
+
+    // Protocol-relative URLs: //example.com/image.jpg
+    if (trimmed.startsWith('//')) {
+      final scheme = base?.scheme?.isNotEmpty == true ? base!.scheme : 'https';
+      resolved = Uri.parse('$scheme:$trimmed');
+    }
+    // Root-relative URLs: /path/to/image.jpg
+    else if (trimmed.startsWith('/') && base != null) {
+      resolved = Uri(
+        scheme: base.scheme,
+        host: base.host,
+        port: base.hasPort ? base.port : null,
+        path: trimmed,
+      );
+    }
+    // No scheme: image.jpg or path/image.jpg
+    else if (!trimmed.contains('://') && base != null) {
+      resolved = base.resolve(trimmed);
+    }
+
+    final finalUrl = (resolved ?? Uri.tryParse(trimmed))?.toString() ?? trimmed;
+    debugPrint('Article image URL resolved: raw=$trimmed -> final=$finalUrl');
+    return finalUrl;
+  }
+
+  List<Widget> _buildInlineBody(BuildContext context) {
+    final html = _article.content ?? _article.summary ?? '';
+    if (html.isEmpty) {
+      return [
+        SelectableText(
+          _stripHtml(html),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                fontSize: _articleFontSize,
+                height: 1.6,
+              ),
+          textAlign: _getTextAlign(html),
+          textDirection: _getTextDirection(html),
+        ),
+      ];
+    }
+
+    final widgets = <Widget>[];
+    final seenImages = <String>{};
+    final heroUrl = _article.imageUrl;
+    final imgRegex = RegExp(
+      '<img[^>]+src=(["\']?)([^"\'\\s]+)\\1[^>]*>',
+      caseSensitive: false,
+    );
+
+    int cursor = 0;
+    for (final match in imgRegex.allMatches(html)) {
+      final before = html.substring(cursor, match.start);
+      final beforeText = _stripHtml(before);
+      if (beforeText.trim().isNotEmpty) {
+        widgets.add(
+          SelectableText(
+            beforeText,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontSize: _articleFontSize,
+                  height: 1.6,
+                ),
+            textAlign: _getTextAlign(beforeText),
+            textDirection: _getTextDirection(beforeText),
+          ),
+        );
+        widgets.add(const SizedBox(height: 12));
+      }
+
+      final rawSrc = match.group(2);
+      if (rawSrc != null && rawSrc.isNotEmpty) {
+        final resolved = _resolveContentImageUrl(rawSrc);
+        if (resolved.isNotEmpty) {
+          // Skip if same as hero image
+          if (heroUrl != null && resolved == heroUrl) {
+            debugPrint(
+                'Skipping inline image equal to hero image: resolved=$resolved');
+          }
+          // Skip duplicates we've already rendered in the body
+          else if (!seenImages.add(resolved)) {
+            debugPrint(
+                'Skipping duplicate inline image already seen: resolved=$resolved');
+          } else {
+            debugPrint(
+                'Article content image candidate (inline): raw=$rawSrc, resolved=$resolved');
+            widgets.add(_ArticleContentImage(url: resolved));
+            widgets.add(const SizedBox(height: 12));
+          }
+        }
+      }
+
+      cursor = match.end;
+    }
+
+    // Trailing text after the last <img>
+    if (cursor < html.length) {
+      final tail = html.substring(cursor);
+      final tailText = _stripHtml(tail);
+      if (tailText.trim().isNotEmpty) {
+        widgets.add(
+          SelectableText(
+            tailText,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontSize: _articleFontSize,
+                  height: 1.6,
+                ),
+            textAlign: _getTextAlign(tailText),
+            textDirection: _getTextDirection(tailText),
+          ),
+        );
+      }
+    }
+
+    // Fallback: if parsing somehow produced nothing, show full text once.
+    if (widgets.isEmpty) {
+      widgets.add(
+        SelectableText(
+          _stripHtml(html),
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                fontSize: _articleFontSize,
+                height: 1.6,
+              ),
+          textAlign: _getTextAlign(html),
+          textDirection: _getTextDirection(html),
+        ),
+      );
+    }
+
+    return widgets;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isRtlTitle = _isRTLText(_article.title);
@@ -295,56 +436,59 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                 child: _ArticleHeroImage(imageUrl: _article.imageUrl!),
               ),
             Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _article.title,
-                    style: Theme.of(context).textTheme.headlineSmall,
-                    textAlign: _getTextAlign(_article.title),
-                    textDirection: _getTextDirection(_article.title),
-                  ),
-                  const SizedBox(height: 8),
-                  if (_article.author != null)
-                    Align(
-                      alignment:
-                          isRtlTitle ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Text(
-                        _article.author!,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[600],
-                            ),
+              padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 16.0),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _article.title,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                        textAlign: _getTextAlign(_article.title),
+                        textDirection: _getTextDirection(_article.title),
                       ),
-                    ),
-                  const SizedBox(height: 4),
-                  Align(
-                    alignment:
-                        isRtlTitle ? Alignment.centerRight : Alignment.centerLeft,
-                    child: Text(
-                      _formatDate(_article.publishedDate),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.grey[600],
+                      const SizedBox(height: 8),
+                      if (_article.author != null)
+                        Align(
+                          alignment: isRtlTitle
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Text(
+                            _article.author!,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
+                                  color: Colors.grey[600],
+                                ),
                           ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SelectableText(
-                    _stripHtml(_article.content ?? _article.summary ?? ''),
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                          fontSize: _articleFontSize,
-                          height: 1.6,
                         ),
-                    textAlign:
-                        _getTextAlign(_article.content ?? _article.summary ?? ''),
-                    textDirection: _getTextDirection(
-                        _article.content ?? _article.summary ?? ''),
+                      const SizedBox(height: 4),
+                      Align(
+                        alignment: isRtlTitle
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Text(
+                          _formatDate(_article.publishedDate),
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      ..._buildInlineBody(context),
+                      if (_article.link != null) ...[
+                        const SizedBox(height: 20),
+                        _buildFooterActions(context),
+                      ],
+                    ],
                   ),
-                  if (_article.link != null) ...[
-                    const SizedBox(height: 20),
-                    _buildFooterActions(context),
-                  ],
-                ],
+                ),
               ),
             ),
           ],
@@ -512,11 +656,17 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
     if (ImageUtils.looksLikeSvgUrl(url)) {
       return ClipRRect(
         borderRadius: border,
-        child: SvgPicture.network(
-          url,
-          fit: BoxFit.cover,
-          placeholderBuilder: (_) => const Center(child: CircularProgressIndicator()),
-        ),
+        child: SvgPicture.network(url,
+            fit: BoxFit.cover,
+            placeholderBuilder: (_) => const Center(
+                  child: SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+            // ignore: deprecated_member_use
+            colorFilter: null),
       );
     }
 
@@ -580,6 +730,81 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
             bytes,
             fit: BoxFit.cover,
             filterQuality: FilterQuality.medium,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ArticleContentImage extends StatelessWidget {
+  final String url;
+
+  const _ArticleContentImage({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    // Handle data: URIs (inline SVG / bitmap) separately.
+    if (ImageUtils.isDataUri(url)) {
+      if (ImageUtils.isSvgDataUri(url)) {
+        final svg = ImageUtils.decodeSvgDataUri(url);
+        if (svg == null) {
+          debugPrint('Article content SVG data URI could not be decoded: $url');
+          return const SizedBox.shrink();
+        }
+        debugPrint('Rendering article content SVG data URI, length=${svg.length}');
+        return SvgPicture.string(
+          svg,
+          width: double.infinity,
+          fit: BoxFit.contain,
+        );
+      } else {
+        final bytes = ImageUtils.decodeBitmapDataUri(url);
+        if (bytes == null) {
+          debugPrint('Article content bitmap data URI could not be decoded: $url');
+          return const SizedBox.shrink();
+        }
+        debugPrint('Rendering article content bitmap data URI, bytes=${bytes.length}');
+        return Image.memory(
+          bytes,
+          width: double.infinity,
+          fit: BoxFit.cover,
+        );
+      }
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        debugPrint('Rendering article content image at width=$width, url=$url');
+
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: CachedNetworkImage(
+            imageUrl: url,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            placeholder: (_, __) => Container(
+              width: double.infinity,
+              height: width * 0.56, // ~16:9
+              color: Theme.of(context).colorScheme.surfaceVariant,
+              child: const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+            errorWidget: (_, __, error) {
+              debugPrint('Article content image failed to load: $url, error=$error');
+              return Container(
+                width: double.infinity,
+                height: width * 0.56,
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                child: const Center(child: Icon(Icons.broken_image)),
+              );
+            },
           ),
         );
       },

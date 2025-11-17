@@ -152,7 +152,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
     // Only show the big centered loader when there are no articles yet.
     final hadArticles = _articles.isNotEmpty;
     if (!hadArticles) {
-      setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
     }
     try {
       // Always show unread only
@@ -256,7 +256,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
       // Do not dismiss the card; list reload will reflect removal
       return false;
     }
-
+    
     switch (action) {
       case SwipeAction.toggleRead:
         await _syncService.markArticleAsRead(article.id, !article.isRead);
@@ -295,27 +295,27 @@ class _UnreadScreenState extends State<UnreadScreen> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _syncArticlesFromServer(),
+        onRefresh: () => _syncArticlesFromServer(),
               child: _isLoading && _articles.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : _articles.isEmpty
-                      ? ListView(
+            ? const Center(child: CircularProgressIndicator())
+            : _articles.isEmpty
+                ? ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
-                          children: const [
-                            SizedBox(height: 120),
-                            Center(child: Text('No unread articles\nPull down to refresh')),
-                          ],
-                        )
-                      : ListView.separated(
-                          physics: const AlwaysScrollableScrollPhysics(),
+                    children: const [
+                      SizedBox(height: 120),
+                      Center(child: Text('No unread articles\nPull down to refresh')),
+                    ],
+                  )
+                : ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-                          itemCount: _articles.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final article = _articles[index];
-                            return _buildSwipeableCard(article);
-                          },
-                        ),
+                    itemCount: _articles.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final article = _articles[index];
+                      return _buildSwipeableCard(article);
+                    },
+                  ),
             ),
           ),
         ],

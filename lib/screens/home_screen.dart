@@ -480,45 +480,45 @@ class _HomeTabState extends State<_HomeTab> {
     );
   }
 
-  Widget _buildTitleWidget() {
-    final theme = Theme.of(context);
+    Widget _buildTitleWidget() {
+      final theme = Theme.of(context);
 
-    final children = <Widget>[
-      Text(
-        'All Articles',
-        style: theme.textTheme.titleLarge,
-      ),
-    ];
-
-    if (_lastSync != null) {
-      children.add(
+      final children = <Widget>[
         Text(
-          _formatRelativeSyncTime(_lastSync!),
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontSize: 11,
-            color: Colors.grey[600],
-          ),
+          'All Articles',
+          style: theme.textTheme.titleLarge,
         ),
+      ];
+
+      if (_lastSync != null) {
+        children.add(
+          Text(
+            _formatRelativeSyncTime(_lastSync!),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              color: Colors.grey[600],
+            ),
+          ),
+        );
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: children,
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: children,
-    );
-  }
+    String _formatRelativeSyncTime(DateTime ts) {
+      final now = DateTime.now();
+      final diff = now.difference(ts);
 
-  String _formatRelativeSyncTime(DateTime ts) {
-    final now = DateTime.now();
-    final diff = now.difference(ts);
-
-    if (diff.inMinutes < 1) return 'Synced just now';
-    if (diff.inMinutes < 60) return 'Synced ${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return 'Synced ${diff.inHours} h ago';
-    if (diff.inDays == 1) return 'Synced yesterday';
-    return 'Synced ${diff.inDays} d ago';
-  }
+      if (diff.inMinutes < 1) return 'Synced just now';
+      if (diff.inMinutes < 60) return 'Synced ${diff.inMinutes} min ago';
+      if (diff.inHours < 24) return 'Synced ${diff.inHours} h ago';
+      if (diff.inDays == 1) return 'Synced yesterday';
+      return 'Synced ${diff.inDays} d ago';
+    }
 
   Widget _buildSwipeableCard(Article article) {
     return Dismissible(
