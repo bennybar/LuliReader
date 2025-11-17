@@ -120,7 +120,10 @@ class OfflineCacheService {
     return Directory(p.join(documents.path, 'offline_articles'));
   }
 
-  Future<_OfflineContent> _buildOfflineContent(Article article) async {
+  Future<_OfflineContent> _buildOfflineContent(
+    Article article, {
+    bool useChromeUserAgent = false,
+  }) async {
     final fallback = article.content ?? article.summary ?? '<p>No content available.</p>';
     final link = article.link;
     if (link == null) {
@@ -144,7 +147,16 @@ class OfflineCacheService {
 
     try {
       final uri = Uri.parse(link);
-      final response = await _client.get(uri);
+      final response = await _client.get(
+        uri,
+        headers: useChromeUserAgent
+            ? {
+                'User-Agent':
+                    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 '
+                    '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              }
+            : null,
+      );
       if (response.statusCode == 200 && response.body.isNotEmpty) {
         final document = html_parser.parse(response.body);
         return _OfflineContent(
@@ -157,6 +169,19 @@ class OfflineCacheService {
     }
 
     return _OfflineContent(html: fallback);
+  }
+
+  /// Re-pulls a single article's content using a Chrome-like user agent.
+  /// Returns the extracted HTML (readability or fallback) or null on failure.
+  Future<String?> repullArticleContentWithChromeUA(Article article) async {
+    try {
+      final offlineContent =
+          await _buildOfflineContent(article, useChromeUserAgent: true);
+      return offlineContent.html;
+    } catch (e) {
+      print('repullArticleContentWithChromeUA error for ${article.id}: $e');
+      return null;
+    }
   }
 
   Future<String> _downloadImagesAndRewrite(

@@ -3,16 +3,20 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:intl/intl.dart';
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../models/article.dart';
 import '../notifiers/starred_refresh_notifier.dart';
 import '../notifiers/unread_refresh_notifier.dart';
 import '../services/database_service.dart';
+import '../services/offline_cache_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import '../utils/image_utils.dart';
+import '../utils/platform_utils.dart';
 import '../widgets/platform_app_bar.dart';
 import 'offline_article_screen.dart';
 
@@ -30,6 +34,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   final SyncService _syncService = SyncService();
   final DatabaseService _db = DatabaseService();
   final StorageService _storage = StorageService();
+  final OfflineCacheService _offlineCacheService = OfflineCacheService();
   bool _isLoading = false;
   bool _autoMarkRead = true;
   bool _hasSyncConfig = false;
@@ -100,6 +105,76 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       _isLoading = false;
     });
     await _loadLatestArticle();
+  }
+
+  Future<void> _openInBrowser() async {
+    final link = _article.link;
+    if (link == null) return;
+
+    final uri = Uri.tryParse(link);
+    if (uri == null) return;
+
+    try {
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open article in browser')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to open browser: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _repullFullText() async {
+    final link = _article.link;
+    if (link == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No original link available for this article')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    try {
+      final html =
+          await _offlineCacheService.repullArticleContentWithChromeUA(_article);
+      if (html == null || html.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Unable to fetch full text')),
+          );
+        }
+        return;
+      }
+
+      final updated = _article.copyWith(
+        content: html,
+        lastSyncedAt: DateTime.now(),
+      );
+      await _db.updateArticle(updated);
+      if (mounted) {
+        setState(() {
+          _article = updated;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Full text refresh failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> _openOfflineCopy() async {
@@ -177,13 +252,6 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         ),
         onPressed: _isLoading ? null : _toggleStarred,
       ),
-      if (_article.link != null)
-        IconButton(
-          icon: const Icon(Icons.open_in_browser),
-          onPressed: () {
-            // Could open in browser
-          },
-        ),
     ];
     
     return Scaffold(
@@ -231,23 +299,100 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                   Text(
                     _stripHtml(_article.content ?? _article.summary ?? ''),
                     style: Theme.of(context).textTheme.bodyLarge,
-                    textAlign: _getTextAlign(_article.content ?? _article.summary ?? ''),
-                    textDirection: _getTextDirection(_article.content ?? _article.summary ?? ''),
+                    textAlign:
+                        _getTextAlign(_article.content ?? _article.summary ?? ''),
+                    textDirection: _getTextDirection(
+                        _article.content ?? _article.summary ?? ''),
                   ),
                   if (_article.link != null) ...[
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        // Open in browser
-                      },
-                      icon: const Icon(Icons.open_in_browser),
-                      label: const Text('Open Original Article'),
-                    ),
+                    const SizedBox(height: 20),
+                    _buildFooterActions(context),
                   ],
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFooterActions(BuildContext context) {
+    final children = <Widget>[];
+
+    // Open original in browser
+    children.add(_buildGlassIconButton(
+      context: context,
+      icon: Icons.open_in_browser,
+      tooltip: 'Open original article',
+      onTap: _isLoading ? null : _openInBrowser,
+    ));
+
+    // Re-pull full text with Chrome UA
+    children.add(const SizedBox(width: 12));
+    children.add(_buildGlassIconButton(
+      context: context,
+      icon: Icons.article,
+      tooltip: 'Re-pull full text',
+      onTap: _isLoading ? null : _repullFullText,
+      showBusy: _isLoading,
+    ));
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: children,
+    );
+  }
+
+  Widget _buildGlassIconButton({
+    required BuildContext context,
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onTap,
+    bool showBusy = false,
+  }) {
+    if (!isIOS) {
+      return IconButton(
+        tooltip: tooltip,
+        icon: showBusy
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon),
+        onPressed: onTap,
+      );
+    }
+
+    final content = showBusy
+        ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : Icon(icon, size: 18);
+
+    return Tooltip(
+      message: tooltip,
+      child: LiquidGlassLayer(
+        settings: const LiquidGlassSettings(
+          thickness: 16,
+          blur: 18,
+          glassColor: Color(0x33FFFFFF),
+        ),
+        child: LiquidGlass(
+          shape: LiquidRoundedSuperellipse(borderRadius: 18),
+          glassContainsChild: false,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: onTap,
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: content,
+            ),
+          ),
         ),
       ),
     );

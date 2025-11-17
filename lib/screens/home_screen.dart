@@ -255,7 +255,12 @@ class _HomeTabState extends State<_HomeTab> {
 
   Future<void> _loadArticles() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+
+    // Only show the big centered loader when there are no articles yet.
+    final hadArticles = _articles.isNotEmpty;
+    if (!hadArticles) {
+      setState(() => _isLoading = true);
+    }
     try {
       // First, check total articles in DB
       final allArticles = await _db.getArticles(limit: 1000);
@@ -369,27 +374,42 @@ class _HomeTabState extends State<_HomeTab> {
           // Sync button will be added here if needed
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () => _syncArticlesFromServer(),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _articles.isEmpty
-                ? ListView(
-                    children: const [
-                      SizedBox(height: 120),
-                      Center(child: Text('No articles found\nPull down to refresh')),
-                    ],
-                  )
-                : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    itemCount: _articles.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final article = _articles[index];
-                      return _buildSwipeableCard(article);
-                    },
-                  ),
+      body: Column(
+        children: [
+          // Slim, non-blocking progress bar for sync
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: _isSyncing ? 2 : 0,
+            child: _isSyncing
+                ? const LinearProgressIndicator(minHeight: 2)
+                : const SizedBox.shrink(),
+          ),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => _syncArticlesFromServer(),
+              child: _isLoading && _articles.isEmpty
+                  ? const Center(child: CircularProgressIndicator())
+                  : _articles.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            SizedBox(height: 120),
+                            Center(child: Text('No articles found\nPull down to refresh')),
+                          ],
+                        )
+                      : ListView.separated(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          itemCount: _articles.length,
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final article = _articles[index];
+                            return _buildSwipeableCard(article);
+                          },
+                        ),
+            ),
+          ),
+        ],
       ),
     );
   }
