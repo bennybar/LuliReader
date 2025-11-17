@@ -45,6 +45,7 @@ class _FeedsScreenState extends State<FeedsScreen> {
           : _feeds.isEmpty
               ? const Center(child: Text('No feeds found'))
               : ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 80),
                   itemCount: _feeds.length,
                   itemBuilder: (context, index) {
                     final feed = _feeds[index];

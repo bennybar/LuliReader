@@ -7,6 +7,8 @@ import '../models/feed.dart';
 import '../models/swipe_action.dart';
 import '../notifiers/preview_lines_notifier.dart';
 import '../notifiers/starred_refresh_notifier.dart';
+import '../notifiers/unread_refresh_notifier.dart';
+import '../notifiers/swipe_prefs_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
@@ -45,12 +47,33 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   bool _showStarredTab = true;
   final StorageService _storageService = StorageService();
+  final DatabaseService _db = DatabaseService();
+  final UnreadRefreshNotifier _unreadNotifier = UnreadRefreshNotifier.instance;
+  int _unreadCount = 0;
 
   @override
   void initState() {
     super.initState();
     _loadTabPreferences();
+    _unreadNotifier.addListener(_handleUnreadChanged);
+    _loadUnreadCount();
   }
+  @override
+  void dispose() {
+    _unreadNotifier.removeListener(_handleUnreadChanged);
+    super.dispose();
+  }
+
+  void _handleUnreadChanged() {
+    _loadUnreadCount();
+  }
+
+  Future<void> _loadUnreadCount() async {
+    final count = await _db.getUnreadCount();
+    if (!mounted) return;
+    setState(() => _unreadCount = count);
+  }
+
 
   Future<void> _loadTabPreferences() async {
     final showStarred = await _storageService.getShowStarredTab();
@@ -130,8 +153,6 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      // Let the body extend behind the bottom bar so liquid glass can sample content
-      extendBody: true,
       body: Stack(
         children: [
           Positioned.fill(
@@ -149,6 +170,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     (tab) => BottomNavItem(
                       icon: tab.icon,
                       label: tab.label,
+                      hasNotification: tab.id == 'unread' && _unreadCount > 0,
                     ),
                   )
                   .toList(),
@@ -181,18 +203,26 @@ class _HomeTabState extends State<_HomeTab> {
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
   final PreviewLinesNotifier _previewLinesNotifier = PreviewLinesNotifier.instance;
   int _previewLines = 3;
+  DateTime? _lastSync;
+  bool _swipeAllowsDelete = false;
+  final SwipePrefsNotifier _swipePrefsNotifier = SwipePrefsNotifier.instance;
+  final UnreadRefreshNotifier _unreadNotifier = UnreadRefreshNotifier.instance;
 
   @override
   void initState() {
     super.initState();
     _previewLines = _previewLinesNotifier.lines;
     _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
+    _unreadNotifier.addListener(_handleUnreadChanged);
+    _swipePrefsNotifier.addListener(_handleSwipePrefsChanged);
     _initialize();
   }
 
   @override
   void dispose() {
     _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
+    _unreadNotifier.removeListener(_handleUnreadChanged);
+    _swipePrefsNotifier.removeListener(_handleSwipePrefsChanged);
     super.dispose();
   }
 
@@ -200,6 +230,8 @@ class _HomeTabState extends State<_HomeTab> {
     await _loadFeedTitles();
     await _loadSwipePreferences();
     await _loadPreviewLines();
+    await _loadLastSyncTime();
+    await _loadSwipeDeleteSetting();
     await _loadArticles();
     await _maybeSyncOnLaunch();
   }
@@ -219,6 +251,17 @@ class _HomeTabState extends State<_HomeTab> {
     setState(() => _previewLines = lines);
   }
 
+  void _handleUnreadChanged() {
+    // Whenever unread status changes (including from Unread tab or article
+    // detail), refresh the Home tab list so read state is immediately reflected.
+    _loadArticles();
+  }
+
+  void _handleSwipePrefsChanged() {
+    _loadSwipePreferences();
+    _loadSwipeDeleteSetting();
+  }
+
   Future<void> _maybeSyncOnLaunch() async {
     final lastSync = await _storageService.getLastSyncTimestamp();
     final intervalMinutes = await _storageService.getBackgroundSyncInterval();
@@ -229,6 +272,14 @@ class _HomeTabState extends State<_HomeTab> {
     if (shouldSync) {
       await _syncArticlesFromServer(initial: true);
     }
+  }
+
+  Future<void> _loadLastSyncTime() async {
+    final ts = await _storageService.getLastSyncTimestamp();
+    if (!mounted) return;
+    setState(() {
+      _lastSync = ts;
+    });
   }
   Future<void> _loadFeedTitles() async {
     final List<Feed> feeds = await _db.getAllFeeds();
@@ -315,6 +366,12 @@ class _HomeTabState extends State<_HomeTab> {
     });
   }
 
+  Future<void> _loadSwipeDeleteSetting() async {
+    final allowDelete = await _storageService.getSwipeAllowsDelete();
+    if (!mounted) return;
+    setState(() => _swipeAllowsDelete = allowDelete);
+  }
+
   Future<bool> _ensureSyncConfigured() async {
     if (_hasSyncConfig) return true;
     final config = await _storageService.getUserConfig();
@@ -347,6 +404,7 @@ class _HomeTabState extends State<_HomeTab> {
       print('Manual sync completed');
       await _loadFeedTitles();
       await _storageService.saveLastSyncTimestamp(DateTime.now());
+      await _loadLastSyncTime();
     } catch (e) {
       print('Error syncing articles from server: $e');
       if (!initial && mounted) {
@@ -368,9 +426,9 @@ class _HomeTabState extends State<_HomeTab> {
     final textDirection = Directionality.of(context);
     
     return Scaffold(
-      appBar: const PlatformAppBar(
-        title: 'All Articles',
-        actions: [
+      appBar: PlatformAppBar(
+        title: _buildTitle(),
+        actions: const [
           // Sync button will be added here if needed
         ],
       ),
@@ -399,7 +457,7 @@ class _HomeTabState extends State<_HomeTab> {
                         )
                       : ListView.separated(
                           physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
                           itemCount: _articles.length,
                           separatorBuilder: (_, __) => const SizedBox(height: 12),
                           itemBuilder: (context, index) {
@@ -412,6 +470,13 @@ class _HomeTabState extends State<_HomeTab> {
         ],
       ),
     );
+  }
+
+  String _buildTitle() {
+    if (_lastSync == null) return 'All Articles';
+    final time = TimeOfDay.fromDateTime(_lastSync!.toLocal());
+    final formatted = time.format(context);
+    return 'All Articles · $formatted';
   }
 
   Widget _buildSwipeableCard(Article article) {
@@ -453,7 +518,17 @@ class _HomeTabState extends State<_HomeTab> {
     }
 
     final action = direction == DismissDirection.startToEnd ? _leftSwipeAction : _rightSwipeAction;
-    
+
+    // Destructive delete via swipe when action is set to Delete
+    if (action == SwipeAction.delete) {
+      final deleted = await _syncService.deleteArticle(article.id);
+      if (deleted) {
+        await _loadArticles();
+      }
+      // Do not dismiss the card; list reload will reflect removal
+      return false;
+    }
+
     switch (action) {
       case SwipeAction.toggleRead:
         await _syncService.markArticleAsRead(article.id, !article.isRead);
@@ -462,6 +537,9 @@ class _HomeTabState extends State<_HomeTab> {
       case SwipeAction.toggleStar:
         await _syncService.markArticleAsStarred(article.id, !article.isStarred);
         await _loadArticles();
+        break;
+      case SwipeAction.delete:
+        // Handled in the delete branch above.
         break;
     }
     return false; // Don't dismiss
@@ -483,6 +561,8 @@ class _SwipeBackground extends StatelessWidget {
     switch (action) {
       case SwipeAction.toggleStar:
         return Colors.amber.shade600;
+      case SwipeAction.delete:
+        return Colors.red.shade600;
       case SwipeAction.toggleRead:
       default:
         return Colors.green.shade600;
@@ -493,6 +573,8 @@ class _SwipeBackground extends StatelessWidget {
     switch (action) {
       case SwipeAction.toggleStar:
         return Icons.star;
+      case SwipeAction.delete:
+        return Icons.delete_outline;
       case SwipeAction.toggleRead:
       default:
         return Icons.check_circle;
@@ -503,6 +585,8 @@ class _SwipeBackground extends StatelessWidget {
     switch (action) {
       case SwipeAction.toggleStar:
         return article.isStarred ? 'Remove star' : 'Add star';
+      case SwipeAction.delete:
+        return 'Delete';
       case SwipeAction.toggleRead:
       default:
         return article.isRead ? 'Mark as unread' : 'Mark as read';

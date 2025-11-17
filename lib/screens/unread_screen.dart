@@ -12,6 +12,7 @@ import '../notifiers/unread_refresh_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
+import '../notifiers/swipe_prefs_notifier.dart';
 import '../utils/article_text_utils.dart';
 import '../widgets/article_card.dart';
 import '../widgets/platform_app_bar.dart';
@@ -39,6 +40,9 @@ class _UnreadScreenState extends State<UnreadScreen> {
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
   final PreviewLinesNotifier _previewLinesNotifier = PreviewLinesNotifier.instance;
   int _previewLines = 3;
+  DateTime? _lastSync;
+  bool _swipeAllowsDelete = false;
+  final SwipePrefsNotifier _swipePrefsNotifier = SwipePrefsNotifier.instance;
 
   @override
   void initState() {
@@ -46,6 +50,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
     _previewLines = _previewLinesNotifier.lines;
     _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
     _unreadNotifier.addListener(_handleUnreadRefresh);
+    _swipePrefsNotifier.addListener(_handleSwipePrefsChanged);
     _initialize();
   }
 
@@ -53,6 +58,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
   void dispose() {
     _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
     _unreadNotifier.removeListener(_handleUnreadRefresh);
+    _swipePrefsNotifier.removeListener(_handleSwipePrefsChanged);
     super.dispose();
   }
 
@@ -64,6 +70,8 @@ class _UnreadScreenState extends State<UnreadScreen> {
     await _loadFeedTitles();
     await _loadSwipePreferences();
     await _loadPreviewLines();
+    await _loadLastSyncTime();
+    await _loadSwipeDeleteSetting();
     await _loadArticles();
     await _maybeSyncOnLaunch();
   }
@@ -83,6 +91,11 @@ class _UnreadScreenState extends State<UnreadScreen> {
     setState(() => _previewLines = lines);
   }
 
+  void _handleSwipePrefsChanged() {
+    _loadSwipePreferences();
+    _loadSwipeDeleteSetting();
+  }
+
   Future<void> _maybeSyncOnLaunch() async {
     final lastSync = await _storageService.getLastSyncTimestamp();
     final intervalMinutes = await _storageService.getBackgroundSyncInterval();
@@ -93,6 +106,14 @@ class _UnreadScreenState extends State<UnreadScreen> {
     if (shouldSync) {
       await _syncArticlesFromServer(initial: true);
     }
+  }
+
+  Future<void> _loadLastSyncTime() async {
+    final ts = await _storageService.getLastSyncTimestamp();
+    if (!mounted) return;
+    setState(() {
+      _lastSync = ts;
+    });
   }
 
   Future<void> _loadFeedTitles() async {
@@ -155,6 +176,12 @@ class _UnreadScreenState extends State<UnreadScreen> {
     });
   }
 
+  Future<void> _loadSwipeDeleteSetting() async {
+    final allowDelete = await _storageService.getSwipeAllowsDelete();
+    if (!mounted) return;
+    setState(() => _swipeAllowsDelete = allowDelete);
+  }
+
   Future<bool> _ensureSyncConfigured() async {
     if (_hasSyncConfig) return true;
     final config = await _storageService.getUserConfig();
@@ -187,6 +214,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
       print('Manual sync completed');
       await _loadFeedTitles();
       await _storageService.saveLastSyncTimestamp(DateTime.now());
+      await _loadLastSyncTime();
     } catch (e) {
       print('Error syncing articles from server: $e');
       if (!initial && mounted) {
@@ -210,7 +238,17 @@ class _UnreadScreenState extends State<UnreadScreen> {
     }
 
     final action = direction == DismissDirection.startToEnd ? _leftSwipeAction : _rightSwipeAction;
-    
+
+    // Destructive delete via swipe when action is set to Delete
+    if (action == SwipeAction.delete) {
+      final deleted = await _syncService.deleteArticle(article.id);
+      if (deleted) {
+        await _loadArticles();
+      }
+      // Do not dismiss the card; list reload will reflect removal
+      return false;
+    }
+
     switch (action) {
       case SwipeAction.toggleRead:
         await _syncService.markArticleAsRead(article.id, !article.isRead);
@@ -221,6 +259,9 @@ class _UnreadScreenState extends State<UnreadScreen> {
         // Starring doesn't affect unread status, but refresh anyway
         await _loadArticles();
         break;
+      case SwipeAction.delete:
+        // Handled in the delete branch above.
+        break;
     }
     return false; // Don't dismiss
   }
@@ -229,7 +270,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: PlatformAppBar(
-        title: 'Unread',
+        title: _buildTitle(),
         actions: [
           _buildSyncAction(context),
         ],
@@ -259,7 +300,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
                         )
                       : ListView.separated(
                           physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
                           itemCount: _articles.length,
                           separatorBuilder: (_, __) => const SizedBox(height: 12),
                           itemBuilder: (context, index) {
@@ -360,6 +401,13 @@ class _UnreadScreenState extends State<UnreadScreen> {
       ),
     );
   }
+
+  String _buildTitle() {
+    if (_lastSync == null) return 'Unread';
+    final time = TimeOfDay.fromDateTime(_lastSync!.toLocal());
+    final formatted = time.format(context);
+    return 'Unread · $formatted';
+  }
 }
 
 class _SwipeBackground extends StatelessWidget {
@@ -389,6 +437,11 @@ class _SwipeBackground extends StatelessWidget {
         color = article.isStarred ? Colors.grey : Colors.amber;
         icon = article.isStarred ? Icons.star_border : Icons.star;
         label = article.isStarred ? 'Unstar' : 'Star';
+        break;
+      case SwipeAction.delete:
+        color = Colors.red.shade600;
+        icon = Icons.delete_outline;
+        label = 'Delete';
         break;
     }
 

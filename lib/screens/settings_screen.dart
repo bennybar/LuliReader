@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/swipe_action.dart';
 import '../notifiers/preview_lines_notifier.dart';
+import '../notifiers/swipe_prefs_notifier.dart';
 import '../services/background_sync_service.dart';
 import '../services/local_data_service.dart';
 import '../services/storage_service.dart';
@@ -36,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isClearingLocalData = false;
   String _defaultTab = 'home';
   double _articleFontSize = 16.0;
+  bool _swipeAllowsDelete = false;
 
   @override
   void initState() {
@@ -54,6 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final previewLines = await _storage.getPreviewLines();
     final defaultTab = await _storage.getDefaultTab();
     final articleFontSize = await _storage.getArticleFontSize();
+    final swipeAllowsDelete = await _storage.getSwipeAllowsDelete();
     setState(() {
       _syncInterval = interval;
       _articleFetchLimit = limit;
@@ -64,6 +67,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _previewLines = previewLines;
       _defaultTab = defaultTab;
       _articleFontSize = articleFontSize;
+      _swipeAllowsDelete = swipeAllowsDelete;
       if (config != null) {
         _syncService.setUserConfig(config);
         _hasSyncConfig = true;
@@ -202,6 +206,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: 'Settings',
       ),
       body: ListView(
+        padding: const EdgeInsets.only(bottom: 80),
         children: [
           ListTile(
             title: const Text('Background Sync Interval'),
@@ -248,6 +253,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await BackgroundSyncService.scheduleSync(interval);
                 setState(() => _syncInterval = interval);
               }
+            },
+          ),
+          const Divider(),
+          SwitchListTile(
+            title: const Text('Allow swipe to delete articles'),
+            subtitle: const Text('Swipe actions can permanently remove articles'),
+            value: _swipeAllowsDelete,
+            onChanged: (value) async {
+              await _storage.saveSwipeAllowsDelete(value);
+              setState(() => _swipeAllowsDelete = value);
+              SwipePrefsNotifier.instance.ping();
             },
           ),
           const Divider(),
@@ -503,6 +519,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (action == null) return;
                 await _storage.saveSwipeLeftAction(action);
                 setState(() => _leftSwipeAction = action);
+                SwipePrefsNotifier.instance.ping();
               },
             ),
           ),
@@ -521,6 +538,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (action == null) return;
                 await _storage.saveSwipeRightAction(action);
                 setState(() => _rightSwipeAction = action);
+                SwipePrefsNotifier.instance.ping();
               },
             ),
           ),

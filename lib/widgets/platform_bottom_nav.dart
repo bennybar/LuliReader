@@ -6,8 +6,13 @@ import 'package:cupertino_native/cupertino_native.dart';
 class BottomNavItem {
   final IconData icon;
   final String label;
+  final bool hasNotification;
 
-  const BottomNavItem({required this.icon, required this.label});
+  const BottomNavItem({
+    required this.icon,
+    required this.label,
+    this.hasNotification = false,
+  });
 }
 
 class PlatformBottomNav extends StatelessWidget {
@@ -90,7 +95,9 @@ class PlatformBottomNav extends StatelessWidget {
       case 'home':
         return 'house';
       case 'unread':
-        return 'envelope.badge';
+        // Only show the badge symbol when there are unread items; otherwise
+        // use the plain envelope icon to avoid a misleading dot.
+        return item.hasNotification ? 'envelope.badge' : 'envelope';
       case 'starred':
         return 'star';
       case 'settings':

@@ -4,11 +4,14 @@ import 'freshrss_service.dart';
 import 'offline_cache_service.dart';
 import 'notification_service.dart';
 import '../notifiers/unread_refresh_notifier.dart';
+import '../notifiers/starred_refresh_notifier.dart';
+import 'storage_service.dart';
 
 class SyncService {
   final DatabaseService _db = DatabaseService();
   final FreshRSSService _api = FreshRSSService();
   final OfflineCacheService _offlineCacheService = OfflineCacheService();
+  final StorageService _storage = StorageService();
   int _articleFetchLimit = 200;
 
   void setUserConfig(UserConfig config) {
@@ -29,12 +32,20 @@ class SyncService {
 
       // Fetch latest articles from reading list (all articles, up to limit)
       print('Fetching latest articles from reading list (limit: $_articleFetchLimit)...');
-      final allArticles = await _api.getStreamContents(
+      var allArticles = await _api.getStreamContents(
         streamId: 'user/-/state/com.google/reading-list',
         count: _articleFetchLimit,
         excludeRead: false,
       );
       print('Got ${allArticles.length} total articles from reading list');
+
+      // Filter out articles the user has deleted locally so they don't come back.
+      final deletedIds = (await _storage.getDeletedArticleIds()).toSet();
+      if (deletedIds.isNotEmpty) {
+        allArticles =
+            allArticles.where((a) => !deletedIds.contains(a.id)).toList();
+        print('Filtered out ${deletedIds.length} deleted articles from sync');
+      }
 
       if (allArticles.isNotEmpty) {
         print('Inserting ${allArticles.length} articles into database...');
@@ -56,7 +67,11 @@ class SyncService {
 
       // Refresh offline cache (unread) and cleanup expired caches
       await _offlineCacheService.refreshAndCleanup();
-      
+
+      // Notify listeners so all tabs can refresh their views
+      UnreadRefreshNotifier.instance.ping();
+      StarredRefreshNotifier.instance.ping();
+
       print('Sync completed');
     } catch (e) {
       print('Sync error: $e');
@@ -160,6 +175,35 @@ class SyncService {
       }
     } catch (e) {
       // Handle error
+    }
+  }
+
+  /// Attempts to delete an article locally and from FreshRSS.
+  /// Returns true if local deletion succeeds; remote deletion is best-effort.
+  Future<bool> deleteArticle(String articleId) async {
+    try {
+      // Delete locally first
+      await _db.deleteArticle(articleId);
+      await _storage.addDeletedArticleId(articleId);
+
+      // Best-effort remote delete: FreshRSS doesn't expose a true delete in
+      // Reader API, so we try to mark as read & unstar; failures are ignored.
+      _api
+          .markAsRead([articleId], read: true)
+          .catchError((e) => print('Remote delete(mark read) failed: $e'));
+      // No-op for star; if it was starred, we unstar to hide it from starred.
+      _api
+          .markAsStarred([articleId], starred: false)
+          .catchError((e) => print('Remote delete(unstar) failed: $e'));
+
+      // Update badge count & notify lists to refresh
+      await NotificationService.updateBadgeCount();
+      UnreadRefreshNotifier.instance.ping();
+      StarredRefreshNotifier.instance.ping();
+      return true;
+    } catch (e) {
+      print('deleteArticle error: $e');
+      return false;
     }
   }
 

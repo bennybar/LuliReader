@@ -301,5 +301,10 @@ class DatabaseService {
       print('Failed to delete database: $e');
     }
   }
+
+  Future<void> deleteArticle(String id) async {
+    final db = await database;
+    await db.delete('articles', where: 'id = ?', whereArgs: [id]);
+  }
 }
 

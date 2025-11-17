@@ -14,6 +14,8 @@ class StorageService {
   static const String _keyPreviewLines = 'preview_lines';
   static const String _keyDefaultTab = 'default_tab';
   static const String _keyArticleFontSize = 'article_font_size';
+  static const String _keySwipeAllowsDelete = 'swipe_allows_delete';
+  static const String _keyDeletedArticleIds = 'deleted_article_ids';
 
   Future<void> saveUserConfig(UserConfig config) async {
     final prefs = await SharedPreferences.getInstance();
@@ -159,6 +161,29 @@ class StorageService {
   Future<double> getArticleFontSize() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getDouble(_keyArticleFontSize) ?? 16.0;
+  }
+
+  Future<void> saveSwipeAllowsDelete(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keySwipeAllowsDelete, value);
+  }
+
+  Future<bool> getSwipeAllowsDelete() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keySwipeAllowsDelete) ?? false;
+  }
+
+  Future<List<String>> getDeletedArticleIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_keyDeletedArticleIds) ?? <String>[];
+  }
+
+  Future<void> addDeletedArticleId(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getStringList(_keyDeletedArticleIds) ?? <String>[];
+    if (existing.contains(id)) return;
+    existing.add(id);
+    await prefs.setStringList(_keyDeletedArticleIds, existing);
   }
 }
 

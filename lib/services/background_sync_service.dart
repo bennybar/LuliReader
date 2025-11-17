@@ -20,8 +20,9 @@ void callbackDispatcher() {
         
         // Perform sync
         await syncService.syncAll(fetchFullContent: true);
-        
-        // Update badge count after sync
+
+        // Persist last sync time and update badge count after sync
+        await storage.saveLastSyncTimestamp(DateTime.now());
         await NotificationService.updateBadgeCount();
       }
       

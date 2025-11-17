@@ -189,17 +189,19 @@ class _ArticleThumbnailState extends State<_ArticleThumbnail> {
     // HEAD requests or manual decoding on the UI thread.
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: CachedNetworkImage(
-        imageUrl: url,
+      child: SizedBox(
         width: 90,
         height: 90,
-        fit: BoxFit.cover,
-        placeholder: (_, __) => _buildLoadingContainer(),
-        errorWidget: (_, __, ___) => placeholder,
-        fadeInDuration: const Duration(milliseconds: 150),
-        fadeOutDuration: const Duration(milliseconds: 150),
-        memCacheWidth: 360, // downscale for thumbnails to reduce work
-        memCacheHeight: 360,
+        child: CachedNetworkImage(
+          imageUrl: url,
+          fit: BoxFit.cover, // center-crop; trims instead of squashing
+          placeholder: (_, __) => _buildLoadingContainer(),
+          errorWidget: (_, __, ___) => placeholder,
+          fadeInDuration: const Duration(milliseconds: 150),
+          fadeOutDuration: const Duration(milliseconds: 150),
+          memCacheWidth: 360, // downscale for thumbnails to reduce work
+          memCacheHeight: 360,
+        ),
       ),
     );
   }
