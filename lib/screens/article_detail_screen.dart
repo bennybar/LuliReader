@@ -12,6 +12,7 @@ import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import '../utils/image_utils.dart';
+import '../widgets/platform_app_bar.dart';
 import 'offline_article_screen.dart';
 
 class ArticleDetailScreen extends StatefulWidget {
@@ -160,31 +161,33 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final actions = <Widget>[
+      if (_article.offlineCachePath != null)
+        IconButton(
+          icon: const Icon(Icons.offline_pin),
+          tooltip: 'View offline version',
+          onPressed: _openOfflineCopy,
+        ),
+      IconButton(
+        icon: Icon(
+          _article.isStarred ? Icons.star : Icons.star_border,
+          color: _article.isStarred ? Colors.amber : null,
+        ),
+        onPressed: _isLoading ? null : _toggleStarred,
+      ),
+      if (_article.link != null)
+        IconButton(
+          icon: const Icon(Icons.open_in_browser),
+          onPressed: () {
+            // Could open in browser
+          },
+        ),
+    ];
+    
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_article.title),
-        actions: [
-          if (_article.offlineCachePath != null)
-            IconButton(
-              icon: const Icon(Icons.offline_pin),
-              tooltip: 'View offline version',
-              onPressed: _openOfflineCopy,
-            ),
-          IconButton(
-            icon: Icon(
-              _article.isStarred ? Icons.star : Icons.star_border,
-              color: _article.isStarred ? Colors.amber : null,
-            ),
-            onPressed: _isLoading ? null : _toggleStarred,
-          ),
-          if (_article.link != null)
-            IconButton(
-              icon: const Icon(Icons.open_in_browser),
-              onPressed: () {
-                // Could open in browser
-              },
-            ),
-        ],
+      appBar: PlatformAppBar(
+        title: _article.title,
+        actions: actions,
       ),
       body: SingleChildScrollView(
         child: Column(

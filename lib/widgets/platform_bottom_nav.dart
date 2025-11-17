@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import '../utils/platform_utils.dart';
 
@@ -31,6 +32,9 @@ class PlatformBottomNav extends StatelessWidget {
   }
 
   Widget _buildLiquidGlassNav(BuildContext context) {
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    
     return LiquidGlassLayer(
       settings: const LiquidGlassSettings(
         thickness: 15,
@@ -38,16 +42,24 @@ class PlatformBottomNav extends StatelessWidget {
         glassColor: Color(0x33FFFFFF),
       ),
       child: Container(
-        height: 80,
         decoration: BoxDecoration(
           color: Colors.transparent,
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: List.generate(
-            items.length,
-            (index) => _buildNavItem(context, items[index], index),
-          ),
+        child: CupertinoTabBar(
+          currentIndex: currentIndex,
+          onTap: onTap,
+          items: items
+              .map(
+                (item) => BottomNavigationBarItem(
+                  icon: Icon(item.icon),
+                  label: item.label,
+                ),
+              )
+              .toList(),
+          backgroundColor: Colors.transparent,
+          border: null,
+          activeColor: Theme.of(context).colorScheme.primary,
+          inactiveColor: isDark ? (Colors.grey[600] ?? Colors.grey) : Colors.grey,
         ),
       ),
     );

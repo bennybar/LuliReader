@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../services/database_service.dart';
 import '../models/feed.dart';
 import '../utils/image_utils.dart';
+import '../widgets/platform_app_bar.dart';
 
 class FeedsScreen extends StatefulWidget {
   const FeedsScreen({super.key});
@@ -36,8 +37,8 @@ class _FeedsScreenState extends State<FeedsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Feeds'),
+      appBar: const PlatformAppBar(
+        title: 'Feeds',
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

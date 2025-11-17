@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import '../widgets/platform_app_bar.dart';
 
 class OfflineArticleScreen extends StatefulWidget {
   final String filePath;
@@ -29,8 +30,8 @@ class _OfflineArticleScreenState extends State<OfflineArticleScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.title),
+      appBar: PlatformAppBar(
+        title: widget.title,
       ),
       body: WebViewWidget(controller: _controller),
     );

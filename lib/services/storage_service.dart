@@ -11,6 +11,8 @@ class StorageService {
   static const String _keySwipeRightAction = 'swipe_right_action';
   static const String _keyLastSyncAt = 'last_sync_at';
   static const String _keyShowStarredTab = 'show_starred_tab';
+  static const String _keyPreviewLines = 'preview_lines';
+  static const String _keyDefaultTab = 'default_tab';
 
   Future<void> saveUserConfig(UserConfig config) async {
     final prefs = await SharedPreferences.getInstance();
@@ -126,6 +128,26 @@ class StorageService {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<void> savePreviewLines(int lines) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyPreviewLines, lines.clamp(1, 4));
+  }
+
+  Future<int> getPreviewLines() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_keyPreviewLines) ?? 3;
+  }
+
+  Future<void> saveDefaultTab(String tabId) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyDefaultTab, tabId);
+  }
+
+  Future<String> getDefaultTab() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyDefaultTab) ?? 'home';
   }
 }
 

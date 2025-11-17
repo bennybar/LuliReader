@@ -1,0 +1,342 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/material.dart';
+
+import '../models/article.dart';
+import '../models/feed.dart';
+import '../models/swipe_action.dart';
+import '../notifiers/preview_lines_notifier.dart';
+import '../notifiers/starred_refresh_notifier.dart';
+import '../services/database_service.dart';
+import '../services/storage_service.dart';
+import '../services/sync_service.dart';
+import '../utils/article_text_utils.dart';
+import '../widgets/article_card.dart';
+import '../widgets/platform_app_bar.dart';
+import 'article_detail_screen.dart';
+
+class UnreadScreen extends StatefulWidget {
+  const UnreadScreen({super.key});
+
+  @override
+  State<UnreadScreen> createState() => _UnreadScreenState();
+}
+
+class _UnreadScreenState extends State<UnreadScreen> {
+  final DatabaseService _db = DatabaseService();
+  final SyncService _syncService = SyncService();
+  final StorageService _storageService = StorageService();
+  List<Article> _articles = [];
+  bool _isLoading = true;
+  bool _isSyncing = false;
+  bool _hasSyncConfig = false;
+  Map<String, String> _feedTitles = {};
+  SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
+  SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
+  final PreviewLinesNotifier _previewLinesNotifier = PreviewLinesNotifier.instance;
+  int _previewLines = 3;
+
+  @override
+  void initState() {
+    super.initState();
+    _previewLines = _previewLinesNotifier.lines;
+    _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
+    _initialize();
+  }
+
+  @override
+  void dispose() {
+    _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
+    super.dispose();
+  }
+
+  Future<void> _initialize() async {
+    await _loadFeedTitles();
+    await _loadSwipePreferences();
+    await _loadPreviewLines();
+    await _loadArticles();
+    await _maybeSyncOnLaunch();
+  }
+
+  Future<void> _loadPreviewLines() async {
+    final lines = await _storageService.getPreviewLines();
+    if (!mounted) return;
+    setState(() {
+      _previewLines = lines;
+    });
+    _previewLinesNotifier.setLines(lines);
+  }
+
+  void _handlePreviewLinesChanged() {
+    final lines = _previewLinesNotifier.lines;
+    if (!mounted || _previewLines == lines) return;
+    setState(() => _previewLines = lines);
+  }
+
+  Future<void> _maybeSyncOnLaunch() async {
+    final lastSync = await _storageService.getLastSyncTimestamp();
+    final intervalMinutes = await _storageService.getBackgroundSyncInterval();
+    final now = DateTime.now();
+    final shouldSync = lastSync == null ||
+        now.difference(lastSync) >= Duration(minutes: intervalMinutes) ||
+        _articles.isEmpty;
+    if (shouldSync) {
+      await _syncArticlesFromServer(initial: true);
+    }
+  }
+
+  Future<void> _loadFeedTitles() async {
+    final List<Feed> feeds = await _db.getAllFeeds();
+    if (!mounted) return;
+    setState(() {
+      final map = <String, String>{};
+      for (final feed in feeds) {
+        map[feed.id] = feed.title;
+        if (feed.id.startsWith('feed/')) {
+          map[feed.id.substring(5)] = feed.title;
+        }
+      }
+      _feedTitles = map;
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _loadArticles();
+    _loadSwipePreferences();
+  }
+
+  Future<void> _loadArticles() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      // Always show unread only
+      final articles = await _db.getArticles(
+        limit: 100,
+        isRead: false,
+      );
+      if (mounted) {
+        setState(() {
+          _articles = articles;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading articles: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadSwipePreferences() async {
+    final left = await _storageService.getSwipeLeftAction();
+    final right = await _storageService.getSwipeRightAction();
+    if (!mounted) return;
+    setState(() {
+      _leftSwipeAction = left;
+      _rightSwipeAction = right;
+    });
+  }
+
+  Future<bool> _ensureSyncConfigured() async {
+    if (_hasSyncConfig) return true;
+    final config = await _storageService.getUserConfig();
+    if (config == null) {
+      print('No user config found for sync service');
+      return false;
+    }
+    _syncService.setUserConfig(config);
+    _hasSyncConfig = true;
+    return true;
+  }
+
+  Future<void> _syncArticlesFromServer({bool initial = false}) async {
+    if (_isSyncing) return;
+
+    final hasConfig = await _ensureSyncConfigured();
+    if (!hasConfig) {
+      if (!initial && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to sync: missing account configuration')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _isSyncing = true);
+    try {
+      await _syncService.syncAll(fetchFullContent: false);
+      print('Manual sync completed');
+      await _loadFeedTitles();
+      await _storageService.saveLastSyncTimestamp(DateTime.now());
+    } catch (e) {
+      print('Error syncing articles from server: $e');
+      if (!initial && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sync failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSyncing = false);
+      }
+    }
+
+    await _loadArticles();
+  }
+
+  Future<bool> _handleSwipeAction(Article article, DismissDirection direction) async {
+    final hasConfig = await _ensureSyncConfigured();
+    if (!hasConfig) {
+      return false;
+    }
+
+    final action = direction == DismissDirection.startToEnd ? _leftSwipeAction : _rightSwipeAction;
+    
+    switch (action) {
+      case SwipeAction.toggleRead:
+        await _syncService.markArticleAsRead(article.id, !article.isRead);
+        await _loadArticles();
+        break;
+      case SwipeAction.toggleStar:
+        await _syncService.markArticleAsStarred(article.id, !article.isStarred);
+        await _loadArticles();
+        break;
+    }
+    return false; // Don't dismiss
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: PlatformAppBar(
+        title: 'Unread',
+        actions: [
+          IconButton(
+            icon: _isSyncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync),
+            onPressed: _isSyncing ? null : () => _syncArticlesFromServer(),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => _syncArticlesFromServer(),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _articles.isEmpty
+                ? ListView(
+                    children: const [
+                      SizedBox(height: 120),
+                      Center(child: Text('No unread articles\nPull down to refresh')),
+                    ],
+                  )
+                : ListView.separated(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    itemCount: _articles.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final article = _articles[index];
+                      return _buildSwipeableCard(article);
+                    },
+                  ),
+      ),
+    );
+  }
+
+  Widget _buildSwipeableCard(Article article) {
+    return Dismissible(
+      key: ValueKey(article.id),
+      direction: DismissDirection.horizontal,
+      background: _SwipeBackground(
+        alignment: Alignment.centerLeft,
+        action: _leftSwipeAction,
+        article: article,
+      ),
+      secondaryBackground: _SwipeBackground(
+        alignment: Alignment.centerRight,
+        action: _rightSwipeAction,
+        article: article,
+      ),
+      confirmDismiss: (direction) => _handleSwipeAction(article, direction),
+      child: ArticleCard(
+        article: article,
+        summary: stripHtml(article.summary ?? article.content ?? ''),
+        sourceName: _feedTitles[article.feedId] ?? 'Unknown source',
+        summaryLines: _previewLines,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ArticleDetailScreen(article: article),
+            ),
+          ).then((_) => _loadArticles());
+        },
+      ),
+    );
+  }
+}
+
+class _SwipeBackground extends StatelessWidget {
+  final Alignment alignment;
+  final SwipeAction action;
+  final Article article;
+
+  const _SwipeBackground({
+    required this.alignment,
+    required this.action,
+    required this.article,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    Color color;
+    IconData icon;
+    String label;
+
+    switch (action) {
+      case SwipeAction.toggleRead:
+        color = article.isRead ? Colors.orange : Colors.blue;
+        icon = article.isRead ? Icons.mark_email_unread : Icons.mark_email_read;
+        label = article.isRead ? 'Unread' : 'Read';
+        break;
+      case SwipeAction.toggleStar:
+        color = article.isStarred ? Colors.grey : Colors.amber;
+        icon = article.isStarred ? Icons.star_border : Icons.star;
+        label = article.isStarred ? 'Unstar' : 'Star';
+        break;
+    }
+
+    return Container(
+      alignment: alignment,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(color: color),
+      child: Row(
+        mainAxisAlignment: alignment == Alignment.centerLeft
+            ? MainAxisAlignment.start
+            : MainAxisAlignment.end,
+        children: [
+          Icon(icon, color: Colors.white, size: 28),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

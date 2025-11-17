@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import 'dart:ui' as ui;
-import 'services/storage_service.dart';
-import 'services/background_sync_service.dart';
-import 'screens/login_screen.dart';
+
 import 'screens/home_screen.dart';
+import 'screens/login_screen.dart';
+import 'services/background_sync_service.dart';
+import 'services/storage_service.dart';
 import 'utils/platform_utils.dart';
 
 void main() async {
@@ -63,7 +65,7 @@ class _LuliReaderAppState extends State<LuliReaderApp> {
     final isRTL = systemLocale.languageCode == 'he' || systemLocale.languageCode == 'ar';
     print('System locale: $systemLocale, isRTL: $isRTL');
     
-    return MaterialApp(
+    final app = MaterialApp(
       title: 'LuliReader',
       debugShowCheckedModeBanner: false,
       // RTL support
@@ -101,6 +103,7 @@ class _LuliReaderAppState extends State<LuliReaderApp> {
                 seedColor: Colors.blue,
                 brightness: Brightness.light,
               ),
+              scaffoldBackgroundColor: Colors.white,
             ),
       darkTheme: isAndroid
           ? ThemeData(
@@ -116,8 +119,16 @@ class _LuliReaderAppState extends State<LuliReaderApp> {
                 seedColor: Colors.blue,
                 brightness: Brightness.dark,
               ),
+              scaffoldBackgroundColor: Colors.black,
             ),
       home: _isLoggedIn ? const HomeScreen() : const LoginScreen(),
     );
+
+    return isIOS
+        ? LiquidGlass.withOwnLayer(
+            shape: const LiquidRoundedRectangle(borderRadius: 0),
+            child: app,
+          )
+        : app;
   }
 }

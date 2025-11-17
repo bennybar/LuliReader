@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 import '../models/swipe_action.dart';
+import '../notifiers/preview_lines_notifier.dart';
 import '../services/background_sync_service.dart';
 import '../services/local_data_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
+import '../widgets/platform_app_bar.dart';
+import 'feeds_screen.dart';
 import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -20,6 +23,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final StorageService _storage = StorageService();
   final SyncService _syncService = SyncService();
   final LocalDataService _localDataService = LocalDataService();
+  final PreviewLinesNotifier _previewNotifier = PreviewLinesNotifier.instance;
   int _syncInterval = 60;
   int _articleFetchLimit = 200;
   bool _isRefreshingOffline = false;
@@ -28,7 +32,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
   bool _showStarredTab = true;
+  int _previewLines = 3;
   bool _isClearingLocalData = false;
+  String _defaultTab = 'home';
 
   @override
   void initState() {
@@ -44,6 +50,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final leftSwipe = await _storage.getSwipeLeftAction();
     final rightSwipe = await _storage.getSwipeRightAction();
     final showStarred = await _storage.getShowStarredTab();
+    final previewLines = await _storage.getPreviewLines();
+    final defaultTab = await _storage.getDefaultTab();
     setState(() {
       _syncInterval = interval;
       _articleFetchLimit = limit;
@@ -51,11 +59,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _leftSwipeAction = leftSwipe;
       _rightSwipeAction = rightSwipe;
       _showStarredTab = showStarred;
+      _previewLines = previewLines;
+      _defaultTab = defaultTab;
       if (config != null) {
         _syncService.setUserConfig(config);
         _hasSyncConfig = true;
       }
     });
+    _previewNotifier.setLines(previewLines);
   }
 
   Future<void> _handleLogout() async {
@@ -184,8 +195,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Settings'),
+      appBar: const PlatformAppBar(
+        title: 'Settings',
       ),
       body: ListView(
         children: [
@@ -311,6 +322,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
           const Divider(),
+          ListTile(
+            title: const Text('Article preview lines'),
+            subtitle: Text('$_previewLines line${_previewLines == 1 ? '' : 's'}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final selected = await showDialog<int>(
+                context: context,
+                builder: (context) {
+                  int tempSelection = _previewLines;
+                  return StatefulBuilder(
+                    builder: (context, setDialogState) => AlertDialog(
+                      title: const Text('Preview lines'),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(4, (index) {
+                          final value = index + 1;
+                          return RadioListTile<int>(
+                            title: Text('$value line${value == 1 ? '' : 's'}'),
+                            value: value,
+                            groupValue: tempSelection,
+                            onChanged: (val) {
+                              if (val == null) return;
+                              setDialogState(() => tempSelection = val);
+                              Navigator.pop(context, val);
+                            },
+                          );
+                        }),
+                      ),
+                    ),
+                  );
+                },
+              );
+              if (selected != null) {
+                await _storage.savePreviewLines(selected);
+                _previewNotifier.setLines(selected);
+                setState(() => _previewLines = selected);
+              }
+            },
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Default Tab'),
+            subtitle: Text(_defaultTab == 'home' ? 'Home' : 'Unread'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final selected = await showDialog<String>(
+                context: context,
+                builder: (context) {
+                  String tempSelection = _defaultTab;
+                  return StatefulBuilder(
+                    builder: (context, setDialogState) => AlertDialog(
+                      title: const Text('Default Tab'),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          RadioListTile<String>(
+                            title: const Text('Home'),
+                            value: 'home',
+                            groupValue: tempSelection,
+                            onChanged: (val) {
+                              if (val == null) return;
+                              setDialogState(() => tempSelection = val);
+                              Navigator.pop(context, val);
+                            },
+                          ),
+                          RadioListTile<String>(
+                            title: const Text('Unread'),
+                            value: 'unread',
+                            groupValue: tempSelection,
+                            onChanged: (val) {
+                              if (val == null) return;
+                              setDialogState(() => tempSelection = val);
+                              Navigator.pop(context, val);
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+              if (selected != null) {
+                await _storage.saveDefaultTab(selected);
+                setState(() => _defaultTab = selected);
+              }
+            },
+          ),
+          const Divider(),
           SwitchListTile(
             title: const Text('Show Starred Tab'),
             value: _showStarredTab,
@@ -319,6 +418,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               await _storage.saveShowStarredTab(value);
               setState(() => _showStarredTab = value);
               widget.onShowStarredTabChanged?.call(value);
+            },
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Feeds'),
+            subtitle: const Text('View all your RSS feeds'),
+            leading: const Icon(Icons.list),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FeedsScreen(),
+                ),
+              );
             },
           ),
           const Divider(),

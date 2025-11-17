@@ -1,22 +1,24 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
-import 'package:flutter_svg/flutter_svg.dart';
+
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/swipe_action.dart';
+import '../notifiers/preview_lines_notifier.dart';
 import '../notifiers/starred_refresh_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
-import '../utils/image_utils.dart';
+import '../utils/article_text_utils.dart';
+import '../widgets/article_card.dart';
 import 'feeds_screen.dart';
 import 'starred_screen.dart';
+import 'unread_screen.dart';
 import 'settings_screen.dart';
 import 'article_detail_screen.dart';
 import '../widgets/platform_bottom_nav.dart';
-import '../widgets/liquid_glass_toggle.dart';
+import '../widgets/platform_app_bar.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -52,10 +54,55 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadTabPreferences() async {
     final showStarred = await _storageService.getShowStarredTab();
+    final defaultTab = await _storageService.getDefaultTab();
     if (!mounted) return;
+    
+    // Find the index of the default tab
+    final tabs = _getTabConfigs(showStarred);
+    int defaultIndex = 0;
+    for (int i = 0; i < tabs.length; i++) {
+      if (tabs[i].id == defaultTab) {
+        defaultIndex = i;
+        break;
+      }
+    }
+    
     setState(() {
       _showStarredTab = showStarred;
+      _currentIndex = defaultIndex;
     });
+  }
+  
+  List<_TabConfig> _getTabConfigs(bool showStarred) {
+    final tabs = <_TabConfig>[
+      const _TabConfig(
+        id: 'home',
+        widget: _HomeTab(),
+        icon: Icons.home,
+        label: 'Home',
+      ),
+      const _TabConfig(
+        id: 'unread',
+        widget: UnreadScreen(),
+        icon: Icons.mark_email_unread,
+        label: 'Unread',
+      ),
+    ];
+    if (showStarred) {
+      tabs.add(const _TabConfig(
+        id: 'starred',
+        widget: StarredScreen(),
+        icon: Icons.star,
+        label: 'Starred',
+      ));
+    }
+    tabs.add(_TabConfig(
+      id: 'settings',
+      widget: SettingsScreen(onShowStarredTabChanged: _handleShowStarredTabChanged),
+      icon: Icons.settings,
+      label: 'Settings',
+    ));
+    return tabs;
   }
 
   void _handleShowStarredTabChanged(bool value) {
@@ -72,37 +119,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  List<_TabConfig> get _tabConfigs {
-    final tabs = <_TabConfig>[
-      const _TabConfig(
-        id: 'home',
-        widget: _HomeTab(),
-        icon: Icons.home,
-        label: 'Home',
-      ),
-      const _TabConfig(
-        id: 'feeds',
-        widget: FeedsScreen(),
-        icon: Icons.list,
-        label: 'Feeds',
-      ),
-    ];
-    if (_showStarredTab) {
-      tabs.add(const _TabConfig(
-        id: 'starred',
-        widget: StarredScreen(),
-        icon: Icons.star,
-        label: 'Starred',
-      ));
-    }
-    tabs.add(_TabConfig(
-      id: 'settings',
-      widget: SettingsScreen(onShowStarredTabChanged: _handleShowStarredTabChanged),
-      icon: Icons.settings,
-      label: 'Settings',
-    ));
-    return tabs;
-  }
+  List<_TabConfig> get _tabConfigs => _getTabConfigs(_showStarredTab);
 
   @override
   Widget build(BuildContext context) {
@@ -146,24 +163,49 @@ class _HomeTabState extends State<_HomeTab> {
   final StorageService _storageService = StorageService();
   List<Article> _articles = [];
   bool _isLoading = true;
-  bool _showUnreadOnly = true; // Default to unread only
   bool _isSyncing = false;
   bool _hasSyncConfig = false;
   Map<String, String> _feedTitles = {};
   SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
+  final PreviewLinesNotifier _previewLinesNotifier = PreviewLinesNotifier.instance;
+  int _previewLines = 3;
 
   @override
   void initState() {
     super.initState();
+    _previewLines = _previewLinesNotifier.lines;
+    _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
     _initialize();
+  }
+
+  @override
+  void dispose() {
+    _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
+    super.dispose();
   }
 
   Future<void> _initialize() async {
     await _loadFeedTitles();
     await _loadSwipePreferences();
+    await _loadPreviewLines();
     await _loadArticles();
     await _maybeSyncOnLaunch();
+  }
+
+  Future<void> _loadPreviewLines() async {
+    final lines = await _storageService.getPreviewLines();
+    if (!mounted) return;
+    setState(() {
+      _previewLines = lines;
+    });
+    _previewLinesNotifier.setLines(lines);
+  }
+
+  void _handlePreviewLinesChanged() {
+    final lines = _previewLinesNotifier.lines;
+    if (!mounted || _previewLines == lines) return;
+    setState(() => _previewLines = lines);
   }
 
   Future<void> _maybeSyncOnLaunch() async {
@@ -211,13 +253,13 @@ class _HomeTabState extends State<_HomeTab> {
       final totalRead = allArticles.where((a) => a.isRead).length;
       print('Total unread: $totalUnread, Total read: $totalRead');
       
-      // Now get filtered articles
+      // Always show all articles in Home tab
       final articles = await _db.getArticles(
         limit: 100,
-        isRead: _showUnreadOnly ? false : null,
+        isRead: null,
       );
       final unreadCount = articles.where((a) => !a.isRead).length;
-      print('Loaded ${articles.length} articles from database (filter: ${_showUnreadOnly ? "unread only" : "all"}, actually unread in result: $unreadCount)');
+      print('Loaded ${articles.length} articles from database (all articles, actually unread in result: $unreadCount)');
       
       // Debug: print first few article read statuses
       if (articles.isNotEmpty) {
@@ -305,62 +347,15 @@ class _HomeTabState extends State<_HomeTab> {
     await _loadArticles();
   }
 
-  String _stripHtml(String? html) {
-    if (html == null) return '';
-    // Remove HTML tags and decode entities
-    return html
-        .replaceAll(RegExp(r'<[^>]*>'), '')
-        .replaceAll('&nbsp;', ' ')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&lt;', '<')
-        .replaceAll('&gt;', '>')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-  }
-
-  bool _isRTLText(String text) {
-    final rtlRegex = RegExp(r'[\u0590-\u08FF]');
-    return rtlRegex.hasMatch(text);
-  }
-
-  String _formatDate(DateTime date) {
-    return DateFormat('MMM d, yyyy • HH:mm').format(date);
-  }
-
   @override
   Widget build(BuildContext context) {
     final textDirection = Directionality.of(context);
     
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_showUnreadOnly ? 'Unread Articles' : 'All Articles'),
+      appBar: const PlatformAppBar(
+        title: 'All Articles',
         actions: [
-          // Liquid glass toggle for iOS, regular for Android
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0),
-            child: LiquidGlassToggle(
-              value: _showUnreadOnly,
-              onChanged: (value) {
-                setState(() {
-                  _showUnreadOnly = value;
-                });
-                _loadArticles();
-              },
-              label: _showUnreadOnly ? 'Unread' : 'All',
-            ),
-          ),
-          IconButton(
-            icon: _isSyncing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.sync),
-            onPressed: _isSyncing ? null : () => _syncArticlesFromServer(),
-          ),
+          // Sync button will be added here if needed
         ],
       ),
       body: RefreshIndicator(
@@ -403,10 +398,11 @@ class _HomeTabState extends State<_HomeTab> {
         article: article,
       ),
       confirmDismiss: (direction) => _handleSwipeAction(article, direction),
-      child: _ArticleCard(
+      child: ArticleCard(
         article: article,
-        summary: _stripHtml(article.summary ?? article.content ?? ''),
+        summary: stripHtml(article.summary ?? article.content ?? ''),
         sourceName: _feedTitles[article.feedId] ?? 'Unknown source',
+        summaryLines: _previewLines,
         onTap: () {
           Navigator.push(
             context,
@@ -415,8 +411,6 @@ class _HomeTabState extends State<_HomeTab> {
             ),
           ).then((_) => _loadArticles());
         },
-        isRTLText: _isRTLText,
-        formatDate: _formatDate,
       ),
     );
   }
@@ -424,158 +418,22 @@ class _HomeTabState extends State<_HomeTab> {
   Future<bool> _handleSwipeAction(Article article, DismissDirection direction) async {
     final hasConfig = await _ensureSyncConfigured();
     if (!hasConfig) {
-      if (!mounted) return false;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please login again to sync article actions.')),
-      );
       return false;
     }
 
-    final isStartToEnd = direction == DismissDirection.startToEnd;
-    final action = isStartToEnd ? _leftSwipeAction : _rightSwipeAction;
-    bool shouldRemove = false;
-
+    final action = direction == DismissDirection.startToEnd ? _leftSwipeAction : _rightSwipeAction;
+    
     switch (action) {
       case SwipeAction.toggleRead:
-        final wasRead = article.isRead;
-        final newValue = !article.isRead;
-        await _syncService.markArticleAsRead(article.id, newValue);
-        if (!mounted) break;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(newValue ? 'Marked as read' : 'Marked as unread')),
-        );
-        shouldRemove = _showUnreadOnly && !wasRead && newValue;
+        await _syncService.markArticleAsRead(article.id, !article.isRead);
+        await _loadArticles();
         break;
       case SwipeAction.toggleStar:
-        final newValue = !article.isStarred;
-        await _syncService.markArticleAsStarred(article.id, newValue);
-        if (!mounted) break;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(newValue ? 'Starred article' : 'Unstarred article')),
-        );
-        StarredRefreshNotifier.instance.ping();
+        await _syncService.markArticleAsStarred(article.id, !article.isStarred);
+        await _loadArticles();
         break;
     }
-    if (shouldRemove) {
-      setState(() {
-        _articles.removeWhere((a) => a.id == article.id);
-      });
-    }
-    await _loadArticles();
-    return shouldRemove;
-  }
-}
-
-class _ArticleCard extends StatelessWidget {
-  final Article article;
-  final String summary;
-  final String sourceName;
-  final VoidCallback onTap;
-  final bool Function(String text) isRTLText;
-  final String Function(DateTime date) formatDate;
-
-  const _ArticleCard({
-    required this.article,
-    required this.summary,
-    required this.sourceName,
-    required this.onTap,
-    required this.isRTLText,
-    required this.formatDate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isTitleRTL = isRTLText(article.title);
-    final isSummaryRTL = isRTLText(summary);
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ArticleThumbnail(imageUrl: article.imageUrl),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                article.title,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                textAlign: isTitleRTL ? TextAlign.right : TextAlign.left,
-                                textDirection: isTitleRTL ? ui.TextDirection.rtl : ui.TextDirection.ltr,
-                              ),
-                            ),
-                            if (!article.isRead)
-                              Container(
-                                width: 10,
-                                height: 10,
-                                decoration: const BoxDecoration(
-                                  color: Colors.blue,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          sourceName,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                          textAlign: isTitleRTL ? TextAlign.right : TextAlign.left,
-                          textDirection: isTitleRTL ? ui.TextDirection.rtl : ui.TextDirection.ltr,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          summary.isEmpty ? 'No summary available.' : summary,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                              ),
-                          textAlign: isSummaryRTL ? TextAlign.right : TextAlign.left,
-                          textDirection: isSummaryRTL ? ui.TextDirection.rtl : ui.TextDirection.ltr,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.schedule, size: 14, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 6),
-                  Text(
-                    formatDate(article.publishedDate),
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+    return false; // Don't dismiss
   }
 }
 
@@ -645,169 +503,4 @@ class _SwipeBackground extends StatelessWidget {
   }
 }
 
-class _ArticleThumbnail extends StatefulWidget {
-  final String? imageUrl;
-
-  const _ArticleThumbnail({required this.imageUrl});
-
-  @override
-  State<_ArticleThumbnail> createState() => _ArticleThumbnailState();
-}
-
-class _ArticleThumbnailState extends State<_ArticleThumbnail> {
-  Future<RemoteImageFormat>? _formatFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _prepareFormatFuture();
-  }
-
-  @override
-  void didUpdateWidget(covariant _ArticleThumbnail oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) {
-      _prepareFormatFuture();
-    }
-  }
-
-  void _prepareFormatFuture() {
-    final url = widget.imageUrl;
-    if (url != null && !ImageUtils.isDataUri(url) && !ImageUtils.looksLikeSvgUrl(url)) {
-      _formatFuture = ImageUtils.detectRemoteFormat(url);
-    } else {
-      _formatFuture = null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final placeholder = Container(
-      width: 90,
-      height: 90,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(
-        Icons.image_not_supported,
-        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-      ),
-    );
-
-    final url = widget.imageUrl;
-    if (url == null || url.isEmpty) {
-      return placeholder;
-    }
-
-    if (ImageUtils.isDataUri(url)) {
-      if (ImageUtils.isSvgDataUri(url)) {
-        final svgString = ImageUtils.decodeSvgDataUri(url);
-        if (svgString == null) return placeholder;
-        return _buildSvgContainer(
-          SvgPicture.string(svgString, fit: BoxFit.cover),
-        );
-      } else {
-        final bytes = ImageUtils.decodeBitmapDataUri(url);
-        if (bytes == null) return placeholder;
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            bytes,
-            width: 90,
-            height: 90,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => placeholder,
-          ),
-        );
-      }
-    }
-
-    if (ImageUtils.looksLikeSvgUrl(url)) {
-      return _buildSvgContainer(
-        SvgPicture.network(
-          url,
-          fit: BoxFit.cover,
-          placeholderBuilder: (_) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        ),
-      );
-    }
-
-    if (_formatFuture != null) {
-      return FutureBuilder<RemoteImageFormat>(
-        future: _formatFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return _buildLoadingContainer();
-          }
-          final format = snapshot.data ?? RemoteImageFormat.unknown;
-          switch (format) {
-            case RemoteImageFormat.svg:
-              debugPrint('Bitmap request redirected to SVG renderer for $url');
-              return _buildSvgContainer(
-                SvgPicture.network(
-                  url,
-                  fit: BoxFit.cover,
-                  placeholderBuilder: (_) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                ),
-              );
-            case RemoteImageFormat.bitmap:
-              debugPrint('Bitmap image confirmed via header for $url');
-              return _buildBitmapFromCache(url, placeholder);
-            case RemoteImageFormat.unsupported:
-              debugPrint('Unsupported remote image format for $url. Showing placeholder.');
-              return placeholder;
-            case RemoteImageFormat.unknown:
-            default:
-              debugPrint('Unknown remote image format for $url, defaulting to bitmap decode');
-              return _buildBitmapFromCache(url, placeholder);
-          }
-        },
-      );
-    }
-
-    debugPrint('Bitmap image assumed (no header probe) for $url');
-    return _buildBitmapFromCache(url, placeholder);
-  }
-
-  Widget _buildLoadingContainer() => ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: const SizedBox(
-          width: 90,
-          height: 90,
-          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-        ),
-      );
-
-  Widget _buildBitmapFromCache(String url, Widget placeholder) {
-    return FutureBuilder<Uint8List?>(
-      future: ImageUtils.decodedBitmapBytes(url),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingContainer();
-        }
-        final bytes = snapshot.data;
-        if (bytes == null) {
-          debugPrint('Bitmap decode failed for $url; showing placeholder.');
-          return placeholder;
-        }
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            bytes,
-            width: 90,
-            height: 90,
-            fit: BoxFit.cover,
-            filterQuality: FilterQuality.medium,
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildSvgContainer(Widget child) => ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: SizedBox(width: 90, height: 90, child: child),
-      );
-}
 
