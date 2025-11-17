@@ -7,6 +7,7 @@ import '../models/feed.dart';
 import '../models/swipe_action.dart';
 import '../notifiers/preview_lines_notifier.dart';
 import '../notifiers/starred_refresh_notifier.dart';
+import '../notifiers/unread_refresh_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
@@ -26,6 +27,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
   final DatabaseService _db = DatabaseService();
   final SyncService _syncService = SyncService();
   final StorageService _storageService = StorageService();
+  final UnreadRefreshNotifier _unreadNotifier = UnreadRefreshNotifier.instance;
   List<Article> _articles = [];
   bool _isLoading = true;
   bool _isSyncing = false;
@@ -41,13 +43,19 @@ class _UnreadScreenState extends State<UnreadScreen> {
     super.initState();
     _previewLines = _previewLinesNotifier.lines;
     _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
+    _unreadNotifier.addListener(_handleUnreadRefresh);
     _initialize();
   }
 
   @override
   void dispose() {
     _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
+    _unreadNotifier.removeListener(_handleUnreadRefresh);
     super.dispose();
+  }
+
+  void _handleUnreadRefresh() {
+    _loadArticles();
   }
 
   Future<void> _initialize() async {
@@ -199,10 +207,11 @@ class _UnreadScreenState extends State<UnreadScreen> {
     switch (action) {
       case SwipeAction.toggleRead:
         await _syncService.markArticleAsRead(article.id, !article.isRead);
-        await _loadArticles();
+        // _loadArticles() will be called automatically via UnreadRefreshNotifier
         break;
       case SwipeAction.toggleStar:
         await _syncService.markArticleAsStarred(article.id, !article.isStarred);
+        // Starring doesn't affect unread status, but refresh anyway
         await _loadArticles();
         break;
     }

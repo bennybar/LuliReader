@@ -2,6 +2,8 @@ import '../models/user_config.dart';
 import 'database_service.dart';
 import 'freshrss_service.dart';
 import 'offline_cache_service.dart';
+import 'notification_service.dart';
+import '../notifiers/unread_refresh_notifier.dart';
 
 class SyncService {
   final DatabaseService _db = DatabaseService();
@@ -184,8 +186,16 @@ class SyncService {
       // Update local DB
       await _db.markArticleAsRead(articleId, isRead);
 
-      // Sync to server
-      await _api.markAsRead([articleId], read: isRead);
+      // Sync to server (non-blocking - don't wait for it)
+      _api.markAsRead([articleId], read: isRead).catchError((e) {
+        print('Error syncing read status to server: $e');
+      });
+      
+      // Update badge count
+      await NotificationService.updateBadgeCount();
+      
+      // Notify unread screen to refresh immediately
+      UnreadRefreshNotifier.instance.ping();
     } catch (e) {
       // Handle error
     }
@@ -198,6 +208,9 @@ class SyncService {
 
       // Sync to server
       await _api.markAsStarred([articleId], starred: isStarred);
+      
+      // Update badge count (starring doesn't affect unread, but sync might)
+      await NotificationService.updateBadgeCount();
     } catch (e) {
       // Handle error
     }

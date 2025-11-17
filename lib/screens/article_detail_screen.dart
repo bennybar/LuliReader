@@ -8,6 +8,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/article.dart';
 import '../notifiers/starred_refresh_notifier.dart';
+import '../notifiers/unread_refresh_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
@@ -76,6 +77,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         _article = _article.copyWith(isRead: true);
       });
       await _loadLatestArticle();
+      // UnreadRefreshNotifier will be pinged by sync_service
     }
   }
 

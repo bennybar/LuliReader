@@ -2,6 +2,7 @@ import 'package:workmanager/workmanager.dart';
 import 'storage_service.dart';
 import 'sync_service.dart';
 import 'freshrss_service.dart';
+import 'notification_service.dart';
 
 @pragma('vm:entry-point')
 void callbackDispatcher() {
@@ -19,6 +20,9 @@ void callbackDispatcher() {
         
         // Perform sync
         await syncService.syncAll(fetchFullContent: true);
+        
+        // Update badge count after sync
+        await NotificationService.updateBadgeCount();
       }
       
       return Future.value(true);

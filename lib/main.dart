@@ -7,10 +7,13 @@ import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/background_sync_service.dart';
 import 'services/storage_service.dart';
+import 'services/notification_service.dart';
 import 'utils/platform_utils.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Initialize notification service for badge updates
+  await NotificationService.initialize();
   runApp(const LuliReaderApp());
 }
 
@@ -42,6 +45,11 @@ class _LuliReaderAppState extends State<LuliReaderApp> {
       if (config != null) {
         await BackgroundSyncService.scheduleSync(config.backgroundSyncIntervalMinutes);
       }
+      // Update badge count on app start
+      await NotificationService.updateBadgeCount();
+    } else {
+      // Clear badge if not logged in
+      await NotificationService.clearBadge();
     }
     
     setState(() {
@@ -83,10 +91,20 @@ class _LuliReaderAppState extends State<LuliReaderApp> {
       builder: (context, child) {
         // Force RTL if Hebrew or Arabic
         final textDir = isRTL ? ui.TextDirection.rtl : ui.TextDirection.ltr;
-        return Directionality(
+        Widget result = Directionality(
           textDirection: textDir,
           child: child!,
         );
+        
+        // Apply liquid glass on iOS
+        if (isIOS) {
+          result = LiquidGlass.withOwnLayer(
+            shape: const LiquidRoundedRectangle(borderRadius: 0),
+            child: result,
+          );
+        }
+        
+        return result;
       },
       // Material Design 3 for Android, default for iOS
       theme: isAndroid
@@ -124,11 +142,6 @@ class _LuliReaderAppState extends State<LuliReaderApp> {
       home: _isLoggedIn ? const HomeScreen() : const LoginScreen(),
     );
 
-    return isIOS
-        ? LiquidGlass.withOwnLayer(
-            shape: const LiquidRoundedRectangle(borderRadius: 0),
-            child: app,
-          )
-        : app;
+    return app;
   }
 }
