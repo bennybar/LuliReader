@@ -47,6 +47,7 @@ dependencies:
   
   # Image caching
   cached_network_image: ^3.3.1
+  flutter_svg: ^2.0.10+1
   
   # Storage
   shared_preferences: ^2.2.3

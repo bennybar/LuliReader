@@ -1,8 +1,11 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 
 import '../models/article.dart';
@@ -167,16 +170,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (_article.imageUrl != null)
-              CachedNetworkImage(
-                imageUrl: _article.imageUrl!,
+              SizedBox(
+                height: 220,
                 width: double.infinity,
-                height: 200,
-                fit: BoxFit.cover,
-                placeholder: (context, url) => const SizedBox(
-                  height: 200,
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                errorWidget: (context, url, error) => const SizedBox.shrink(),
+                child: _ArticleHeroImage(imageUrl: _article.imageUrl!),
               ),
             Padding(
               padding: const EdgeInsets.all(16.0),
@@ -228,6 +225,120 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         ),
       ),
     );
+  }
+}
+
+class _ArticleHeroImage extends StatelessWidget {
+  final String imageUrl;
+
+  const _ArticleHeroImage({required this.imageUrl});
+
+  bool get _isSvgLike {
+    final lower = imageUrl.toLowerCase();
+    return lower.endsWith('.svg') ||
+        lower.contains('.svg?') ||
+        lower.contains('format=svg') ||
+        lower.contains('mime=svg') ||
+        lower.startsWith('data:image/svg+xml');
+  }
+
+  bool get _isDataUri => imageUrl.startsWith('data:image/');
+  bool get _isDataSvg => imageUrl.startsWith('data:image/svg+xml');
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      color: Theme.of(context).colorScheme.surfaceVariant,
+      child: const Center(
+        child: Icon(Icons.image_not_supported, size: 40),
+      ),
+    );
+
+    final border = const BorderRadius.only(
+      bottomLeft: Radius.circular(16),
+      bottomRight: Radius.circular(16),
+    );
+
+    if (_isDataUri) {
+      if (_isDataSvg) {
+        final svgString = _decodeSvgData();
+        if (svgString == null) return placeholder;
+        return ClipRRect(
+          borderRadius: border,
+          child: SvgPicture.string(
+            svgString,
+            fit: BoxFit.cover,
+          ),
+        );
+      } else {
+        final bytes = _decodeRasterData();
+        if (bytes == null) return placeholder;
+        return ClipRRect(
+          borderRadius: border,
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => placeholder,
+          ),
+        );
+      }
+    }
+
+    if (_isSvgLike) {
+      return ClipRRect(
+        borderRadius: border,
+        child: SvgPicture.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          placeholderBuilder: (_) => const Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: border,
+      child: CachedNetworkImage(
+        imageUrl: imageUrl,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
+        errorWidget: (context, url, error) {
+          debugPrint('Hero image load failed for $url: $error');
+          return placeholder;
+        },
+      ),
+    );
+  }
+
+  String? _decodeSvgData() {
+    try {
+      final commaIndex = imageUrl.indexOf(',');
+      if (commaIndex == -1) return null;
+      final meta = imageUrl.substring(0, commaIndex);
+      final data = imageUrl.substring(commaIndex + 1);
+      final isBase64 = meta.contains(';base64');
+      if (isBase64) {
+        return utf8.decode(base64.decode(data));
+      }
+      return Uri.decodeComponent(data);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Uint8List? _decodeRasterData() {
+    try {
+      final commaIndex = imageUrl.indexOf(',');
+      if (commaIndex == -1) return null;
+      final meta = imageUrl.substring(0, commaIndex);
+      final data = imageUrl.substring(commaIndex + 1);
+      final isBase64 = meta.contains(';base64');
+      if (isBase64) {
+        return base64.decode(data);
+      }
+      return Uint8List.fromList(Uri.decodeComponent(data).codeUnits);
+    } catch (_) {
+      return null;
+    }
   }
 }
 

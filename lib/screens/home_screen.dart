@@ -1,7 +1,10 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../models/article.dart';
 import '../models/swipe_action.dart';
 import '../services/database_service.dart';
@@ -374,30 +377,7 @@ class _ArticleCard extends StatelessWidget {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (article.imageUrl != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: article.imageUrl!,
-                        width: 90,
-                        height: 90,
-                        fit: BoxFit.cover,
-                        placeholder: (context, url) =>
-                            const SizedBox(width: 90, height: 90, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
-                        errorWidget: (context, url, error) =>
-                            const SizedBox(width: 90, height: 90, child: Icon(Icons.image_not_supported)),
-                      ),
-                    )
-                  else
-                    Container(
-                      width: 90,
-                      height: 90,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surfaceVariant,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.rss_feed, size: 32),
-                    ),
+                  _ArticleThumbnail(imageUrl: article.imageUrl),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
@@ -527,6 +507,142 @@ class _SwipeBackground extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _ArticleThumbnail extends StatelessWidget {
+  final String? imageUrl;
+
+  const _ArticleThumbnail({required this.imageUrl});
+
+  bool get _isSvgLike {
+    if (imageUrl == null) return false;
+    final lower = imageUrl!.toLowerCase();
+    return lower.endsWith('.svg') ||
+        lower.contains('.svg?') ||
+        lower.contains('format=svg') ||
+        lower.contains('mime=svg') ||
+        lower.startsWith('data:image/svg+xml');
+  }
+
+  bool get _isDataUri => imageUrl != null && imageUrl!.startsWith('data:image/');
+  bool get _isDataSvg => imageUrl != null && imageUrl!.startsWith('data:image/svg+xml');
+
+  @override
+  Widget build(BuildContext context) {
+    final placeholder = Container(
+      width: 90,
+      height: 90,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(
+        Icons.image_not_supported,
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+      ),
+    );
+
+    if (imageUrl == null || imageUrl!.isEmpty) {
+      return placeholder;
+    }
+
+    Widget buildSvgContainer(Widget child) => ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(width: 90, height: 90, child: child),
+        );
+
+    if (_isDataUri) {
+      if (_isDataSvg) {
+        final svgString = _decodeSvgData();
+        if (svgString == null) return placeholder;
+        return buildSvgContainer(
+          SvgPicture.string(
+            svgString,
+            fit: BoxFit.cover,
+          ),
+        );
+      } else {
+        final bytes = _decodeRasterData();
+        if (bytes == null) return placeholder;
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.memory(
+            bytes,
+            width: 90,
+            height: 90,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => placeholder,
+          ),
+        );
+      }
+    }
+
+    if (_isSvgLike) {
+      return buildSvgContainer(
+        SvgPicture.network(
+          imageUrl!,
+          fit: BoxFit.cover,
+          placeholderBuilder: (_) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          height: 90,
+          width: 90,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: CachedNetworkImage(
+        imageUrl: imageUrl!,
+        width: 90,
+        height: 90,
+        fit: BoxFit.cover,
+        placeholder: (context, url) => const SizedBox(
+          width: 90,
+          height: 90,
+          child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ),
+        errorWidget: (context, url, error) {
+          debugPrint('Image load failed for $url: $error');
+          return placeholder;
+        },
+        fadeInDuration: const Duration(milliseconds: 200),
+      ),
+    );
+  }
+
+  String? _decodeSvgData() {
+    try {
+      final data = imageUrl!;
+      final commaIndex = data.indexOf(',');
+      if (commaIndex == -1) return null;
+      final meta = data.substring(0, commaIndex);
+      final content = data.substring(commaIndex + 1);
+      final isBase64 = meta.contains(';base64');
+      if (isBase64) {
+        return utf8.decode(base64.decode(content));
+      }
+      return Uri.decodeComponent(content);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Uint8List? _decodeRasterData() {
+    try {
+      final data = imageUrl!;
+      final commaIndex = data.indexOf(',');
+      if (commaIndex == -1) return null;
+      final meta = data.substring(0, commaIndex);
+      final content = data.substring(commaIndex + 1);
+      final isBase64 = meta.contains(';base64');
+      if (isBase64) {
+        return base64.decode(content);
+      }
+      return Uint8List.fromList(Uri.decodeComponent(content).codeUnits);
+    } catch (_) {
+      return null;
+    }
   }
 }
 
