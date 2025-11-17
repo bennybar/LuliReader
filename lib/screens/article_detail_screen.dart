@@ -1,17 +1,16 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/article.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
+import '../utils/image_utils.dart';
 import 'offline_article_screen.dart';
 
 class ArticleDetailScreen extends StatefulWidget {
@@ -30,6 +29,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   final StorageService _storage = StorageService();
   bool _isLoading = false;
   bool _autoMarkRead = true;
+  bool _hasSyncConfig = false;
 
   @override
   void initState() {
@@ -40,6 +40,11 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   Future<void> _initializePreferences() async {
     final autoMark = await _storage.getAutoMarkRead();
+    final config = await _storage.getUserConfig();
+    if (config != null) {
+      _syncService.setUserConfig(config);
+      _hasSyncConfig = true;
+    }
     if (!mounted) return;
     setState(() => _autoMarkRead = autoMark);
     await _loadLatestArticle();
@@ -48,8 +53,22 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
   }
 
+  Future<bool> _ensureSyncConfigured() async {
+    if (_hasSyncConfig) return true;
+    final config = await _storage.getUserConfig();
+    if (config == null) return false;
+    _syncService.setUserConfig(config);
+    _hasSyncConfig = true;
+    return true;
+  }
+
   Future<void> _markAsRead() async {
     if (!_article.isRead) {
+      final ready = await _ensureSyncConfigured();
+      if (!ready) {
+        debugPrint('Cannot mark article as read: missing sync config.');
+        return;
+      }
       await _syncService.markArticleAsRead(_article.id, true);
       setState(() {
         _article = _article.copyWith(isRead: true);
@@ -228,22 +247,40 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   }
 }
 
-class _ArticleHeroImage extends StatelessWidget {
+class _ArticleHeroImage extends StatefulWidget {
   final String imageUrl;
 
   const _ArticleHeroImage({required this.imageUrl});
 
-  bool get _isSvgLike {
-    final lower = imageUrl.toLowerCase();
-    return lower.endsWith('.svg') ||
-        lower.contains('.svg?') ||
-        lower.contains('format=svg') ||
-        lower.contains('mime=svg') ||
-        lower.startsWith('data:image/svg+xml');
+  @override
+  State<_ArticleHeroImage> createState() => _ArticleHeroImageState();
+}
+
+class _ArticleHeroImageState extends State<_ArticleHeroImage> {
+  Future<RemoteImageFormat>? _formatFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareFormatFuture();
   }
 
-  bool get _isDataUri => imageUrl.startsWith('data:image/');
-  bool get _isDataSvg => imageUrl.startsWith('data:image/svg+xml');
+  @override
+  void didUpdateWidget(covariant _ArticleHeroImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _prepareFormatFuture();
+    }
+  }
+
+  void _prepareFormatFuture() {
+    final url = widget.imageUrl;
+    if (!ImageUtils.isDataUri(url) && !ImageUtils.looksLikeSvgUrl(url)) {
+      _formatFuture = ImageUtils.detectRemoteFormat(url);
+    } else {
+      _formatFuture = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -259,19 +296,19 @@ class _ArticleHeroImage extends StatelessWidget {
       bottomRight: Radius.circular(16),
     );
 
-    if (_isDataUri) {
-      if (_isDataSvg) {
-        final svgString = _decodeSvgData();
+    final url = widget.imageUrl;
+    debugPrint('Hero image candidate: $url');
+
+    if (ImageUtils.isDataUri(url)) {
+      if (ImageUtils.isSvgDataUri(url)) {
+        final svgString = ImageUtils.decodeSvgDataUri(url);
         if (svgString == null) return placeholder;
         return ClipRRect(
           borderRadius: border,
-          child: SvgPicture.string(
-            svgString,
-            fit: BoxFit.cover,
-          ),
+          child: SvgPicture.string(svgString, fit: BoxFit.cover),
         );
       } else {
-        final bytes = _decodeRasterData();
+        final bytes = ImageUtils.decodeBitmapDataUri(url);
         if (bytes == null) return placeholder;
         return ClipRRect(
           borderRadius: border,
@@ -284,61 +321,81 @@ class _ArticleHeroImage extends StatelessWidget {
       }
     }
 
-    if (_isSvgLike) {
+    if (ImageUtils.looksLikeSvgUrl(url)) {
       return ClipRRect(
         borderRadius: border,
         child: SvgPicture.network(
-          imageUrl,
+          url,
           fit: BoxFit.cover,
           placeholderBuilder: (_) => const Center(child: CircularProgressIndicator()),
         ),
       );
     }
 
-    return ClipRRect(
-      borderRadius: border,
-      child: CachedNetworkImage(
-        imageUrl: imageUrl,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => const Center(child: CircularProgressIndicator()),
-        errorWidget: (context, url, error) {
-          debugPrint('Hero image load failed for $url: $error');
-          return placeholder;
+    if (_formatFuture != null) {
+      return FutureBuilder<RemoteImageFormat>(
+        future: _formatFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return ClipRRect(
+              borderRadius: border,
+              child: const Center(child: CircularProgressIndicator()),
+            );
+          }
+          final format = snapshot.data ?? RemoteImageFormat.unknown;
+          if (format == RemoteImageFormat.svg) {
+            return ClipRRect(
+              borderRadius: border,
+              child: SvgPicture.network(
+                url,
+                fit: BoxFit.cover,
+                placeholderBuilder: (_) => const Center(child: CircularProgressIndicator()),
+              ),
+            );
+          }
+          if (format == RemoteImageFormat.bitmap) {
+            debugPrint('Hero bitmap confirmed via header for $url');
+            return _buildBitmapFromCache(url, border, placeholder);
+          }
+          if (format == RemoteImageFormat.unsupported) {
+            debugPrint('Hero image uses unsupported MIME. Skipping $url');
+            return placeholder;
+          }
+          debugPrint('Hero bitmap assumed after unknown HEAD result for $url');
+          return _buildBitmapFromCache(url, border, placeholder);
         },
-      ),
+      );
+    }
+
+    debugPrint('Hero bitmap assumed (no header probe) for $url');
+    return _buildBitmapFromCache(url, border, placeholder);
+  }
+
+  Widget _buildBitmapFromCache(String url, BorderRadius border, Widget placeholder) {
+    return FutureBuilder<Uint8List?>(
+      future: ImageUtils.decodedBitmapBytes(url),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return ClipRRect(
+            borderRadius: border,
+            child: const Center(child: CircularProgressIndicator()),
+          );
+        }
+        final bytes = snapshot.data;
+        if (bytes == null) {
+          debugPrint('Hero decoded bytes unavailable for $url');
+          return placeholder;
+        }
+        return ClipRRect(
+          borderRadius: border,
+          child: Image.memory(
+            bytes,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+          ),
+        );
+      },
     );
-  }
-
-  String? _decodeSvgData() {
-    try {
-      final commaIndex = imageUrl.indexOf(',');
-      if (commaIndex == -1) return null;
-      final meta = imageUrl.substring(0, commaIndex);
-      final data = imageUrl.substring(commaIndex + 1);
-      final isBase64 = meta.contains(';base64');
-      if (isBase64) {
-        return utf8.decode(base64.decode(data));
-      }
-      return Uri.decodeComponent(data);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Uint8List? _decodeRasterData() {
-    try {
-      final commaIndex = imageUrl.indexOf(',');
-      if (commaIndex == -1) return null;
-      final meta = imageUrl.substring(0, commaIndex);
-      final data = imageUrl.substring(commaIndex + 1);
-      final isBase64 = meta.contains(';base64');
-      if (isBase64) {
-        return base64.decode(data);
-      }
-      return Uint8List.fromList(Uri.decodeComponent(data).codeUnits);
-    } catch (_) {
-      return null;
-    }
   }
 }
 

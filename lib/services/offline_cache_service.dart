@@ -44,6 +44,20 @@ class OfflineCacheService {
     await cleanupExpiredCache();
   }
 
+  Future<void> deleteAllOfflineCache() async {
+    try {
+      final dir = await _resolveBaseDirectory();
+      if (await dir.exists()) {
+        await dir.delete(recursive: true);
+        print('Deleted offline cache directory at ${dir.path}');
+      }
+    } catch (e) {
+      print('Failed to delete offline cache directory: $e');
+    } finally {
+      _baseDir = null;
+    }
+  }
+
   Future<void> _cacheArticle(Article article, {bool force = false}) async {
     try {
       final dir = await _prepareArticleDirectory(article.id, force: force);
@@ -93,13 +107,17 @@ class OfflineCacheService {
 
   Future<Directory> _getBaseDirectory() async {
     if (_baseDir != null) return _baseDir!;
-    final documents = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(documents.path, 'offline_articles'));
+    final dir = await _resolveBaseDirectory();
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
     _baseDir = dir;
     return dir;
+  }
+
+  Future<Directory> _resolveBaseDirectory() async {
+    final documents = await getApplicationDocumentsDirectory();
+    return Directory(p.join(documents.path, 'offline_articles'));
   }
 
   Future<_OfflineContent> _buildOfflineContent(Article article) async {

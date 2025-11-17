@@ -9,6 +9,7 @@ class StorageService {
   static const String _keyAutoMarkRead = 'auto_mark_read';
   static const String _keySwipeLeftAction = 'swipe_left_action';
   static const String _keySwipeRightAction = 'swipe_right_action';
+  static const String _keyLastSyncAt = 'last_sync_at';
 
   Future<void> saveUserConfig(UserConfig config) async {
     final prefs = await SharedPreferences.getInstance();
@@ -98,6 +99,22 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getString(_keySwipeRightAction);
     return swipeActionFromString(stored ?? 'toggle_star');
+  }
+
+  Future<void> saveLastSyncTimestamp(DateTime timestamp) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyLastSyncAt, timestamp.toIso8601String());
+  }
+
+  Future<DateTime?> getLastSyncTimestamp() async {
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString(_keyLastSyncAt);
+    if (value == null) return null;
+    try {
+      return DateTime.parse(value);
+    } catch (_) {
+      return null;
+    }
   }
 }
 

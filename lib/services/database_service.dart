@@ -287,5 +287,19 @@ class DatabaseService {
     );
     return List.generate(maps.length, (i) => Article.fromMap(maps[i]));
   }
+
+  Future<void> deleteDatabaseFile() async {
+    try {
+      if (_database != null) {
+        await _database!.close();
+        _database = null;
+      }
+      final path = join(await getDatabasesPath(), 'lulireader.db');
+      await deleteDatabase(path);
+      print('Deleted local database at $path');
+    } catch (e) {
+      print('Failed to delete database: $e');
+    }
+  }
 }
 

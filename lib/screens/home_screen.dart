@@ -1,15 +1,15 @@
-import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../models/article.dart';
+import '../models/feed.dart';
 import '../models/swipe_action.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
+import '../utils/image_utils.dart';
 import 'feeds_screen.dart';
 import 'starred_screen.dart';
 import 'settings_screen.dart';
@@ -65,6 +65,7 @@ class _HomeTabState extends State<_HomeTab> {
   bool _showUnreadOnly = true; // Default to unread only
   bool _isSyncing = false;
   bool _hasSyncConfig = false;
+  Map<String, String> _feedTitles = {};
   SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
 
@@ -75,9 +76,36 @@ class _HomeTabState extends State<_HomeTab> {
   }
 
   Future<void> _initialize() async {
-    await _loadArticles();
+    await _loadFeedTitles();
     await _loadSwipePreferences();
-    await _syncArticlesFromServer(initial: true);
+    await _loadArticles();
+    await _maybeSyncOnLaunch();
+  }
+
+  Future<void> _maybeSyncOnLaunch() async {
+    final lastSync = await _storageService.getLastSyncTimestamp();
+    final intervalMinutes = await _storageService.getBackgroundSyncInterval();
+    final now = DateTime.now();
+    final shouldSync = lastSync == null ||
+        now.difference(lastSync) >= Duration(minutes: intervalMinutes) ||
+        _articles.isEmpty;
+    if (shouldSync) {
+      await _syncArticlesFromServer(initial: true);
+    }
+  }
+  Future<void> _loadFeedTitles() async {
+    final List<Feed> feeds = await _db.getAllFeeds();
+    if (!mounted) return;
+    setState(() {
+      final map = <String, String>{};
+      for (final feed in feeds) {
+        map[feed.id] = feed.title;
+        if (feed.id.startsWith('feed/')) {
+          map[feed.id.substring(5)] = feed.title;
+        }
+      }
+      _feedTitles = map;
+    });
   }
 
   @override
@@ -175,6 +203,8 @@ class _HomeTabState extends State<_HomeTab> {
     try {
       await _syncService.syncAll(fetchFullContent: false);
       print('Manual sync completed');
+      await _loadFeedTitles();
+      await _storageService.saveLastSyncTimestamp(DateTime.now());
     } catch (e) {
       print('Error syncing articles from server: $e');
       if (!initial && mounted) {
@@ -288,13 +318,11 @@ class _HomeTabState extends State<_HomeTab> {
         action: _rightSwipeAction,
         article: article,
       ),
-      confirmDismiss: (direction) async {
-        await _handleSwipeAction(article, direction);
-        return false;
-      },
+      confirmDismiss: (direction) => _handleSwipeAction(article, direction),
       child: _ArticleCard(
         article: article,
         summary: _stripHtml(article.summary ?? article.content ?? ''),
+        sourceName: _feedTitles[article.feedId] ?? 'Unknown source',
         onTap: () {
           Navigator.push(
             context,
@@ -309,26 +337,30 @@ class _HomeTabState extends State<_HomeTab> {
     );
   }
 
-  Future<void> _handleSwipeAction(Article article, DismissDirection direction) async {
+  Future<bool> _handleSwipeAction(Article article, DismissDirection direction) async {
     final hasConfig = await _ensureSyncConfigured();
     if (!hasConfig) {
-      if (!mounted) return;
+      if (!mounted) return false;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please login again to sync article actions.')),
       );
-      return;
+      return false;
     }
 
     final isStartToEnd = direction == DismissDirection.startToEnd;
     final action = isStartToEnd ? _leftSwipeAction : _rightSwipeAction;
+    bool shouldRemove = false;
+
     switch (action) {
       case SwipeAction.toggleRead:
+        final wasRead = article.isRead;
         final newValue = !article.isRead;
         await _syncService.markArticleAsRead(article.id, newValue);
         if (!mounted) break;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(newValue ? 'Marked as read' : 'Marked as unread')),
         );
+        shouldRemove = _showUnreadOnly && !wasRead && newValue;
         break;
       case SwipeAction.toggleStar:
         final newValue = !article.isStarred;
@@ -339,13 +371,20 @@ class _HomeTabState extends State<_HomeTab> {
         );
         break;
     }
+    if (shouldRemove) {
+      setState(() {
+        _articles.removeWhere((a) => a.id == article.id);
+      });
+    }
     await _loadArticles();
+    return shouldRemove;
   }
 }
 
 class _ArticleCard extends StatelessWidget {
   final Article article;
   final String summary;
+  final String sourceName;
   final VoidCallback onTap;
   final bool Function(String text) isRTLText;
   final String Function(DateTime date) formatDate;
@@ -353,6 +392,7 @@ class _ArticleCard extends StatelessWidget {
   const _ArticleCard({
     required this.article,
     required this.summary,
+    required this.sourceName,
     required this.onTap,
     required this.isRTLText,
     required this.formatDate,
@@ -405,6 +445,16 @@ class _ArticleCard extends StatelessWidget {
                                 ),
                               ),
                           ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          sourceName,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Theme.of(context).colorScheme.primary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                          textAlign: isTitleRTL ? TextAlign.right : TextAlign.left,
+                          textDirection: isTitleRTL ? ui.TextDirection.rtl : ui.TextDirection.ltr,
                         ),
                         const SizedBox(height: 6),
                         Text(
@@ -510,23 +560,40 @@ class _SwipeBackground extends StatelessWidget {
   }
 }
 
-class _ArticleThumbnail extends StatelessWidget {
+class _ArticleThumbnail extends StatefulWidget {
   final String? imageUrl;
 
   const _ArticleThumbnail({required this.imageUrl});
 
-  bool get _isSvgLike {
-    if (imageUrl == null) return false;
-    final lower = imageUrl!.toLowerCase();
-    return lower.endsWith('.svg') ||
-        lower.contains('.svg?') ||
-        lower.contains('format=svg') ||
-        lower.contains('mime=svg') ||
-        lower.startsWith('data:image/svg+xml');
+  @override
+  State<_ArticleThumbnail> createState() => _ArticleThumbnailState();
+}
+
+class _ArticleThumbnailState extends State<_ArticleThumbnail> {
+  Future<RemoteImageFormat>? _formatFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _prepareFormatFuture();
   }
 
-  bool get _isDataUri => imageUrl != null && imageUrl!.startsWith('data:image/');
-  bool get _isDataSvg => imageUrl != null && imageUrl!.startsWith('data:image/svg+xml');
+  @override
+  void didUpdateWidget(covariant _ArticleThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _prepareFormatFuture();
+    }
+  }
+
+  void _prepareFormatFuture() {
+    final url = widget.imageUrl;
+    if (url != null && !ImageUtils.isDataUri(url) && !ImageUtils.looksLikeSvgUrl(url)) {
+      _formatFuture = ImageUtils.detectRemoteFormat(url);
+    } else {
+      _formatFuture = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -543,27 +610,20 @@ class _ArticleThumbnail extends StatelessWidget {
       ),
     );
 
-    if (imageUrl == null || imageUrl!.isEmpty) {
+    final url = widget.imageUrl;
+    if (url == null || url.isEmpty) {
       return placeholder;
     }
 
-    Widget buildSvgContainer(Widget child) => ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: SizedBox(width: 90, height: 90, child: child),
-        );
-
-    if (_isDataUri) {
-      if (_isDataSvg) {
-        final svgString = _decodeSvgData();
+    if (ImageUtils.isDataUri(url)) {
+      if (ImageUtils.isSvgDataUri(url)) {
+        final svgString = ImageUtils.decodeSvgDataUri(url);
         if (svgString == null) return placeholder;
-        return buildSvgContainer(
-          SvgPicture.string(
-            svgString,
-            fit: BoxFit.cover,
-          ),
+        return _buildSvgContainer(
+          SvgPicture.string(svgString, fit: BoxFit.cover),
         );
       } else {
-        final bytes = _decodeRasterData();
+        final bytes = ImageUtils.decodeBitmapDataUri(url);
         if (bytes == null) return placeholder;
         return ClipRRect(
           borderRadius: BorderRadius.circular(12),
@@ -578,71 +638,91 @@ class _ArticleThumbnail extends StatelessWidget {
       }
     }
 
-    if (_isSvgLike) {
-      return buildSvgContainer(
+    if (ImageUtils.looksLikeSvgUrl(url)) {
+      return _buildSvgContainer(
         SvgPicture.network(
-          imageUrl!,
+          url,
           fit: BoxFit.cover,
           placeholderBuilder: (_) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          height: 90,
-          width: 90,
         ),
       );
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: CachedNetworkImage(
-        imageUrl: imageUrl!,
-        width: 90,
-        height: 90,
-        fit: BoxFit.cover,
-        placeholder: (context, url) => const SizedBox(
+    if (_formatFuture != null) {
+      return FutureBuilder<RemoteImageFormat>(
+        future: _formatFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return _buildLoadingContainer();
+          }
+          final format = snapshot.data ?? RemoteImageFormat.unknown;
+          switch (format) {
+            case RemoteImageFormat.svg:
+              debugPrint('Bitmap request redirected to SVG renderer for $url');
+              return _buildSvgContainer(
+                SvgPicture.network(
+                  url,
+                  fit: BoxFit.cover,
+                  placeholderBuilder: (_) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
+              );
+            case RemoteImageFormat.bitmap:
+              debugPrint('Bitmap image confirmed via header for $url');
+              return _buildBitmapFromCache(url, placeholder);
+            case RemoteImageFormat.unsupported:
+              debugPrint('Unsupported remote image format for $url. Showing placeholder.');
+              return placeholder;
+            case RemoteImageFormat.unknown:
+            default:
+              debugPrint('Unknown remote image format for $url, defaulting to bitmap decode');
+              return _buildBitmapFromCache(url, placeholder);
+          }
+        },
+      );
+    }
+
+    debugPrint('Bitmap image assumed (no header probe) for $url');
+    return _buildBitmapFromCache(url, placeholder);
+  }
+
+  Widget _buildLoadingContainer() => ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: const SizedBox(
           width: 90,
           height: 90,
           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
-        errorWidget: (context, url, error) {
-          debugPrint('Image load failed for $url: $error');
+      );
+
+  Widget _buildBitmapFromCache(String url, Widget placeholder) {
+    return FutureBuilder<Uint8List?>(
+      future: ImageUtils.decodedBitmapBytes(url),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return _buildLoadingContainer();
+        }
+        final bytes = snapshot.data;
+        if (bytes == null) {
+          debugPrint('Bitmap decode failed for $url; showing placeholder.');
           return placeholder;
-        },
-        fadeInDuration: const Duration(milliseconds: 200),
-      ),
+        }
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.memory(
+            bytes,
+            width: 90,
+            height: 90,
+            fit: BoxFit.cover,
+            filterQuality: FilterQuality.medium,
+          ),
+        );
+      },
     );
   }
 
-  String? _decodeSvgData() {
-    try {
-      final data = imageUrl!;
-      final commaIndex = data.indexOf(',');
-      if (commaIndex == -1) return null;
-      final meta = data.substring(0, commaIndex);
-      final content = data.substring(commaIndex + 1);
-      final isBase64 = meta.contains(';base64');
-      if (isBase64) {
-        return utf8.decode(base64.decode(content));
-      }
-      return Uri.decodeComponent(content);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Uint8List? _decodeRasterData() {
-    try {
-      final data = imageUrl!;
-      final commaIndex = data.indexOf(',');
-      if (commaIndex == -1) return null;
-      final meta = data.substring(0, commaIndex);
-      final content = data.substring(commaIndex + 1);
-      final isBase64 = meta.contains(';base64');
-      if (isBase64) {
-        return base64.decode(content);
-      }
-      return Uint8List.fromList(Uri.decodeComponent(content).codeUnits);
-    } catch (_) {
-      return null;
-    }
-  }
+  Widget _buildSvgContainer(Widget child) => ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: SizedBox(width: 90, height: 90, child: child),
+      );
 }
 

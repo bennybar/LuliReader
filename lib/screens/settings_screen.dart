@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/swipe_action.dart';
 import '../services/background_sync_service.dart';
+import '../services/local_data_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import 'login_screen.dart';
@@ -16,6 +17,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final StorageService _storage = StorageService();
   final SyncService _syncService = SyncService();
+  final LocalDataService _localDataService = LocalDataService();
   int _syncInterval = 60;
   int _articleFetchLimit = 200;
   bool _isRefreshingOffline = false;
@@ -23,6 +25,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoMarkRead = true;
   SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
+  bool _isClearingLocalData = false;
 
   @override
   void initState() {
@@ -70,12 +73,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     if (confirmed == true) {
+      await _clearLocalData(showFeedback: false);
       await _storage.logout();
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (_) => const LoginScreen()),
           (route) => false,
         );
+      }
+    }
+  }
+
+  Future<void> _confirmAndClearLocalData() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Local Data'),
+        content: const Text(
+          'This will delete all downloaded articles, offline files, and cached images. '
+          'You will stay logged in, but the app will need to sync again. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _clearLocalData(showFeedback: true);
+    }
+  }
+
+  Future<void> _clearLocalData({required bool showFeedback}) async {
+    if (_isClearingLocalData) return;
+    setState(() => _isClearingLocalData = true);
+    try {
+      await _localDataService.clearAllLocalData();
+      if (showFeedback && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Local data cleared. A fresh sync will be required.')),
+        );
+      }
+    } catch (e) {
+      if (showFeedback && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to clear local data: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isClearingLocalData = false);
       }
     }
   }
@@ -300,6 +354,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   )
                 : const Icon(Icons.download_for_offline_outlined),
             onTap: _isRefreshingOffline ? null : _refreshOfflineContent,
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Clear Local Data'),
+            subtitle: const Text('Delete local database, offline articles, and cached images'),
+            leading: const Icon(Icons.delete_forever_outlined),
+            trailing: _isClearingLocalData
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.cleaning_services_outlined),
+            onTap: _isClearingLocalData ? null : _confirmAndClearLocalData,
           ),
           const Divider(),
           ListTile(
