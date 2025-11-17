@@ -12,6 +12,9 @@ class Article {
   final bool isRead;
   final bool isStarred;
   final DateTime? lastSyncedAt;
+  final DateTime? readAt;
+  final String? offlineCachePath;
+  final DateTime? offlineCachedAt;
 
   Article({
     required this.id,
@@ -27,6 +30,9 @@ class Article {
     this.isRead = false,
     this.isStarred = false,
     this.lastSyncedAt,
+    this.readAt,
+    this.offlineCachePath,
+    this.offlineCachedAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -44,6 +50,9 @@ class Article {
       'isRead': isRead ? 1 : 0,
       'isStarred': isStarred ? 1 : 0,
       'lastSyncedAt': lastSyncedAt?.toIso8601String(),
+      'readAt': readAt?.toIso8601String(),
+      'offlineCachePath': offlineCachePath,
+      'offlineCachedAt': offlineCachedAt?.toIso8601String(),
     };
   }
 
@@ -65,6 +74,11 @@ class Article {
       isStarred: (map['isStarred'] as int) == 1,
       lastSyncedAt: map['lastSyncedAt'] != null
           ? DateTime.parse(map['lastSyncedAt'] as String)
+          : null,
+      readAt: map['readAt'] != null ? DateTime.parse(map['readAt'] as String) : null,
+      offlineCachePath: map['offlineCachePath'] as String?,
+      offlineCachedAt: map['offlineCachedAt'] != null
+          ? DateTime.parse(map['offlineCachedAt'] as String)
           : null,
     );
   }
@@ -98,6 +112,9 @@ class Article {
       isRead: isRead ?? this.isRead,
       isStarred: isStarred ?? this.isStarred,
       lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
+      readAt: readAt ?? this.readAt,
+      offlineCachePath: offlineCachePath ?? this.offlineCachePath,
+      offlineCachedAt: offlineCachedAt ?? this.offlineCachedAt,
     );
   }
 }

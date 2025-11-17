@@ -1,10 +1,12 @@
 import '../models/user_config.dart';
 import 'database_service.dart';
 import 'freshrss_service.dart';
+import 'offline_cache_service.dart';
 
 class SyncService {
   final DatabaseService _db = DatabaseService();
   final FreshRSSService _api = FreshRSSService();
+  final OfflineCacheService _offlineCacheService = OfflineCacheService();
   int _articleFetchLimit = 200;
 
   void setUserConfig(UserConfig config) {
@@ -67,6 +69,9 @@ class SyncService {
 
       // Sync starred status
       await syncStarredStatus();
+
+      // Refresh offline cache (unread) and cleanup expired caches
+      await _offlineCacheService.refreshAndCleanup();
       
       print('Sync completed');
     } catch (e) {
@@ -196,6 +201,10 @@ class SyncService {
     } catch (e) {
       // Handle error
     }
+  }
+
+  Future<void> refreshOfflineContent({bool force = false}) async {
+    await _offlineCacheService.refreshAndCleanup(force: force);
   }
 }
 

@@ -20,8 +20,9 @@ class DatabaseService {
     String path = join(await getDatabasesPath(), 'lulireader.db');
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -56,6 +57,9 @@ class DatabaseService {
         isRead INTEGER DEFAULT 0,
         isStarred INTEGER DEFAULT 0,
         lastSyncedAt TEXT,
+        readAt TEXT,
+        offlineCachePath TEXT,
+        offlineCachedAt TEXT,
         FOREIGN KEY (feedId) REFERENCES feeds (id) ON DELETE CASCADE
       )
     ''');
@@ -65,6 +69,16 @@ class DatabaseService {
     await db.execute('CREATE INDEX idx_articles_publishedDate ON articles(publishedDate DESC)');
     await db.execute('CREATE INDEX idx_articles_isRead ON articles(isRead)');
     await db.execute('CREATE INDEX idx_articles_isStarred ON articles(isStarred)');
+    await db.execute('CREATE INDEX idx_articles_readAt ON articles(readAt)');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE articles ADD COLUMN readAt TEXT');
+      await db.execute('ALTER TABLE articles ADD COLUMN offlineCachePath TEXT');
+      await db.execute('ALTER TABLE articles ADD COLUMN offlineCachedAt TEXT');
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_articles_readAt ON articles(readAt)');
+    }
   }
 
   // Feed operations
@@ -173,9 +187,13 @@ class DatabaseService {
 
   Future<void> markArticleAsRead(String id, bool isRead) async {
     final db = await database;
+    final readAt = isRead ? DateTime.now().toIso8601String() : null;
     await db.update(
       'articles',
-      {'isRead': isRead ? 1 : 0},
+      {
+        'isRead': isRead ? 1 : 0,
+        'readAt': readAt,
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -194,10 +212,14 @@ class DatabaseService {
   Future<void> markMultipleArticlesAsRead(List<String> ids, bool isRead) async {
     final db = await database;
     final batch = db.batch();
+    final readAt = isRead ? DateTime.now().toIso8601String() : null;
     for (var id in ids) {
       batch.update(
         'articles',
-        {'isRead': isRead ? 1 : 0},
+        {
+          'isRead': isRead ? 1 : 0,
+          'readAt': readAt,
+        },
         where: 'id = ?',
         whereArgs: [id],
       );
@@ -207,7 +229,11 @@ class DatabaseService {
 
   Future<void> markAllArticlesAsRead(bool isRead) async {
     final db = await database;
-    await db.update('articles', {'isRead': isRead ? 1 : 0});
+    final readAt = isRead ? DateTime.now().toIso8601String() : null;
+    await db.update('articles', {
+      'isRead': isRead ? 1 : 0,
+      'readAt': readAt,
+    });
   }
 
   Future<int> getUnreadCount({String? feedId}) async {
@@ -237,6 +263,29 @@ class DatabaseService {
       columns: ['id'],
     );
     return result.map((row) => row['id'] as String).toList();
+  }
+
+  Future<void> updateOfflineCacheInfo(String articleId, {String? path, DateTime? cachedAt}) async {
+    final db = await database;
+    await db.update(
+      'articles',
+      {
+        'offlineCachePath': path,
+        'offlineCachedAt': cachedAt?.toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [articleId],
+    );
+  }
+
+  Future<List<Article>> getArticlesForOfflineCleanup(DateTime threshold) async {
+    final db = await database;
+    final maps = await db.query(
+      'articles',
+      where: 'offlineCachePath IS NOT NULL AND readAt IS NOT NULL AND readAt < ?',
+      whereArgs: [threshold.toIso8601String()],
+    );
+    return List.generate(maps.length, (i) => Article.fromMap(maps[i]));
   }
 }
 

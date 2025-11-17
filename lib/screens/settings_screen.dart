@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import '../services/storage_service.dart';
+
+import '../models/swipe_action.dart';
 import '../services/background_sync_service.dart';
+import '../services/storage_service.dart';
+import '../services/sync_service.dart';
 import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -12,8 +15,14 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   final StorageService _storage = StorageService();
+  final SyncService _syncService = SyncService();
   int _syncInterval = 60;
   int _articleFetchLimit = 200;
+  bool _isRefreshingOffline = false;
+  bool _hasSyncConfig = false;
+  bool _autoMarkRead = true;
+  SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
+  SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
 
   @override
   void initState() {
@@ -24,9 +33,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     final interval = await _storage.getBackgroundSyncInterval();
     final limit = await _storage.getArticleFetchLimit();
+    final config = await _storage.getUserConfig();
+    final autoMark = await _storage.getAutoMarkRead();
+    final leftSwipe = await _storage.getSwipeLeftAction();
+    final rightSwipe = await _storage.getSwipeRightAction();
     setState(() {
       _syncInterval = interval;
       _articleFetchLimit = limit;
+      _autoMarkRead = autoMark;
+      _leftSwipeAction = leftSwipe;
+      _rightSwipeAction = rightSwipe;
+      if (config != null) {
+        _syncService.setUserConfig(config);
+        _hasSyncConfig = true;
+      }
     });
   }
 
@@ -56,6 +76,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
           MaterialPageRoute(builder: (_) => const LoginScreen()),
           (route) => false,
         );
+      }
+    }
+  }
+
+  Future<bool> _ensureSyncConfigured() async {
+    if (_hasSyncConfig) return true;
+    final config = await _storage.getUserConfig();
+    if (config == null) return false;
+    _syncService.setUserConfig(config);
+    _hasSyncConfig = true;
+    return true;
+  }
+
+  Future<void> _refreshOfflineContent() async {
+    if (_isRefreshingOffline) return;
+    final hasConfig = await _ensureSyncConfigured();
+    if (!hasConfig) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please login again to refresh offline content.')),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isRefreshingOffline = true);
+    try {
+      await _syncService.refreshOfflineContent(force: true);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Offline content refreshed')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Offline refresh failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isRefreshingOffline = false);
       }
     }
   }
@@ -178,6 +240,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 setState(() => _articleFetchLimit = limit);
               }
             },
+          ),
+          const Divider(),
+          SwitchListTile(
+            title: const Text('Auto mark article as read'),
+            value: _autoMarkRead,
+            subtitle: const Text('When enabled, opening an article marks it as read automatically'),
+            onChanged: (value) async {
+              await _storage.saveAutoMarkRead(value);
+              setState(() => _autoMarkRead = value);
+            },
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Left swipe action'),
+            subtitle: const Text('Swipe right → left'),
+            trailing: DropdownButton<SwipeAction>(
+              value: _leftSwipeAction,
+              items: SwipeAction.values
+                  .map((action) => DropdownMenuItem(
+                        value: action,
+                        child: Text(action.label),
+                      ))
+                  .toList(),
+              onChanged: (action) async {
+                if (action == null) return;
+                await _storage.saveSwipeLeftAction(action);
+                setState(() => _leftSwipeAction = action);
+              },
+            ),
+          ),
+          ListTile(
+            title: const Text('Right swipe action'),
+            subtitle: const Text('Swipe left → right'),
+            trailing: DropdownButton<SwipeAction>(
+              value: _rightSwipeAction,
+              items: SwipeAction.values
+                  .map((action) => DropdownMenuItem(
+                        value: action,
+                        child: Text(action.label),
+                      ))
+                  .toList(),
+              onChanged: (action) async {
+                if (action == null) return;
+                await _storage.saveSwipeRightAction(action);
+                setState(() => _rightSwipeAction = action);
+              },
+            ),
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Refresh Offline Content'),
+            subtitle: const Text('Download full articles & images for offline reading'),
+            trailing: _isRefreshingOffline
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.download_for_offline_outlined),
+            onTap: _isRefreshingOffline ? null : _refreshOfflineContent,
           ),
           const Divider(),
           ListTile(

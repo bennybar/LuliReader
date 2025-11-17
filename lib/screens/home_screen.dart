@@ -2,10 +2,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../models/article.dart';
+import '../models/swipe_action.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
-import '../models/article.dart';
 import 'feeds_screen.dart';
 import 'starred_screen.dart';
 import 'settings_screen.dart';
@@ -61,6 +62,8 @@ class _HomeTabState extends State<_HomeTab> {
   bool _showUnreadOnly = true; // Default to unread only
   bool _isSyncing = false;
   bool _hasSyncConfig = false;
+  SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
+  SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
 
   @override
   void initState() {
@@ -70,6 +73,7 @@ class _HomeTabState extends State<_HomeTab> {
 
   Future<void> _initialize() async {
     await _loadArticles();
+    await _loadSwipePreferences();
     await _syncArticlesFromServer(initial: true);
   }
 
@@ -78,6 +82,7 @@ class _HomeTabState extends State<_HomeTab> {
     super.didChangeDependencies();
     // Refresh articles when returning to this tab
     _loadArticles();
+    _loadSwipePreferences();
   }
 
   Future<void> _loadArticles() async {
@@ -125,6 +130,16 @@ class _HomeTabState extends State<_HomeTab> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<void> _loadSwipePreferences() async {
+    final left = await _storageService.getSwipeLeftAction();
+    final right = await _storageService.getSwipeRightAction();
+    if (!mounted) return;
+    setState(() {
+      _leftSwipeAction = left;
+      _rightSwipeAction = right;
+    });
   }
 
   Future<bool> _ensureSyncConfigured() async {
@@ -249,24 +264,79 @@ class _HomeTabState extends State<_HomeTab> {
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final article = _articles[index];
-                      return _ArticleCard(
-                        article: article,
-                        summary: _stripHtml(article.summary ?? article.content ?? ''),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ArticleDetailScreen(article: article),
-                            ),
-                          ).then((_) => _loadArticles());
-                        },
-                        isRTLText: _isRTLText,
-                        formatDate: _formatDate,
-                      );
+                      return _buildSwipeableCard(article);
                     },
                   ),
       ),
     );
+  }
+
+  Widget _buildSwipeableCard(Article article) {
+    return Dismissible(
+      key: ValueKey(article.id),
+      direction: DismissDirection.horizontal,
+      background: _SwipeBackground(
+        alignment: Alignment.centerLeft,
+        action: _leftSwipeAction,
+        article: article,
+      ),
+      secondaryBackground: _SwipeBackground(
+        alignment: Alignment.centerRight,
+        action: _rightSwipeAction,
+        article: article,
+      ),
+      confirmDismiss: (direction) async {
+        await _handleSwipeAction(article, direction);
+        return false;
+      },
+      child: _ArticleCard(
+        article: article,
+        summary: _stripHtml(article.summary ?? article.content ?? ''),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ArticleDetailScreen(article: article),
+            ),
+          ).then((_) => _loadArticles());
+        },
+        isRTLText: _isRTLText,
+        formatDate: _formatDate,
+      ),
+    );
+  }
+
+  Future<void> _handleSwipeAction(Article article, DismissDirection direction) async {
+    final hasConfig = await _ensureSyncConfigured();
+    if (!hasConfig) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please login again to sync article actions.')),
+      );
+      return;
+    }
+
+    final isStartToEnd = direction == DismissDirection.startToEnd;
+    final action = isStartToEnd ? _leftSwipeAction : _rightSwipeAction;
+    switch (action) {
+      case SwipeAction.toggleRead:
+        final newValue = !article.isRead;
+        await _syncService.markArticleAsRead(article.id, newValue);
+        if (!mounted) break;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(newValue ? 'Marked as read' : 'Marked as unread')),
+        );
+        break;
+      case SwipeAction.toggleStar:
+        final newValue = !article.isStarred;
+        await _syncService.markArticleAsStarred(article.id, newValue);
+        if (!mounted) break;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(newValue ? 'Starred article' : 'Unstarred article')),
+        );
+        break;
+    }
+    await _loadArticles();
   }
 }
 
@@ -389,6 +459,72 @@ class _ArticleCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _SwipeBackground extends StatelessWidget {
+  final Alignment alignment;
+  final SwipeAction action;
+  final Article article;
+
+  const _SwipeBackground({
+    required this.alignment,
+    required this.action,
+    required this.article,
+  });
+
+  Color get _color {
+    switch (action) {
+      case SwipeAction.toggleStar:
+        return Colors.amber.shade600;
+      case SwipeAction.toggleRead:
+      default:
+        return Colors.green.shade600;
+    }
+  }
+
+  IconData get _icon {
+    switch (action) {
+      case SwipeAction.toggleStar:
+        return Icons.star;
+      case SwipeAction.toggleRead:
+      default:
+        return Icons.check_circle;
+    }
+  }
+
+  String get _label {
+    switch (action) {
+      case SwipeAction.toggleStar:
+        return article.isStarred ? 'Remove star' : 'Add star';
+      case SwipeAction.toggleRead:
+      default:
+        return article.isRead ? 'Mark as unread' : 'Mark as read';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _color,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      alignment: alignment,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(_icon, color: Colors.white),
+          const SizedBox(width: 8),
+          Text(
+            _label,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+        ],
       ),
     );
   }

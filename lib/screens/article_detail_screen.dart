@@ -1,10 +1,15 @@
+import 'dart:io';
 import 'dart:ui' as ui;
-import 'package:flutter/material.dart';
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+
 import '../models/article.dart';
-import '../services/sync_service.dart';
 import '../services/database_service.dart';
+import '../services/storage_service.dart';
+import '../services/sync_service.dart';
+import 'offline_article_screen.dart';
 
 class ArticleDetailScreen extends StatefulWidget {
   final Article article;
@@ -19,13 +24,25 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   late Article _article;
   final SyncService _syncService = SyncService();
   final DatabaseService _db = DatabaseService();
+  final StorageService _storage = StorageService();
   bool _isLoading = false;
+  bool _autoMarkRead = true;
 
   @override
   void initState() {
     super.initState();
     _article = widget.article;
-    _markAsRead();
+    _initializePreferences();
+  }
+
+  Future<void> _initializePreferences() async {
+    final autoMark = await _storage.getAutoMarkRead();
+    if (!mounted) return;
+    setState(() => _autoMarkRead = autoMark);
+    await _loadLatestArticle();
+    if (autoMark) {
+      await _markAsRead();
+    }
   }
 
   Future<void> _markAsRead() async {
@@ -33,6 +50,16 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       await _syncService.markArticleAsRead(_article.id, true);
       setState(() {
         _article = _article.copyWith(isRead: true);
+      });
+      await _loadLatestArticle();
+    }
+  }
+
+  Future<void> _loadLatestArticle() async {
+    final latest = await _db.getArticle(_article.id);
+    if (latest != null && mounted) {
+      setState(() {
+        _article = latest;
       });
     }
   }
@@ -45,6 +72,38 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       _article = _article.copyWith(isStarred: newStarred);
       _isLoading = false;
     });
+    await _loadLatestArticle();
+  }
+
+  Future<void> _openOfflineCopy() async {
+    final path = _article.offlineCachePath;
+    if (path == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Offline copy not available yet.')),
+      );
+      return;
+    }
+
+    final file = File(path);
+    if (!await file.exists()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Offline file missing. Please refresh offline content.')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => OfflineArticleScreen(
+          filePath: file.path,
+          title: _article.title,
+        ),
+      ),
+    );
   }
 
   String _formatDate(DateTime date) {
@@ -81,6 +140,12 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       appBar: AppBar(
         title: Text(_article.title),
         actions: [
+          if (_article.offlineCachePath != null)
+            IconButton(
+              icon: const Icon(Icons.offline_pin),
+              tooltip: 'View offline version',
+              onPressed: _openOfflineCopy,
+            ),
           IconButton(
             icon: Icon(
               _article.isStarred ? Icons.star : Icons.star_border,

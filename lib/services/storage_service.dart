@@ -1,10 +1,14 @@
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_config.dart';
+import '../models/swipe_action.dart';
 
 class StorageService {
   static const String _keyUserConfig = 'user_config';
   static const String _keyIsLoggedIn = 'is_logged_in';
+  static const String _keyAutoMarkRead = 'auto_mark_read';
+  static const String _keySwipeLeftAction = 'swipe_left_action';
+  static const String _keySwipeRightAction = 'swipe_right_action';
 
   Future<void> saveUserConfig(UserConfig config) async {
     final prefs = await SharedPreferences.getInstance();
@@ -62,6 +66,38 @@ class StorageService {
   Future<int> getArticleFetchLimit() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt('article_fetch_limit') ?? 200;
+  }
+
+  Future<void> saveAutoMarkRead(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyAutoMarkRead, value);
+  }
+
+  Future<bool> getAutoMarkRead() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyAutoMarkRead) ?? true;
+  }
+
+  Future<void> saveSwipeLeftAction(SwipeAction action) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keySwipeLeftAction, action.storageValue);
+  }
+
+  Future<void> saveSwipeRightAction(SwipeAction action) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keySwipeRightAction, action.storageValue);
+  }
+
+  Future<SwipeAction> getSwipeLeftAction() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_keySwipeLeftAction);
+    return swipeActionFromString(stored);
+  }
+
+  Future<SwipeAction> getSwipeRightAction() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_keySwipeRightAction);
+    return swipeActionFromString(stored ?? 'toggle_star');
   }
 }
 
