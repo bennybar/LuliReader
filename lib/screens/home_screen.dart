@@ -130,21 +130,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: tabs.map((tab) => tab.widget).toList(),
-      ),
-      bottomNavigationBar: PlatformBottomNav(
-        currentIndex: _currentIndex,
-        items: tabs
-            .map(
-              (tab) => BottomNavItem(
-                icon: tab.icon,
-                label: tab.label,
-              ),
-            )
-            .toList(),
-        onTap: (index) => setState(() => _currentIndex = index),
+      // Let the body extend behind the bottom bar so liquid glass can sample content
+      extendBody: true,
+      body: Stack(
+        children: [
+          Positioned.fill(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: tabs.map((tab) => tab.widget).toList(),
+            ),
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: PlatformBottomNav(
+              currentIndex: _currentIndex,
+              items: tabs
+                  .map(
+                    (tab) => BottomNavItem(
+                      icon: tab.icon,
+                      label: tab.label,
+                    ),
+                  )
+                  .toList(),
+              onTap: (index) => setState(() => _currentIndex = index),
+            ),
+          ),
+        ],
       ),
     );
   }

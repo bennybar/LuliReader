@@ -36,82 +36,82 @@ class ArticleCard extends StatelessWidget {
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _ArticleThumbnail(imageUrl: article.imageUrl),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                article.title,
-                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                textAlign: isTitleRTL ? TextAlign.right : TextAlign.left,
-                                textDirection: isTitleRTL ? TextDirection.rtl : TextDirection.ltr,
-                              ),
-                            ),
-                            if (!article.isRead)
-                              Container(
-                                width: 10,
-                                height: 10,
-                                decoration: const BoxDecoration(
-                                  color: Colors.blue,
-                                  shape: BoxShape.circle,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _UnreadIndicator(isUnread: !article.isRead),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _ArticleThumbnail(imageUrl: article.imageUrl),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  article.title,
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                  textAlign: isTitleRTL ? TextAlign.right : TextAlign.left,
+                                  textDirection: isTitleRTL ? TextDirection.rtl : TextDirection.ltr,
                                 ),
-                              ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          sourceName,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: Theme.of(context).colorScheme.primary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                          textAlign: isTitleRTL ? TextAlign.right : TextAlign.left,
-                          textDirection: isTitleRTL ? TextDirection.rtl : TextDirection.ltr,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          summary.isEmpty ? 'No summary available.' : summary,
-                          maxLines: summaryLines,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                              ),
-                          textAlign: isSummaryRTL ? TextAlign.right : TextAlign.left,
-                          textDirection: isSummaryRTL ? TextDirection.rtl : TextDirection.ltr,
-                        ),
-                      ],
-                    ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  sourceName,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: Theme.of(context).colorScheme.primary,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                  textAlign: isTitleRTL ? TextAlign.right : TextAlign.left,
+                                  textDirection: isTitleRTL ? TextDirection.rtl : TextDirection.ltr,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        summary.isEmpty ? 'No summary available.' : summary,
+                        maxLines: summaryLines,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                            ),
+                        textAlign: isSummaryRTL ? TextAlign.right : TextAlign.left,
+                        textDirection: isSummaryRTL ? TextDirection.rtl : TextDirection.ltr,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.schedule,
+                            size: 14,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            formatArticleDate(article.publishedDate),
+                            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(Icons.schedule, size: 14, color: Theme.of(context).colorScheme.primary),
-                  const SizedBox(width: 6),
-                  Text(
-                    formatArticleDate(article.publishedDate),
-                    style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -284,5 +284,44 @@ class _ArticleThumbnailState extends State<_ArticleThumbnail> {
         child: SizedBox(width: 90, height: 90, child: child),
       );
 }
+
+class _UnreadIndicator extends StatelessWidget {
+  final bool isUnread;
+
+  const _UnreadIndicator({required this.isUnread});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isUnread) {
+      // Reserve a tiny, subtle space so layout doesn't jump when read state changes
+      return const SizedBox(width: 4);
+    }
+
+    final color = Theme.of(context).colorScheme.primary;
+
+    return Container(
+      width: 5,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            color.withOpacity(0.9),
+            color.withOpacity(0.6),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(0.35),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 
 

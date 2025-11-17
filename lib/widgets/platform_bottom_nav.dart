@@ -1,7 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:flutter/cupertino.dart';
-import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
-import '../utils/platform_utils.dart';
+import 'package:cupertino_native/cupertino_native.dart';
 
 class BottomNavItem {
   final IconData icon;
@@ -24,44 +24,24 @@ class PlatformBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isIOS) {
-      return _buildLiquidGlassNav(context);
-    } else {
-      return _buildMaterialNav(context);
-    }
+    final isApplePlatform = Platform.isIOS || Platform.isMacOS;
+    return isApplePlatform ? _buildCupertinoNativeNav(context) : _buildMaterialNav(context);
   }
 
-  Widget _buildLiquidGlassNav(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final isDark = brightness == Brightness.dark;
-    
-    return LiquidGlassLayer(
-      settings: const LiquidGlassSettings(
-        thickness: 15,
-        blur: 20,
-        glassColor: Color(0x33FFFFFF),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.transparent,
-        ),
-        child: CupertinoTabBar(
-          currentIndex: currentIndex,
-          onTap: onTap,
-          items: items
-              .map(
-                (item) => BottomNavigationBarItem(
-                  icon: Icon(item.icon),
-                  label: item.label,
-                ),
-              )
-              .toList(),
-          backgroundColor: Colors.transparent,
-          border: null,
-          activeColor: Theme.of(context).colorScheme.primary,
-          inactiveColor: isDark ? (Colors.grey[600] ?? Colors.grey) : Colors.grey,
-        ),
-      ),
+  Widget _buildCupertinoNativeNav(BuildContext context) {
+    // CNTabBar already handles safe areas; returning it directly keeps it closer
+    // to the bottom edge while still respecting the system inset.
+    return CNTabBar(
+      items: items
+          .map(
+            (item) => CNTabBarItem(
+              label: item.label,
+              icon: CNSymbol(_symbolNameForItem(item)),
+            ),
+          )
+          .toList(),
+      currentIndex: currentIndex,
+      onTap: onTap,
     );
   }
 
@@ -103,6 +83,21 @@ class PlatformBottomNav extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _symbolNameForItem(BottomNavItem item) {
+    switch (item.label.toLowerCase()) {
+      case 'home':
+        return 'house';
+      case 'unread':
+        return 'envelope.badge';
+      case 'starred':
+        return 'star';
+      case 'settings':
+        return 'gearshape';
+      default:
+        return 'circle';
+    }
   }
 }
 

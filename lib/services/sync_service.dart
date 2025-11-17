@@ -19,7 +19,7 @@ class SyncService {
   Future<void> syncAll({bool fetchFullContent = false}) async {
     try {
       print('Starting sync...');
-      
+
       // Sync feeds
       final feeds = await _api.getSubscriptions();
       print('Got ${feeds.length} feeds');
@@ -27,43 +27,25 @@ class SyncService {
         await _db.insertFeed(feed);
       }
 
-      // Fetch unread articles first to get accurate count
-      print('Fetching unread articles from reading list...');
-      final unreadArticles = await _api.getStreamContents(
-        streamId: 'user/-/state/com.google/reading-list',
-        count: _articleFetchLimit,
-        excludeRead: true, // Only unread
-      );
-      print('Got ${unreadArticles.length} unread articles');
-      
-      // Also fetch all articles from reading list (all articles)
-      print('Fetching all articles from reading list (limit: $_articleFetchLimit)...');
+      // Fetch latest articles from reading list (all articles, up to limit)
+      print('Fetching latest articles from reading list (limit: $_articleFetchLimit)...');
       final allArticles = await _api.getStreamContents(
         streamId: 'user/-/state/com.google/reading-list',
         count: _articleFetchLimit,
         excludeRead: false,
       );
       print('Got ${allArticles.length} total articles from reading list');
-      
-      // Count unread from all articles
-      final unreadCount = allArticles.where((a) => !a.isRead).length;
-      print('Found $unreadCount unread articles in the fetched list');
-      
+
       if (allArticles.isNotEmpty) {
         print('Inserting ${allArticles.length} articles into database...');
         await _db.insertArticles(allArticles);
         print('Articles inserted successfully');
-        
+
         // Verify insertion
         final count = await _db.getUnreadCount();
         print('Total unread articles in database: $count');
       } else {
         print('No articles to insert');
-      }
-
-      // Sync articles for each feed
-      for (var feed in feeds) {
-        await syncFeedArticles(feed.id, fetchFullContent: fetchFullContent);
       }
 
       // Sync unread status

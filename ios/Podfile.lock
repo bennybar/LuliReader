@@ -1,4 +1,6 @@
 PODS:
+  - cupertino_native (0.0.1):
+    - Flutter
   - Flutter (1.0.0)
   - flutter_local_notifications (0.0.1):
     - Flutter
@@ -20,6 +22,7 @@ PODS:
     - Flutter
 
 DEPENDENCIES:
+  - cupertino_native (from `.symlinks/plugins/cupertino_native/ios`)
   - Flutter (from `Flutter`)
   - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
@@ -30,6 +33,8 @@ DEPENDENCIES:
   - workmanager_apple (from `.symlinks/plugins/workmanager_apple/ios`)
 
 EXTERNAL SOURCES:
+  cupertino_native:
+    :path: ".symlinks/plugins/cupertino_native/ios"
   Flutter:
     :path: Flutter
   flutter_local_notifications:
@@ -48,6 +53,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/workmanager_apple/ios"
 
 SPEC CHECKSUMS:
+  cupertino_native: 1db0611c94f9a9ea28433ed16a344dcb996370b5
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_local_notifications: 395056b3175ba4f08480a7c5de30cd36d69827e4
   path_provider_foundation: bb55f6dbba17d0dccd6737fe6f7f34fbd0376880

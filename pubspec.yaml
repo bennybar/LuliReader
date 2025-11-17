@@ -36,6 +36,7 @@ dependencies:
   # UI
   cupertino_icons: ^1.0.8
   liquid_glass_renderer: ^0.2.0-dev.4
+  cupertino_native: ^0.1.1
   
   # Database
   sqflite: ^2.3.3+2

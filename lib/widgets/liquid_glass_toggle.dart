@@ -30,31 +30,31 @@ class LiquidGlassToggle extends StatelessWidget {
         blur: 20,
         glassColor: Color(0x33FFFFFF),
       ),
-      child: GestureDetector(
-        onTap: () => onChanged(!value),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            color: Colors.transparent,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                value ? Icons.filter_list : Icons.filter_list_off,
-                color: value ? Theme.of(context).colorScheme.primary : Colors.grey,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: TextStyle(
+      child: LiquidGlass(
+        shape: LiquidRoundedSuperellipse(borderRadius: 20),
+        glassContainsChild: false,
+        child: GestureDetector(
+          onTap: () => onChanged(!value),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  value ? Icons.filter_list : Icons.filter_list_off,
                   color: value ? Theme.of(context).colorScheme.primary : Colors.grey,
-                  fontWeight: value ? FontWeight.bold : FontWeight.normal,
+                  size: 20,
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: value ? Theme.of(context).colorScheme.primary : Colors.grey,
+                    fontWeight: value ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

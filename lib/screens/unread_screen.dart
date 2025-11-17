@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 
 import '../models/article.dart';
 import '../models/feed.dart';
@@ -14,6 +15,7 @@ import '../services/sync_service.dart';
 import '../utils/article_text_utils.dart';
 import '../widgets/article_card.dart';
 import '../widgets/platform_app_bar.dart';
+import '../utils/platform_utils.dart';
 import 'article_detail_screen.dart';
 
 class UnreadScreen extends StatefulWidget {
@@ -224,16 +226,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
       appBar: PlatformAppBar(
         title: 'Unread',
         actions: [
-          IconButton(
-            icon: _isSyncing
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.sync),
-            onPressed: _isSyncing ? null : () => _syncArticlesFromServer(),
-          ),
+          _buildSyncAction(context),
         ],
       ),
       body: RefreshIndicator(
@@ -289,6 +282,61 @@ class _UnreadScreenState extends State<UnreadScreen> {
             ),
           ).then((_) => _loadArticles());
         },
+      ),
+    );
+  }
+
+  Widget _buildSyncAction(BuildContext context) {
+    final icon = _isSyncing
+        ? const SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : const Icon(Icons.sync, size: 18);
+
+    if (!isIOS) {
+      return IconButton(
+        icon: icon,
+        onPressed: _isSyncing ? null : () => _syncArticlesFromServer(),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 4),
+      child: LiquidGlassLayer(
+        settings: const LiquidGlassSettings(
+          thickness: 16,
+          blur: 18,
+          glassColor: Color(0x33FFFFFF),
+        ),
+        child: LiquidGlass(
+          shape: LiquidRoundedSuperellipse(borderRadius: 18),
+          glassContainsChild: false,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: _isSyncing ? null : () => _syncArticlesFromServer(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  icon,
+                  if (!_isSyncing) ...[
+                    const SizedBox(width: 6),
+                    const Text(
+                      'Refresh',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
