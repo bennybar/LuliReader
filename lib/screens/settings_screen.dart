@@ -8,7 +8,9 @@ import '../services/sync_service.dart';
 import 'login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final ValueChanged<bool>? onShowStarredTabChanged;
+
+  const SettingsScreen({super.key, this.onShowStarredTabChanged});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -25,6 +27,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoMarkRead = true;
   SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
+  bool _showStarredTab = true;
   bool _isClearingLocalData = false;
 
   @override
@@ -40,12 +43,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final autoMark = await _storage.getAutoMarkRead();
     final leftSwipe = await _storage.getSwipeLeftAction();
     final rightSwipe = await _storage.getSwipeRightAction();
+    final showStarred = await _storage.getShowStarredTab();
     setState(() {
       _syncInterval = interval;
       _articleFetchLimit = limit;
       _autoMarkRead = autoMark;
       _leftSwipeAction = leftSwipe;
       _rightSwipeAction = rightSwipe;
+      _showStarredTab = showStarred;
       if (config != null) {
         _syncService.setUserConfig(config);
         _hasSyncConfig = true;
@@ -303,6 +308,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (value) async {
               await _storage.saveAutoMarkRead(value);
               setState(() => _autoMarkRead = value);
+            },
+          ),
+          const Divider(),
+          SwitchListTile(
+            title: const Text('Show Starred Tab'),
+            value: _showStarredTab,
+            subtitle: const Text('Toggle the Starred tab in the bottom navigation'),
+            onChanged: (value) async {
+              await _storage.saveShowStarredTab(value);
+              setState(() => _showStarredTab = value);
+              widget.onShowStarredTabChanged?.call(value);
             },
           ),
           const Divider(),

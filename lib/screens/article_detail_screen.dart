@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/article.dart';
+import '../notifiers/starred_refresh_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
@@ -90,6 +91,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     setState(() => _isLoading = true);
     final newStarred = !_article.isStarred;
     await _syncService.markArticleAsStarred(_article.id, newStarred);
+    StarredRefreshNotifier.instance.ping();
     setState(() {
       _article = _article.copyWith(isStarred: newStarred);
       _isLoading = false;

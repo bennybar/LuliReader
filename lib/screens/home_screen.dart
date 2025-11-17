@@ -6,6 +6,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/swipe_action.dart';
+import '../notifiers/starred_refresh_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
@@ -24,25 +25,108 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+class _TabConfig {
+  final String id;
+  final Widget widget;
+  final IconData icon;
+  final String label;
+
+  const _TabConfig({
+    required this.id,
+    required this.widget,
+    required this.icon,
+    required this.label,
+  });
+}
+
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  bool _showStarredTab = true;
+  final StorageService _storageService = StorageService();
 
-  final List<Widget> _screens = [
-    const _HomeTab(),
-    const FeedsScreen(),
-    const StarredScreen(),
-    const SettingsScreen(),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _loadTabPreferences();
+  }
+
+  Future<void> _loadTabPreferences() async {
+    final showStarred = await _storageService.getShowStarredTab();
+    if (!mounted) return;
+    setState(() {
+      _showStarredTab = showStarred;
+    });
+  }
+
+  void _handleShowStarredTabChanged(bool value) {
+    setState(() {
+      _showStarredTab = value;
+      final tabs = _tabConfigs;
+      if (_currentIndex >= tabs.length) {
+        _currentIndex = tabs.length - 1;
+      }
+      final currentTabId = tabs[_currentIndex].id;
+      if (!_showStarredTab && currentTabId == 'starred') {
+        _currentIndex = 0;
+      }
+    });
+  }
+
+  List<_TabConfig> get _tabConfigs {
+    final tabs = <_TabConfig>[
+      const _TabConfig(
+        id: 'home',
+        widget: _HomeTab(),
+        icon: Icons.home,
+        label: 'Home',
+      ),
+      const _TabConfig(
+        id: 'feeds',
+        widget: FeedsScreen(),
+        icon: Icons.list,
+        label: 'Feeds',
+      ),
+    ];
+    if (_showStarredTab) {
+      tabs.add(const _TabConfig(
+        id: 'starred',
+        widget: StarredScreen(),
+        icon: Icons.star,
+        label: 'Starred',
+      ));
+    }
+    tabs.add(_TabConfig(
+      id: 'settings',
+      widget: SettingsScreen(onShowStarredTabChanged: _handleShowStarredTabChanged),
+      icon: Icons.settings,
+      label: 'Settings',
+    ));
+    return tabs;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final tabs = _tabConfigs;
+    final clampedIndex = _currentIndex.clamp(0, tabs.length - 1);
+    if (clampedIndex != _currentIndex) {
+      _currentIndex = clampedIndex;
+    }
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: tabs.map((tab) => tab.widget).toList(),
       ),
       bottomNavigationBar: PlatformBottomNav(
         currentIndex: _currentIndex,
+        items: tabs
+            .map(
+              (tab) => BottomNavItem(
+                icon: tab.icon,
+                label: tab.label,
+              ),
+            )
+            .toList(),
         onTap: (index) => setState(() => _currentIndex = index),
       ),
     );
@@ -369,6 +453,7 @@ class _HomeTabState extends State<_HomeTab> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(newValue ? 'Starred article' : 'Unstarred article')),
         );
+        StarredRefreshNotifier.instance.ping();
         break;
     }
     if (shouldRemove) {

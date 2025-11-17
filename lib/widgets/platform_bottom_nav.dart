@@ -2,14 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import '../utils/platform_utils.dart';
 
+class BottomNavItem {
+  final IconData icon;
+  final String label;
+
+  const BottomNavItem({required this.icon, required this.label});
+}
+
 class PlatformBottomNav extends StatelessWidget {
   final int currentIndex;
   final Function(int) onTap;
+  final List<BottomNavItem> items;
 
   const PlatformBottomNav({
     super.key,
     required this.currentIndex,
     required this.onTap,
+    required this.items,
   });
 
   @override
@@ -35,12 +44,10 @@ class PlatformBottomNav extends StatelessWidget {
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            _buildNavItem(context, Icons.home, 'Home', 0),
-            _buildNavItem(context, Icons.list, 'Feeds', 1),
-            _buildNavItem(context, Icons.star, 'Starred', 2),
-            _buildNavItem(context, Icons.settings, 'Settings', 3),
-          ],
+          children: List.generate(
+            items.length,
+            (index) => _buildNavItem(context, items[index], index),
+          ),
         ),
       ),
     );
@@ -50,16 +57,18 @@ class PlatformBottomNav extends StatelessWidget {
     return NavigationBar(
       selectedIndex: currentIndex,
       onDestinationSelected: onTap,
-      destinations: const [
-        NavigationDestination(icon: Icon(Icons.home), label: 'Home'),
-        NavigationDestination(icon: Icon(Icons.list), label: 'Feeds'),
-        NavigationDestination(icon: Icon(Icons.star), label: 'Starred'),
-        NavigationDestination(icon: Icon(Icons.settings), label: 'Settings'),
-      ],
+      destinations: items
+          .map(
+            (item) => NavigationDestination(
+              icon: Icon(item.icon),
+              label: item.label,
+            ),
+          )
+          .toList(),
     );
   }
 
-  Widget _buildNavItem(BuildContext context, IconData icon, String label, int index) {
+  Widget _buildNavItem(BuildContext context, BottomNavItem item, int index) {
     final isSelected = currentIndex == index;
     return GestureDetector(
       onTap: () => onTap(index),
@@ -67,13 +76,13 @@ class PlatformBottomNav extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            icon,
+            item.icon,
             color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
             size: 28,
           ),
           const SizedBox(height: 4),
           Text(
-            label,
+            item.label,
             style: TextStyle(
               fontSize: 12,
               color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
