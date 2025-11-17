@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../models/article.dart';
 import '../notifiers/starred_refresh_notifier.dart';
@@ -19,6 +18,8 @@ import '../utils/image_utils.dart';
 import '../utils/platform_utils.dart';
 import '../widgets/platform_app_bar.dart';
 import 'offline_article_screen.dart';
+import 'reader_article_screen.dart';
+import 'web_article_screen.dart';
 
 class ArticleDetailScreen extends StatefulWidget {
   final Article article;
@@ -38,6 +39,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   bool _isLoading = false;
   bool _autoMarkRead = true;
   bool _hasSyncConfig = false;
+  double _articleFontSize = 16.0;
 
   @override
   void initState() {
@@ -48,13 +50,17 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   Future<void> _initializePreferences() async {
     final autoMark = await _storage.getAutoMarkRead();
+    final fontSize = await _storage.getArticleFontSize();
     final config = await _storage.getUserConfig();
     if (config != null) {
       _syncService.setUserConfig(config);
       _hasSyncConfig = true;
     }
     if (!mounted) return;
-    setState(() => _autoMarkRead = autoMark);
+    setState(() {
+      _autoMarkRead = autoMark;
+      _articleFontSize = fontSize;
+    });
     await _loadLatestArticle();
     if (autoMark) {
       await _markAsRead();
@@ -112,23 +118,17 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     if (link == null) return;
 
     final uri = Uri.tryParse(link);
-    if (uri == null) return;
+    if (uri == null || !mounted) return;
 
-    try {
-      final launched =
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!launched && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open article in browser')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to open browser: $e')),
-        );
-      }
-    }
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => WebArticleScreen(
+          title: _article.title,
+          url: uri.toString(),
+        ),
+      ),
+    );
   }
 
   Future<void> _repullFullText() async {
@@ -163,6 +163,18 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         setState(() {
           _article = updated;
         });
+      }
+
+      if (mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ReaderArticleScreen(
+              title: _article.title,
+              html: html,
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -214,16 +226,27 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   String _stripHtml(String? html) {
     if (html == null) return '';
-    // Remove HTML tags
-    return html
+
+    // Treat common block/line-break tags as paragraph separators before stripping.
+    var text = html
+        .replaceAll(RegExp(r'<\s*br\s*/?>', caseSensitive: false), '\n')
+        .replaceAll(RegExp(r'</\s*p\s*>', caseSensitive: false), '\n\n');
+
+    // Remove remaining HTML tags
+    text = text
         .replaceAll(RegExp(r'<[^>]*>'), '')
         .replaceAll('&nbsp;', ' ')
         .replaceAll('&amp;', '&')
         .replaceAll('&lt;', '<')
         .replaceAll('&gt;', '>')
         .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .trim();
+        .replaceAll('&#39;', "'");
+
+    // Normalize whitespace and collapse excessive blank lines
+    text = text.replaceAll(RegExp(r'[ \t]+\n'), '\n');
+    text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+
+    return text.trim();
   }
 
   bool _isRTLText(String text) {
@@ -238,6 +261,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isRtlTitle = _isRTLText(_article.title);
+
     final actions = <Widget>[
       if (_article.offlineCachePath != null)
         IconButton(
@@ -282,23 +307,34 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                   ),
                   const SizedBox(height: 8),
                   if (_article.author != null)
-                    Text(
-                      _article.author!,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    Align(
+                      alignment:
+                          isRtlTitle ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Text(
+                        _article.author!,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Colors.grey[600],
+                            ),
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment:
+                        isRtlTitle ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Text(
+                      _formatDate(_article.publishedDate),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey[600],
                           ),
                     ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _formatDate(_article.publishedDate),
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
-                        ),
                   ),
                   const SizedBox(height: 16),
-                  Text(
+                  SelectableText(
                     _stripHtml(_article.content ?? _article.summary ?? ''),
-                    style: Theme.of(context).textTheme.bodyLarge,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontSize: _articleFontSize,
+                          height: 1.6,
+                        ),
                     textAlign:
                         _getTextAlign(_article.content ?? _article.summary ?? ''),
                     textDirection: _getTextDirection(

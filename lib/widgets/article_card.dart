@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -129,31 +130,6 @@ class _ArticleThumbnail extends StatefulWidget {
 }
 
 class _ArticleThumbnailState extends State<_ArticleThumbnail> {
-  Future<RemoteImageFormat>? _formatFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _prepareFormatFuture();
-  }
-
-  @override
-  void didUpdateWidget(covariant _ArticleThumbnail oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) {
-      _prepareFormatFuture();
-    }
-  }
-
-  void _prepareFormatFuture() {
-    final url = widget.imageUrl;
-    if (url != null && !ImageUtils.isDataUri(url) && !ImageUtils.looksLikeSvgUrl(url)) {
-      _formatFuture = ImageUtils.detectRemoteFormat(url);
-    } else {
-      _formatFuture = null;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final placeholder = Container(
@@ -202,46 +178,30 @@ class _ArticleThumbnailState extends State<_ArticleThumbnail> {
         SvgPicture.network(
           url,
           fit: BoxFit.cover,
-          placeholderBuilder: (_) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          placeholderBuilder: (_) => const Center(
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
         ),
       );
     }
 
-    if (_formatFuture != null) {
-      return FutureBuilder<RemoteImageFormat>(
-        future: _formatFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return _buildLoadingContainer();
-          }
-          final format = snapshot.data ?? RemoteImageFormat.unknown;
-          switch (format) {
-            case RemoteImageFormat.svg:
-              debugPrint('Bitmap request redirected to SVG renderer for $url');
-              return _buildSvgContainer(
-                SvgPicture.network(
-                  url,
-                  fit: BoxFit.cover,
-                  placeholderBuilder: (_) => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                ),
-              );
-            case RemoteImageFormat.bitmap:
-              debugPrint('Bitmap image confirmed via header for $url');
-              return _buildBitmapFromCache(url, placeholder);
-            case RemoteImageFormat.unsupported:
-              debugPrint('Unsupported remote image format for $url. Showing placeholder.');
-              return placeholder;
-            case RemoteImageFormat.unknown:
-            default:
-              debugPrint('Unknown remote image format for $url, defaulting to bitmap decode');
-              return _buildBitmapFromCache(url, placeholder);
-          }
-        },
-      );
-    }
-
-    debugPrint('Bitmap image assumed (no header probe) for $url');
-    return _buildBitmapFromCache(url, placeholder);
+    // Use CachedNetworkImage for smooth, cached bitmap loading without extra
+    // HEAD requests or manual decoding on the UI thread.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: 90,
+        height: 90,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => _buildLoadingContainer(),
+        errorWidget: (_, __, ___) => placeholder,
+        fadeInDuration: const Duration(milliseconds: 150),
+        fadeOutDuration: const Duration(milliseconds: 150),
+        memCacheWidth: 360, // downscale for thumbnails to reduce work
+        memCacheHeight: 360,
+      ),
+    );
   }
 
   Widget _buildLoadingContainer() => ClipRRect(
@@ -252,32 +212,6 @@ class _ArticleThumbnailState extends State<_ArticleThumbnail> {
           child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
         ),
       );
-
-  Widget _buildBitmapFromCache(String url, Widget placeholder) {
-    return FutureBuilder<Uint8List?>(
-      future: ImageUtils.decodedBitmapBytes(url),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return _buildLoadingContainer();
-        }
-        final bytes = snapshot.data;
-        if (bytes == null) {
-          debugPrint('Bitmap decode failed for $url; showing placeholder.');
-          return placeholder;
-        }
-        return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.memory(
-            bytes,
-            width: 90,
-            height: 90,
-            fit: BoxFit.cover,
-            filterQuality: FilterQuality.medium,
-          ),
-        );
-      },
-    );
-  }
 
   Widget _buildSvgContainer(Widget child) => ClipRRect(
         borderRadius: BorderRadius.circular(12),

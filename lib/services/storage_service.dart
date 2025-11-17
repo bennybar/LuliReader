@@ -13,6 +13,7 @@ class StorageService {
   static const String _keyShowStarredTab = 'show_starred_tab';
   static const String _keyPreviewLines = 'preview_lines';
   static const String _keyDefaultTab = 'default_tab';
+  static const String _keyArticleFontSize = 'article_font_size';
 
   Future<void> saveUserConfig(UserConfig config) async {
     final prefs = await SharedPreferences.getInstance();
@@ -148,6 +149,16 @@ class StorageService {
   Future<String> getDefaultTab() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_keyDefaultTab) ?? 'home';
+  }
+
+  Future<void> saveArticleFontSize(double size) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_keyArticleFontSize, size.clamp(14.0, 24.0));
+  }
+
+  Future<double> getArticleFontSize() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_keyArticleFontSize) ?? 16.0;
   }
 }
 

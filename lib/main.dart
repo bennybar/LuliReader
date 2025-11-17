@@ -91,20 +91,10 @@ class _LuliReaderAppState extends State<LuliReaderApp> {
       builder: (context, child) {
         // Force RTL if Hebrew or Arabic
         final textDir = isRTL ? ui.TextDirection.rtl : ui.TextDirection.ltr;
-        Widget result = Directionality(
+        return Directionality(
           textDirection: textDir,
           child: child!,
         );
-        
-        // Apply liquid glass on iOS
-        if (isIOS) {
-          result = LiquidGlass.withOwnLayer(
-            shape: const LiquidRoundedRectangle(borderRadius: 0),
-            child: result,
-          );
-        }
-        
-        return result;
       },
       // Material Design 3 for Android, default for iOS
       theme: isAndroid

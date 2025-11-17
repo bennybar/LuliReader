@@ -171,13 +171,24 @@ class OfflineCacheService {
     return _OfflineContent(html: fallback);
   }
 
-  /// Re-pulls a single article's content using a Chrome-like user agent.
-  /// Returns the extracted HTML (readability or fallback) or null on failure.
+  /// Re-pulls a single article's content using a Chrome-like user agent and
+  /// returns wrapped reader HTML (with typography & meta), or null on failure.
   Future<String?> repullArticleContentWithChromeUA(Article article) async {
     try {
       final offlineContent =
           await _buildOfflineContent(article, useChromeUserAgent: true);
-      return offlineContent.html;
+
+      final wrapped = _wrapHtml(
+        title: article.title,
+        body: offlineContent.html,
+        author: offlineContent.author ?? article.author,
+        siteName: offlineContent.siteName ??
+            (article.link != null ? Uri.tryParse(article.link!)?.host : null),
+        published: offlineContent.published ??
+            article.publishedDate.toLocal().toIso8601String(),
+        originalUrl: article.link,
+      );
+      return wrapped;
     } catch (e) {
       print('repullArticleContentWithChromeUA error for ${article.id}: $e');
       return null;
@@ -306,7 +317,7 @@ class OfflineCacheService {
       font-size: 1.05rem;
     }
     article p {
-      margin: 1.1em 0;
+      margin: 1.4em 0;
     }
     article img, article video, article iframe {
       max-width: 100%;

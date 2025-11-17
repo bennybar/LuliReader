@@ -39,6 +39,9 @@ class PlatformAppBar extends StatelessWidget implements PreferredSizeWidget {
           : null,
       leading: leading,
       automaticallyImplyLeading: automaticallyImplyLeading,
+      // Disable nav-bar hero transitions to avoid multiple-hero bugs with
+      // nested scaffolds / tab stacks, while keeping back-swipe gesture.
+      transitionBetweenRoutes: false,
       backgroundColor: isDark ? CupertinoColors.black : CupertinoColors.white,
       border: Border(
         bottom: BorderSide(

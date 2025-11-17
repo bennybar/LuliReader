@@ -35,6 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _previewLines = 3;
   bool _isClearingLocalData = false;
   String _defaultTab = 'home';
+  double _articleFontSize = 16.0;
 
   @override
   void initState() {
@@ -52,6 +53,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final showStarred = await _storage.getShowStarredTab();
     final previewLines = await _storage.getPreviewLines();
     final defaultTab = await _storage.getDefaultTab();
+    final articleFontSize = await _storage.getArticleFontSize();
     setState(() {
       _syncInterval = interval;
       _articleFetchLimit = limit;
@@ -61,6 +63,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _showStarredTab = showStarred;
       _previewLines = previewLines;
       _defaultTab = defaultTab;
+      _articleFontSize = articleFontSize;
       if (config != null) {
         _syncService.setUserConfig(config);
         _hasSyncConfig = true;
@@ -244,6 +247,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 await _storage.saveBackgroundSyncInterval(interval);
                 await BackgroundSyncService.scheduleSync(interval);
                 setState(() => _syncInterval = interval);
+              }
+            },
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Article font size'),
+            subtitle: Text('${_articleFontSize.toStringAsFixed(0)} pt'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () async {
+              final selected = await showDialog<double>(
+                context: context,
+                builder: (context) {
+                  double tempSize = _articleFontSize;
+                  return StatefulBuilder(
+                    builder: (context, setDialogState) => AlertDialog(
+                      title: const Text('Article font size'),
+                      content: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Slider(
+                            min: 14,
+                            max: 24,
+                            divisions: 10,
+                            value: tempSize,
+                            label: '${tempSize.toStringAsFixed(0)} pt',
+                            onChanged: (value) {
+                              setDialogState(() => tempSize = value);
+                            },
+                          ),
+                          Text('${tempSize.toStringAsFixed(0)} pt'),
+                        ],
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, tempSize),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+              if (selected != null) {
+                await _storage.saveArticleFontSize(selected);
+                setState(() => _articleFontSize = selected);
               }
             },
           ),

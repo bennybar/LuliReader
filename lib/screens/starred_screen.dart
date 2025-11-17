@@ -79,8 +79,10 @@ class _StarredScreenState extends State<StarredScreen> {
   }
 
   Future<void> _loadArticles() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     final articles = await _db.getArticles(isStarred: true, limit: 100);
+    if (!mounted) return;
     setState(() {
       _articles = articles;
       _isLoading = false;
