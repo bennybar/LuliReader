@@ -182,7 +182,7 @@ class FreshRSSService {
               content = item['summary']['content'] as String;
             }
 
-            // Extract image URL from content
+            // Extract image URL from content / enclosure fallback
             String? imageUrl;
             if (content != null) {
               // Try to find img tag with src attribute (with double quotes)
@@ -201,6 +201,17 @@ class FreshRSSService {
                     imageUrl = imgMatch3.group(1);
                   }
                 }
+              }
+            }
+            if ((imageUrl == null || imageUrl.isEmpty) && item['enclosure'] != null) {
+              imageUrl = _extractImageFromEnclosure(item['enclosure']);
+            }
+            if ((imageUrl == null || imageUrl.isEmpty) && item['visual'] != null) {
+              final visual = item['visual'];
+              if (visual is Map && visual['url'] != null) {
+                imageUrl = visual['url'].toString();
+              } else if (visual is String && visual.isNotEmpty) {
+                imageUrl = visual;
               }
             }
 
@@ -357,6 +368,36 @@ class FreshRSSService {
       return category['id'].toString();
     }
     return category == null ? '' : category.toString();
+  }
+
+  String? _extractImageFromEnclosure(dynamic enclosure) {
+    if (enclosure is List) {
+      for (final entry in enclosure) {
+        if (entry is Map) {
+          final href = entry['href']?.toString();
+          if (href == null || href.isEmpty) continue;
+          final type = entry['type']?.toString().toLowerCase();
+          if (type != null && type.contains('image')) {
+            return href;
+          }
+          if (type == null && _looksLikeImageUrl(href)) {
+            return href;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  bool _looksLikeImageUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.endsWith('.png') ||
+        lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.gif') ||
+        lower.endsWith('.bmp') ||
+        lower.endsWith('.webp') ||
+        lower.contains('image');
   }
 }
 

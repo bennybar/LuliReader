@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../models/article.dart';
 import '../models/feed.dart';
@@ -237,7 +238,6 @@ class _HomeTabState extends State<_HomeTab> {
     await _loadLastSyncTime();
     await _loadSwipeDeleteSetting();
     await _loadArticles();
-    await _maybeSyncOnLaunch();
   }
 
   Future<void> _loadPreviewLines() async {
@@ -268,18 +268,6 @@ class _HomeTabState extends State<_HomeTab> {
 
   void _handleLastSyncChanged() {
     _loadLastSyncTime();
-  }
-
-  Future<void> _maybeSyncOnLaunch() async {
-    final lastSync = await _storageService.getLastSyncTimestamp();
-    final intervalMinutes = await _storageService.getBackgroundSyncInterval();
-    final now = DateTime.now();
-    final shouldSync = lastSync == null ||
-        now.difference(lastSync) >= Duration(minutes: intervalMinutes) ||
-        _articles.isEmpty;
-    if (shouldSync) {
-      await _syncArticlesFromServer(initial: true);
-    }
   }
 
   Future<void> _loadLastSyncTime() async {
@@ -432,7 +420,8 @@ class _HomeTabState extends State<_HomeTab> {
   @override
   Widget build(BuildContext context) {
     final textDirection = Directionality.of(context);
-    
+    final isIOSPlatform =
+        Theme.of(context).platform == TargetPlatform.iOS;
     return Scaffold(
       appBar: PlatformAppBar(
         titleWidget: _buildTitleWidget(),
@@ -460,14 +449,25 @@ class _HomeTabState extends State<_HomeTab> {
                           physics: const AlwaysScrollableScrollPhysics(),
                           children: const [
                             SizedBox(height: 120),
-                            Center(child: Text('No articles found\nPull down to refresh')),
+                            Center(
+                              child: Text(
+                                'No articles found\nPull down to refresh',
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
                           ],
                         )
                       : ListView.separated(
-                          physics: const AlwaysScrollableScrollPhysics(),
+                          physics: isIOSPlatform
+                              ? const BouncingScrollPhysics(
+                                  parent: AlwaysScrollableScrollPhysics(),
+                                )
+                              : const ClampingScrollPhysics(),
+                          cacheExtent: 800,
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
                           itemCount: _articles.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
                           itemBuilder: (context, index) {
                             final article = _articles[index];
                             return _buildSwipeableCard(article);
@@ -490,17 +490,17 @@ class _HomeTabState extends State<_HomeTab> {
         ),
       ];
 
-      if (_lastSync != null) {
-        children.add(
-          Text(
-            _formatRelativeSyncTime(_lastSync!),
-            style: theme.textTheme.bodySmall?.copyWith(
-              fontSize: 11,
-              color: Colors.grey[600],
-            ),
+    if (_lastSync != null) {
+      children.add(
+        Text(
+          _formatSyncTimestamp(_lastSync!),
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontSize: 11,
+            color: Colors.grey[600],
           ),
-        );
-      }
+        ),
+      );
+    }
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -509,15 +509,9 @@ class _HomeTabState extends State<_HomeTab> {
       );
     }
 
-    String _formatRelativeSyncTime(DateTime ts) {
-      final now = DateTime.now();
-      final diff = now.difference(ts);
-
-      if (diff.inMinutes < 1) return 'Synced just now';
-      if (diff.inMinutes < 60) return 'Synced ${diff.inMinutes} min ago';
-      if (diff.inHours < 24) return 'Synced ${diff.inHours} h ago';
-      if (diff.inDays == 1) return 'Synced yesterday';
-      return 'Synced ${diff.inDays} d ago';
+  String _formatSyncTimestamp(DateTime ts) {
+    final formatter = DateFormat('MMM d, y • h:mm a');
+    return 'Synced ${formatter.format(ts)}';
     }
 
   Widget _buildSwipeableCard(Article article) {

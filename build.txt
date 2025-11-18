@@ -1,0 +1,1 @@
+flutter clean && flutter pub get && cd ios && pod install && cd .. && rm -f /Users/bennybarak/DownloadsLuli\ Reader.ipa || true && flutter build ipa --export-method ad-hoc && cp build/ios/ipa/Luli\ Reader.ipa /Users/bennybarak/Downloads

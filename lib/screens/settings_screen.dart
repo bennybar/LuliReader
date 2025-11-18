@@ -38,6 +38,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _defaultTab = 'home';
   double _articleFontSize = 16.0;
   bool _swipeAllowsDelete = false;
+  bool _isLoadingSyncLog = false;
+  List<String> _syncLogEntries = const [];
 
   @override
   void initState() {
@@ -74,6 +76,94 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     });
     _previewNotifier.setLines(previewLines);
+  }
+
+  Future<void> _openSyncLog() async {
+    setState(() {
+      _isLoadingSyncLog = true;
+    });
+    try {
+      final entries = await _storage.getSyncLogEntries();
+      if (!mounted) return;
+      setState(() {
+        _syncLogEntries = entries.reversed.toList(); // newest first
+      });
+      if (!mounted) return;
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        builder: (context) {
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(context).size.height * 0.7,
+              child: Column(
+                children: [
+                  ListTile(
+                    title: const Text('Background sync log'),
+                    subtitle: Text(
+                      _syncLogEntries.isEmpty
+                          ? 'No background sync events recorded yet.'
+                          : '${_syncLogEntries.length} recent entries',
+                    ),
+                    trailing: _syncLogEntries.isEmpty
+                        ? null
+                        : TextButton(
+                            onPressed: () async {
+                              await _storage.clearSyncLogEntries();
+                              if (!mounted) return;
+                              setState(() {
+                                _syncLogEntries = const [];
+                              });
+                              Navigator.of(context).pop();
+                            },
+                            child: const Text('Clear'),
+                          ),
+                  ),
+                  const Divider(height: 0),
+                  Expanded(
+                    child: _syncLogEntries.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No background sync activity yet.\n'
+                              'Leave the app installed and Background App Refresh enabled\n'
+                              'to see background sync events here.',
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.all(12),
+                            itemCount: _syncLogEntries.length,
+                            itemBuilder: (context, index) {
+                              final line = _syncLogEntries[index];
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 4.0),
+                                child: Text(
+                                  line,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodySmall
+                                      ?.copyWith(
+                                        fontFamily: 'monospace',
+                                      ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingSyncLog = false;
+        });
+      }
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -254,6 +344,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 setState(() => _syncInterval = interval);
               }
             },
+          ),
+          const Divider(),
+          ListTile(
+            title: const Text('Background sync log'),
+            subtitle: const Text('View recent background sync activity'),
+            trailing: _isLoadingSyncLog
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.chevron_right),
+            onTap: _isLoadingSyncLog ? null : _openSyncLog,
           ),
           const Divider(),
           SwitchListTile(

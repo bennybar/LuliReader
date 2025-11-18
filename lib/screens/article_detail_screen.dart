@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
+import 'package:video_player/video_player.dart';
 
 import '../models/article.dart';
 import '../notifiers/starred_refresh_notifier.dart';
@@ -124,10 +125,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => WebArticleScreen(
-          title: _article.title,
-          url: uri.toString(),
-        ),
+        builder:
+            (_) => WebArticleScreen(title: _article.title, url: uri.toString()),
       ),
     );
   }
@@ -137,15 +136,18 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     if (link == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No original link available for this article')),
+        const SnackBar(
+          content: Text('No original link available for this article'),
+        ),
       );
       return;
     }
 
     setState(() => _isLoading = true);
     try {
-      final html =
-          await _offlineCacheService.repullArticleContentWithChromeUA(_article);
+      final html = await _offlineCacheService.repullArticleContentWithChromeUA(
+        _article,
+      );
       if (html == null || html.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -170,18 +172,16 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => ReaderArticleScreen(
-              title: _article.title,
-              html: html,
-            ),
+            builder:
+                (_) => ReaderArticleScreen(title: _article.title, html: html),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Full text refresh failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Full text refresh failed: $e')));
       }
     } finally {
       if (mounted) {
@@ -204,7 +204,11 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     if (!await file.exists()) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Offline file missing. Please refresh offline content.')),
+        const SnackBar(
+          content: Text(
+            'Offline file missing. Please refresh offline content.',
+          ),
+        ),
       );
       return;
     }
@@ -213,10 +217,11 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => OfflineArticleScreen(
-          filePath: file.path,
-          title: _article.title,
-        ),
+        builder:
+            (_) => OfflineArticleScreen(
+              filePath: file.path,
+              title: _article.title,
+            ),
       ),
     );
   }
@@ -255,12 +260,13 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     return rtlRegex.hasMatch(text);
   }
 
-  TextAlign _getTextAlign(String text) => _isRTLText(text) ? TextAlign.right : TextAlign.left;
+  TextAlign _getTextAlign(String text) =>
+      _isRTLText(text) ? TextAlign.right : TextAlign.left;
 
   ui.TextDirection _getTextDirection(String text) =>
       _isRTLText(text) ? ui.TextDirection.rtl : ui.TextDirection.ltr;
 
-  String _resolveContentImageUrl(String rawUrl) {
+  String _resolveContentMediaUrl(String rawUrl) {
     final trimmed = rawUrl.trim();
     if (trimmed.isEmpty) return '';
 
@@ -291,113 +297,233 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
 
     final finalUrl = (resolved ?? Uri.tryParse(trimmed))?.toString() ?? trimmed;
-    debugPrint('Article image URL resolved: raw=$trimmed -> final=$finalUrl');
+    debugPrint('Article media URL resolved: raw=$trimmed -> final=$finalUrl');
     return finalUrl;
   }
 
   List<Widget> _buildInlineBody(BuildContext context) {
-    final html = _article.content ?? _article.summary ?? '';
-    if (html.isEmpty) {
-      return [
-        SelectableText(
-          _stripHtml(html),
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontSize: _articleFontSize,
-                height: 1.6,
-              ),
-          textAlign: _getTextAlign(html),
-          textDirection: _getTextDirection(html),
-        ),
-      ];
+    final rawHtml = _article.content ?? _article.summary ?? '';
+    if (rawHtml.isEmpty) {
+      return [_buildTextBlock(context, _stripHtml(rawHtml))];
     }
 
     final widgets = <Widget>[];
     final seenImages = <String>{};
     final heroUrl = _article.imageUrl;
-    final imgRegex = RegExp(
-      '<img[^>]+src=(["\']?)([^"\'\\s]+)\\1[^>]*>',
+    final mediaRegex = RegExp(
+      r'(<svg[\s\S]*?<\/svg>)|(<video[\s\S]*?<\/video>)|(<audio[\s\S]*?<\/audio>)|(<iframe[\s\S]*?<\/iframe>)|(<img[^>]*>)',
       caseSensitive: false,
     );
 
     int cursor = 0;
-    for (final match in imgRegex.allMatches(html)) {
-      final before = html.substring(cursor, match.start);
-      final beforeText = _stripHtml(before);
-      if (beforeText.trim().isNotEmpty) {
-        widgets.add(
-          SelectableText(
-            beforeText,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  fontSize: _articleFontSize,
-                  height: 1.6,
-                ),
-            textAlign: _getTextAlign(beforeText),
-            textDirection: _getTextDirection(beforeText),
-          ),
+    for (final match in mediaRegex.allMatches(rawHtml)) {
+      if (match.start > cursor) {
+        _appendTextBlock(
+          context,
+          widgets,
+          rawHtml.substring(cursor, match.start),
         );
-        widgets.add(const SizedBox(height: 12));
       }
 
-      final rawSrc = match.group(2);
-      if (rawSrc != null && rawSrc.isNotEmpty) {
-        final resolved = _resolveContentImageUrl(rawSrc);
-        if (resolved.isNotEmpty) {
-          // Skip if same as hero image
-          if (heroUrl != null && resolved == heroUrl) {
-            debugPrint(
-                'Skipping inline image equal to hero image: resolved=$resolved');
-          }
-          // Skip duplicates we've already rendered in the body
-          else if (!seenImages.add(resolved)) {
-            debugPrint(
-                'Skipping duplicate inline image already seen: resolved=$resolved');
-          } else {
-            debugPrint(
-                'Article content image candidate (inline): raw=$rawSrc, resolved=$resolved');
-            widgets.add(_ArticleContentImage(url: resolved));
-            widgets.add(const SizedBox(height: 12));
-          }
-        }
+      final snippet = match.group(0)!;
+      final tagName = _detectTagName(snippet);
+      Widget? mediaWidget;
+
+      switch (tagName) {
+        case 'img':
+          mediaWidget = _buildInlineImageWidget(snippet, seenImages, heroUrl);
+          break;
+        case 'svg':
+          mediaWidget = _ArticleInlineSvg(svg: snippet);
+          break;
+        case 'video':
+          mediaWidget = _buildInlineVideoWidget(snippet);
+          break;
+        case 'audio':
+          mediaWidget = _buildInlineAudioWidget(context, snippet);
+          break;
+        case 'iframe':
+          mediaWidget = _buildInlineIframeWidget(context, snippet);
+          break;
+      }
+
+      if (mediaWidget != null) {
+        widgets.add(mediaWidget);
+        widgets.add(const SizedBox(height: 12));
       }
 
       cursor = match.end;
     }
 
-    // Trailing text after the last <img>
-    if (cursor < html.length) {
-      final tail = html.substring(cursor);
-      final tailText = _stripHtml(tail);
-      if (tailText.trim().isNotEmpty) {
-        widgets.add(
-          SelectableText(
-            tailText,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  fontSize: _articleFontSize,
-                  height: 1.6,
-                ),
-            textAlign: _getTextAlign(tailText),
-            textDirection: _getTextDirection(tailText),
-          ),
-        );
-      }
+    if (cursor < rawHtml.length) {
+      _appendTextBlock(context, widgets, rawHtml.substring(cursor));
     }
 
-    // Fallback: if parsing somehow produced nothing, show full text once.
     if (widgets.isEmpty) {
-      widgets.add(
-        SelectableText(
-          _stripHtml(html),
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontSize: _articleFontSize,
-                height: 1.6,
-              ),
-          textAlign: _getTextAlign(html),
-          textDirection: _getTextDirection(html),
-        ),
-      );
+      return [_buildTextBlock(context, _stripHtml(rawHtml))];
+    }
+
+    if (widgets.isNotEmpty && widgets.last is SizedBox) {
+      widgets.removeLast();
     }
 
     return widgets;
+  }
+
+  void _appendTextBlock(
+    BuildContext context,
+    List<Widget> widgets,
+    String fragment,
+  ) {
+    final stripped = _stripHtml(fragment);
+    if (stripped.trim().isEmpty) return;
+    widgets.add(_buildTextBlock(context, stripped));
+    widgets.add(const SizedBox(height: 12));
+  }
+
+  Widget _buildTextBlock(BuildContext context, String text) {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return SelectableText(
+      trimmed,
+      style: Theme.of(
+        context,
+      ).textTheme.bodyLarge?.copyWith(fontSize: _articleFontSize, height: 1.6),
+      textAlign: _getTextAlign(trimmed),
+      textDirection: _getTextDirection(trimmed),
+    );
+  }
+
+  Widget? _buildInlineImageWidget(
+    String snippet,
+    Set<String> seenImages,
+    String? heroUrl,
+  ) {
+    final rawSrc =
+        _extractAttribute(snippet, 'src') ??
+        _extractAttribute(snippet, 'data-src');
+    if (rawSrc == null || rawSrc.isEmpty) return null;
+    final resolved = _resolveContentMediaUrl(rawSrc);
+    if (resolved.isEmpty) return null;
+    if (heroUrl != null && resolved == heroUrl) {
+      debugPrint(
+        'Skipping inline image equal to hero image: resolved=$resolved',
+      );
+      return null;
+    }
+    if (!seenImages.add(resolved)) {
+      debugPrint(
+        'Skipping duplicate inline image already seen: resolved=$resolved',
+      );
+      return null;
+    }
+    debugPrint('Article content image candidate (inline): resolved=$resolved');
+    return _ArticleContentImage(url: resolved);
+  }
+
+  Widget? _buildInlineVideoWidget(String snippet) {
+    final rawSrc =
+        _extractAttribute(snippet, 'src') ??
+        _extractSourceFromChild(snippet, 'source');
+    if (rawSrc == null || rawSrc.isEmpty) return null;
+    final resolved = _resolveContentMediaUrl(rawSrc);
+    if (resolved.isEmpty) return null;
+    final poster =
+        _extractAttribute(snippet, 'poster') ??
+        _extractAttribute(snippet, 'data-poster');
+    final posterUrl = poster != null ? _resolveContentMediaUrl(poster) : null;
+    final lower = snippet.toLowerCase();
+    final autoPlay = lower.contains('autoplay');
+    final loop = lower.contains('loop');
+    return _ArticleVideoEmbed(
+      url: resolved,
+      posterUrl: posterUrl,
+      autoPlay: autoPlay,
+      loop: loop,
+    );
+  }
+
+  Widget? _buildInlineAudioWidget(BuildContext context, String snippet) {
+    final rawSrc =
+        _extractAttribute(snippet, 'src') ??
+        _extractSourceFromChild(snippet, 'source');
+    if (rawSrc == null || rawSrc.isEmpty) return null;
+    final resolved = _resolveContentMediaUrl(rawSrc);
+    if (resolved.isEmpty) return null;
+    return _ArticleMediaLinkCard(
+      icon: Icons.audiotrack,
+      title: 'Audio attachment',
+      url: resolved,
+      onOpen: () => _openMediaLink(context, resolved),
+    );
+  }
+
+  Widget? _buildInlineIframeWidget(BuildContext context, String snippet) {
+    final rawSrc = _extractAttribute(snippet, 'src');
+    if (rawSrc == null || rawSrc.isEmpty) return null;
+    final resolved = _resolveContentMediaUrl(rawSrc);
+    if (resolved.isEmpty) return null;
+    return _ArticleMediaLinkCard(
+      icon: Icons.live_tv,
+      title: 'Embedded content',
+      url: resolved,
+      onOpen: () => _openMediaLink(context, resolved),
+    );
+  }
+
+  String? _extractAttribute(String source, String attribute) {
+    final regex = RegExp(
+      '$attribute\\s*=\\s*(["\'])(.*?)\\1',
+      caseSensitive: false,
+    );
+    final quoted = regex.firstMatch(source);
+    if (quoted != null) {
+      return quoted.group(2);
+    }
+    final unquoted = RegExp(
+      '$attribute\\s*=\\s*([^\\s>]+)',
+      caseSensitive: false,
+    ).firstMatch(source);
+    return unquoted?.group(1);
+  }
+
+  String? _extractSourceFromChild(String snippet, String tag) {
+    final regex = RegExp(
+      '<$tag[^>]+src\\s*=\\s*(["\'])(.*?)\\1',
+      caseSensitive: false,
+    );
+    final match = regex.firstMatch(snippet);
+    return match?.group(2);
+  }
+
+  String? _detectTagName(String snippet) {
+    final match = RegExp(
+      r'^<\s*([a-z0-9]+)',
+      caseSensitive: false,
+    ).firstMatch(snippet.trim());
+    return match?.group(1)?.toLowerCase();
+  }
+
+  Future<void> _openMediaLink(BuildContext context, String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open media (invalid URL).')),
+      );
+      return;
+    }
+
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => WebArticleScreen(title: _article.title, url: uri.toString()),
+      ),
+    );
   }
 
   @override
@@ -419,13 +545,16 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         onPressed: _isLoading ? null : _toggleStarred,
       ),
     ];
-    
+
     return Scaffold(
-      appBar: PlatformAppBar(
-        title: _article.title,
-        actions: actions,
-      ),
+      appBar: PlatformAppBar(title: _article.title, actions: actions),
       body: SingleChildScrollView(
+        physics:
+            isIOS
+                ? const BouncingScrollPhysics(
+                  parent: AlwaysScrollableScrollPhysics(),
+                )
+                : const ClampingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -436,7 +565,10 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                 child: _ArticleHeroImage(imageUrl: _article.imageUrl!),
               ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18.0, vertical: 16.0),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 18.0,
+                vertical: 16.0,
+              ),
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 720),
@@ -452,32 +584,26 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                       const SizedBox(height: 8),
                       if (_article.author != null)
                         Align(
-                          alignment: isRtlTitle
-                              ? Alignment.centerRight
-                              : Alignment.centerLeft,
+                          alignment:
+                              isRtlTitle
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
                           child: Text(
                             _article.author!,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
-                                ?.copyWith(
-                                  color: Colors.grey[600],
-                                ),
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(color: Colors.grey[600]),
                           ),
                         ),
                       const SizedBox(height: 4),
                       Align(
-                        alignment: isRtlTitle
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
+                        alignment:
+                            isRtlTitle
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
                         child: Text(
                           _formatDate(_article.publishedDate),
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodySmall
-                              ?.copyWith(
-                                color: Colors.grey[600],
-                              ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: Colors.grey[600]),
                         ),
                       ),
                       const SizedBox(height: 16),
@@ -501,27 +627,28 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     final children = <Widget>[];
 
     // Open original in browser
-    children.add(_buildGlassIconButton(
-      context: context,
-      icon: Icons.open_in_browser,
-      tooltip: 'Open original article',
-      onTap: _isLoading ? null : _openInBrowser,
-    ));
+    children.add(
+      _buildGlassIconButton(
+        context: context,
+        icon: Icons.open_in_browser,
+        tooltip: 'Open original article',
+        onTap: _isLoading ? null : _openInBrowser,
+      ),
+    );
 
     // Re-pull full text with Chrome UA
     children.add(const SizedBox(width: 12));
-    children.add(_buildGlassIconButton(
-      context: context,
-      icon: Icons.article,
-      tooltip: 'Re-pull full text',
-      onTap: _isLoading ? null : _repullFullText,
-      showBusy: _isLoading,
-    ));
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
-      children: children,
+    children.add(
+      _buildGlassIconButton(
+        context: context,
+        icon: Icons.article,
+        tooltip: 'Re-pull full text',
+        onTap: _isLoading ? null : _repullFullText,
+        showBusy: _isLoading,
+      ),
     );
+
+    return Row(mainAxisAlignment: MainAxisAlignment.end, children: children);
   }
 
   Widget _buildGlassIconButton({
@@ -534,24 +661,26 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     if (!isIOS) {
       return IconButton(
         tooltip: tooltip,
-        icon: showBusy
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : Icon(icon),
+        icon:
+            showBusy
+                ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+                : Icon(icon),
         onPressed: onTap,
       );
     }
 
-    final content = showBusy
-        ? const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : Icon(icon, size: 18);
+    final content =
+        showBusy
+            ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+            : Icon(icon, size: 18);
 
     return Tooltip(
       message: tooltip,
@@ -568,8 +697,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
             behavior: HitTestBehavior.opaque,
             onTap: onTap,
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: content,
             ),
           ),
@@ -618,9 +746,7 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
   Widget build(BuildContext context) {
     final placeholder = Container(
       color: Theme.of(context).colorScheme.surfaceVariant,
-      child: const Center(
-        child: Icon(Icons.image_not_supported, size: 40),
-      ),
+      child: const Center(child: Icon(Icons.image_not_supported, size: 40)),
     );
 
     final border = const BorderRadius.only(
@@ -656,17 +782,20 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
     if (ImageUtils.looksLikeSvgUrl(url)) {
       return ClipRRect(
         borderRadius: border,
-        child: SvgPicture.network(url,
-            fit: BoxFit.cover,
-            placeholderBuilder: (_) => const Center(
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
+        child: SvgPicture.network(
+          url,
+          fit: BoxFit.cover,
+          placeholderBuilder:
+              (_) => const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
                 ),
-            // ignore: deprecated_member_use
-            colorFilter: null),
+              ),
+          // ignore: deprecated_member_use
+          colorFilter: null,
+        ),
       );
     }
 
@@ -687,7 +816,8 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
               child: SvgPicture.network(
                 url,
                 fit: BoxFit.cover,
-                placeholderBuilder: (_) => const Center(child: CircularProgressIndicator()),
+                placeholderBuilder:
+                    (_) => const Center(child: CircularProgressIndicator()),
               ),
             );
           }
@@ -709,7 +839,11 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
     return _buildBitmapFromCache(url, border, placeholder);
   }
 
-  Widget _buildBitmapFromCache(String url, BorderRadius border, Widget placeholder) {
+  Widget _buildBitmapFromCache(
+    String url,
+    BorderRadius border,
+    Widget placeholder,
+  ) {
     return FutureBuilder<Uint8List?>(
       future: ImageUtils.decodedBitmapBytes(url),
       builder: (context, snapshot) {
@@ -752,7 +886,9 @@ class _ArticleContentImage extends StatelessWidget {
           debugPrint('Article content SVG data URI could not be decoded: $url');
           return const SizedBox.shrink();
         }
-        debugPrint('Rendering article content SVG data URI, length=${svg.length}');
+        debugPrint(
+          'Rendering article content SVG data URI, length=${svg.length}',
+        );
         return SvgPicture.string(
           svg,
           width: double.infinity,
@@ -761,16 +897,45 @@ class _ArticleContentImage extends StatelessWidget {
       } else {
         final bytes = ImageUtils.decodeBitmapDataUri(url);
         if (bytes == null) {
-          debugPrint('Article content bitmap data URI could not be decoded: $url');
+          debugPrint(
+            'Article content bitmap data URI could not be decoded: $url',
+          );
           return const SizedBox.shrink();
         }
-        debugPrint('Rendering article content bitmap data URI, bytes=${bytes.length}');
-        return Image.memory(
-          bytes,
-          width: double.infinity,
-          fit: BoxFit.cover,
+        debugPrint(
+          'Rendering article content bitmap data URI, bytes=${bytes.length}',
         );
+        return Image.memory(bytes, width: double.infinity, fit: BoxFit.cover);
       }
+    }
+
+    if (ImageUtils.looksLikeSvgUrl(url)) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SvgPicture.network(
+              url,
+              width: width,
+              fit: BoxFit.contain,
+              placeholderBuilder:
+                  (_) => Container(
+                    width: double.infinity,
+                    height: width * 0.56,
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    child: const Center(
+                      child: SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+            ),
+          );
+        },
+      );
     }
 
     return LayoutBuilder(
@@ -784,20 +949,23 @@ class _ArticleContentImage extends StatelessWidget {
             imageUrl: url,
             width: double.infinity,
             fit: BoxFit.cover,
-            placeholder: (_, __) => Container(
-              width: double.infinity,
-              height: width * 0.56, // ~16:9
-              color: Theme.of(context).colorScheme.surfaceVariant,
-              child: const Center(
-                child: SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+            placeholder:
+                (_, __) => Container(
+                  width: double.infinity,
+                  height: width * 0.56, // ~16:9
+                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  child: const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
                 ),
-              ),
-            ),
             errorWidget: (_, __, error) {
-              debugPrint('Article content image failed to load: $url, error=$error');
+              debugPrint(
+                'Article content image failed to load: $url, error=$error',
+              );
               return Container(
                 width: double.infinity,
                 height: width * 0.56,
@@ -812,3 +980,314 @@ class _ArticleContentImage extends StatelessWidget {
   }
 }
 
+class _ArticleInlineSvg extends StatelessWidget {
+  final String svg;
+
+  const _ArticleInlineSvg({required this.svg});
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SvgPicture.string(
+        svg,
+        width: double.infinity,
+        fit: BoxFit.contain,
+      ),
+    );
+  }
+}
+
+class _ArticleVideoEmbed extends StatefulWidget {
+  final String url;
+  final String? posterUrl;
+  final bool autoPlay;
+  final bool loop;
+
+  const _ArticleVideoEmbed({
+    required this.url,
+    this.posterUrl,
+    this.autoPlay = false,
+    this.loop = false,
+  });
+
+  @override
+  State<_ArticleVideoEmbed> createState() => _ArticleVideoEmbedState();
+}
+
+class _ArticleVideoEmbedState extends State<_ArticleVideoEmbed> {
+  late final VideoPlayerController _controller;
+  bool _initializing = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
+    _controller.setLooping(widget.loop);
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    try {
+      await _controller.initialize();
+      if (!mounted) return;
+      setState(() {
+        _initializing = false;
+      });
+      if (widget.autoPlay) {
+        _controller.play();
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _initializing = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _togglePlayback() {
+    if (!_controller.value.isInitialized) return;
+    if (_controller.value.isPlaying) {
+      _controller.pause();
+    } else {
+      _controller.play();
+    }
+    setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (_initializing) {
+      return _VideoPlaceholder(posterUrl: widget.posterUrl);
+    }
+
+    if (_error != null) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, color: theme.colorScheme.error),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Video failed to load. ${_error ?? ''}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.error,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final aspectRatio =
+        (_controller.value.aspectRatio.isFinite &&
+                _controller.value.aspectRatio > 0)
+            ? _controller.value.aspectRatio
+            : 16 / 9;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              AspectRatio(
+                aspectRatio: aspectRatio,
+                child: VideoPlayer(_controller),
+              ),
+              Positioned.fill(
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _togglePlayback,
+                    child: AnimatedOpacity(
+                      opacity: _controller.value.isPlaying ? 0.0 : 1.0,
+                      duration: const Duration(milliseconds: 200),
+                      child: Container(
+                        color: Colors.black38,
+                        child: const Icon(
+                          Icons.play_circle_fill,
+                          color: Colors.white,
+                          size: 64,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        VideoProgressIndicator(
+          _controller,
+          allowScrubbing: true,
+          padding: const EdgeInsets.symmetric(vertical: 4),
+        ),
+      ],
+    );
+  }
+}
+
+class _VideoPlaceholder extends StatelessWidget {
+  final String? posterUrl;
+
+  const _VideoPlaceholder({this.posterUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final height = 220.0;
+    final borderRadius = BorderRadius.circular(12);
+    final placeholder = Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant,
+        borderRadius: borderRadius,
+      ),
+      child: const Center(
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      ),
+    );
+
+    if (posterUrl == null || posterUrl!.isEmpty) {
+      return placeholder;
+    }
+
+    if (ImageUtils.isDataUri(posterUrl!)) {
+      if (ImageUtils.isSvgDataUri(posterUrl!)) {
+        final svg = ImageUtils.decodeSvgDataUri(posterUrl!);
+        if (svg == null) {
+          return placeholder;
+        }
+        return ClipRRect(
+          borderRadius: borderRadius,
+          child: SvgPicture.string(
+            svg,
+            height: height,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        );
+      } else {
+        final bytes = ImageUtils.decodeBitmapDataUri(posterUrl!);
+        if (bytes == null) {
+          return placeholder;
+        }
+        return ClipRRect(
+          borderRadius: borderRadius,
+          child: Image.memory(
+            bytes,
+            height: height,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        );
+      }
+    }
+
+    if (ImageUtils.looksLikeSvgUrl(posterUrl!)) {
+      return ClipRRect(
+        borderRadius: borderRadius,
+        child: SvgPicture.network(
+          posterUrl!,
+          height: height,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          placeholderBuilder: (_) => placeholder,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: CachedNetworkImage(
+        imageUrl: posterUrl!,
+        height: height,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        placeholder: (_, __) => placeholder,
+        errorWidget: (_, __, ___) => placeholder,
+      ),
+    );
+  }
+}
+
+class _ArticleMediaLinkCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String url;
+  final VoidCallback? onOpen;
+
+  const _ArticleMediaLinkCard({
+    required this.icon,
+    required this.title,
+    required this.url,
+    required this.onOpen,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 20, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(child: Text(title, style: theme.textTheme.titleSmall)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            url,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onOpen,
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('Open'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

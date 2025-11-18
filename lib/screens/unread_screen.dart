@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 
 import '../models/article.dart';
@@ -77,7 +78,6 @@ class _UnreadScreenState extends State<UnreadScreen> {
     await _loadLastSyncTime();
     await _loadSwipeDeleteSetting();
     await _loadArticles();
-    await _maybeSyncOnLaunch();
   }
 
   Future<void> _loadPreviewLines() async {
@@ -102,18 +102,6 @@ class _UnreadScreenState extends State<UnreadScreen> {
 
   void _handleLastSyncChanged() {
     _loadLastSyncTime();
-  }
-
-  Future<void> _maybeSyncOnLaunch() async {
-    final lastSync = await _storageService.getLastSyncTimestamp();
-    final intervalMinutes = await _storageService.getBackgroundSyncInterval();
-    final now = DateTime.now();
-    final shouldSync = lastSync == null ||
-        now.difference(lastSync) >= Duration(minutes: intervalMinutes) ||
-        _articles.isEmpty;
-    if (shouldSync) {
-      await _syncArticlesFromServer(initial: true);
-    }
   }
 
   Future<void> _loadLastSyncTime() async {
@@ -276,6 +264,8 @@ class _UnreadScreenState extends State<UnreadScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isIOSPlatform =
+        Theme.of(context).platform == TargetPlatform.iOS;
     return Scaffold(
       appBar: PlatformAppBar(
         titleWidget: _buildTitleWidget(),
@@ -295,27 +285,38 @@ class _UnreadScreenState extends State<UnreadScreen> {
           ),
           Expanded(
             child: RefreshIndicator(
-        onRefresh: () => _syncArticlesFromServer(),
+              onRefresh: () => _syncArticlesFromServer(),
               child: _isLoading && _articles.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : _articles.isEmpty
-                ? ListView(
+                  ? const Center(child: CircularProgressIndicator())
+                  : _articles.isEmpty
+                      ? ListView(
                           physics: const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(height: 120),
-                      Center(child: Text('No unread articles\nPull down to refresh')),
-                    ],
-                  )
-                : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
+                          children: const [
+                            SizedBox(height: 120),
+                            Center(
+                              child: Text(
+                                'No unread articles\nPull down to refresh',
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
+                        )
+                      : ListView.separated(
+                          physics: isIOSPlatform
+                              ? const BouncingScrollPhysics(
+                                  parent: AlwaysScrollableScrollPhysics(),
+                                )
+                              : const ClampingScrollPhysics(),
+                          cacheExtent: 800,
                           padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-                    itemCount: _articles.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final article = _articles[index];
-                      return _buildSwipeableCard(article);
-                    },
-                  ),
+                          itemCount: _articles.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
+                          itemBuilder: (context, index) {
+                            final article = _articles[index];
+                            return _buildSwipeableCard(article);
+                          },
+                        ),
             ),
           ),
         ],
@@ -423,7 +424,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
     if (_lastSync != null) {
       children.add(
         Text(
-          _formatRelativeSyncTime(_lastSync!),
+          _formatSyncTimestamp(_lastSync!),
           style: theme.textTheme.bodySmall?.copyWith(
             fontSize: 11,
             color: Colors.grey[600],
@@ -439,15 +440,9 @@ class _UnreadScreenState extends State<UnreadScreen> {
     );
   }
 
-  String _formatRelativeSyncTime(DateTime ts) {
-    final now = DateTime.now();
-    final diff = now.difference(ts);
-
-    if (diff.inMinutes < 1) return 'Synced just now';
-    if (diff.inMinutes < 60) return 'Synced ${diff.inMinutes} min ago';
-    if (diff.inHours < 24) return 'Synced ${diff.inHours} h ago';
-    if (diff.inDays == 1) return 'Synced yesterday';
-    return 'Synced ${diff.inDays} d ago';
+  String _formatSyncTimestamp(DateTime ts) {
+    final formatter = DateFormat('MMM d, y • h:mm a');
+    return 'Synced ${formatter.format(ts)}';
   }
 }
 

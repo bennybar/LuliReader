@@ -1,6 +1,12 @@
 import Flutter
 import UIKit
 
+#if canImport(workmanager)
+import workmanager
+#elseif canImport(workmanager_apple)
+import workmanager_apple
+#endif
+
 @main
 @objc class AppDelegate: FlutterAppDelegate {
   override func application(
@@ -28,7 +34,11 @@ import UIKit
       }
     })
     
+    WorkmanagerPlugin.setPluginRegistrantCallback { registry in
+      GeneratedPluginRegistrant.register(with: registry)
+    }
     GeneratedPluginRegistrant.register(with: self)
+    UIApplication.shared.setMinimumBackgroundFetchInterval(UIApplication.backgroundFetchIntervalMinimum)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

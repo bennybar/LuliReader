@@ -16,6 +16,8 @@ class StorageService {
   static const String _keyArticleFontSize = 'article_font_size';
   static const String _keySwipeAllowsDelete = 'swipe_allows_delete';
   static const String _keyDeletedArticleIds = 'deleted_article_ids';
+  static const String _keySyncLogEntries = 'sync_log_entries';
+  static const String _keyLastSyncLogTimestamp = 'last_sync_log_timestamp';
 
   Future<void> saveUserConfig(UserConfig config) async {
     final prefs = await SharedPreferences.getInstance();
@@ -184,6 +186,48 @@ class StorageService {
     if (existing.contains(id)) return;
     existing.add(id);
     await prefs.setStringList(_keyDeletedArticleIds, existing);
+  }
+
+  /// Append a line to the background sync log, keeping only the most recent
+  /// 100 entries to avoid unbounded growth.
+  Future<void> appendSyncLogEntry(String line) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existing = prefs.getStringList(_keySyncLogEntries) ?? <String>[];
+    existing.add(line);
+    const maxEntries = 100;
+    final trimmed = existing.length > maxEntries
+        ? existing.sublist(existing.length - maxEntries)
+        : existing;
+    await prefs.setStringList(_keySyncLogEntries, trimmed);
+  }
+
+  Future<List<String>> getSyncLogEntries() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_keySyncLogEntries) ?? <String>[];
+  }
+
+  Future<void> clearSyncLogEntries() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keySyncLogEntries);
+  }
+
+  Future<void> saveLastSyncLogTimestamp(DateTime timestamp) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _keyLastSyncLogTimestamp,
+      timestamp.toIso8601String(),
+    );
+  }
+
+  Future<DateTime?> getLastSyncLogTimestamp() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyLastSyncLogTimestamp);
+    if (raw == null) return null;
+    try {
+      return DateTime.parse(raw);
+    } catch (_) {
+      return null;
+    }
   }
 }
 
