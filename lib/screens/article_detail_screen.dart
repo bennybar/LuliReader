@@ -1,26 +1,26 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:html/dom.dart' as html_dom;
+import 'package:html/parser.dart' as html_parser;
 import 'package:intl/intl.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/article.dart';
 import '../notifiers/starred_refresh_notifier.dart';
-import '../notifiers/unread_refresh_notifier.dart';
 import '../services/database_service.dart';
-import '../services/offline_cache_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import '../utils/image_utils.dart';
-import '../utils/platform_utils.dart';
-import '../widgets/platform_app_bar.dart';
 import 'offline_article_screen.dart';
-import 'reader_article_screen.dart';
 import 'web_article_screen.dart';
 
 class ArticleDetailScreen extends StatefulWidget {
@@ -37,17 +37,25 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   final SyncService _syncService = SyncService();
   final DatabaseService _db = DatabaseService();
   final StorageService _storage = StorageService();
-  final OfflineCacheService _offlineCacheService = OfflineCacheService();
   bool _isLoading = false;
-  bool _autoMarkRead = true;
   bool _hasSyncConfig = false;
   double _articleFontSize = 16.0;
+  final List<TapGestureRecognizer> _linkRecognizers = [];
+  final ScrollController _scrollController = ScrollController();
+  bool _isBottomBarHidden = false;
 
   @override
   void initState() {
     super.initState();
     _article = widget.article;
     _initializePreferences();
+  }
+
+  @override
+  void dispose() {
+    _cleanupLinkRecognizers();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _initializePreferences() async {
@@ -60,7 +68,6 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
     if (!mounted) return;
     setState(() {
-      _autoMarkRead = autoMark;
       _articleFontSize = fontSize;
     });
     await _loadLatestArticle();
@@ -115,6 +122,39 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     await _loadLatestArticle();
   }
 
+  Future<void> _shareArticle({Rect? shareOrigin}) async {
+    final link = _article.link;
+    if (link == null) return;
+    try {
+      await Share.share(
+        link,
+        subject: _article.title,
+        sharePositionOrigin: shareOrigin,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to share article: $e')));
+    }
+  }
+
+  Future<void> _handleShareTap(BuildContext buttonContext) async {
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    final topLeft =
+        box != null ? box.localToGlobal(ui.Offset.zero) : ui.Offset.zero;
+    final rect =
+        box != null
+            ? Rect.fromLTWH(
+              topLeft.dx,
+              topLeft.dy,
+              box.size.width,
+              box.size.height,
+            )
+            : null;
+    await _shareArticle(shareOrigin: rect);
+  }
+
   Future<void> _openInBrowser() async {
     final link = _article.link;
     if (link == null) return;
@@ -129,65 +169,6 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
             (_) => WebArticleScreen(title: _article.title, url: uri.toString()),
       ),
     );
-  }
-
-  Future<void> _repullFullText() async {
-    final link = _article.link;
-    if (link == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No original link available for this article'),
-        ),
-      );
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    try {
-      final html = await _offlineCacheService.repullArticleContentWithChromeUA(
-        _article,
-      );
-      if (html == null || html.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Unable to fetch full text')),
-          );
-        }
-        return;
-      }
-
-      final updated = _article.copyWith(
-        content: html,
-        lastSyncedAt: DateTime.now(),
-      );
-      await _db.updateArticle(updated);
-      if (mounted) {
-        setState(() {
-          _article = updated;
-        });
-      }
-
-      if (mounted) {
-        await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder:
-                (_) => ReaderArticleScreen(title: _article.title, html: html),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Full text refresh failed: $e')));
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
   }
 
   Future<void> _openOfflineCopy() async {
@@ -266,6 +247,36 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   ui.TextDirection _getTextDirection(String text) =>
       _isRTLText(text) ? ui.TextDirection.rtl : ui.TextDirection.ltr;
 
+  String _normalizeBlockText(String text) {
+    if (text.isEmpty) return '';
+    var normalized = text.replaceAll('\u00A0', ' ');
+    normalized = normalized.replaceAll(RegExp(r'[ \t]+\r?\n'), '\n');
+    normalized = normalized.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+    final lines =
+        normalized
+            .split('\n')
+            .map((line) => line.trim().isEmpty ? '' : line.trimLeft())
+            .toList();
+    return lines.join('\n').trim();
+  }
+
+  String _normalizePlainText(String text) {
+    if (text.isEmpty) return '';
+    var normalized = text.replaceAll('\u00A0', ' ');
+    normalized = normalized.replaceAll(RegExp(r'[ \t]+\n'), '\n');
+    normalized = normalized.replaceAll(RegExp(r'\n{3,}'), '\n\n');
+    final lines =
+        normalized.split('\n').map((line) => line.trimLeft()).toList();
+    return lines.join('\n').trim();
+  }
+
+  void _cleanupLinkRecognizers() {
+    for (final recognizer in _linkRecognizers) {
+      recognizer.dispose();
+    }
+    _linkRecognizers.clear();
+  }
+
   String _resolveContentMediaUrl(String rawUrl) {
     final trimmed = rawUrl.trim();
     if (trimmed.isEmpty) return '';
@@ -279,7 +290,8 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
     // Protocol-relative URLs: //example.com/image.jpg
     if (trimmed.startsWith('//')) {
-      final scheme = base?.scheme?.isNotEmpty == true ? base!.scheme : 'https';
+      final scheme =
+          (base != null && base.scheme.isNotEmpty) ? base.scheme : 'https';
       resolved = Uri.parse('$scheme:$trimmed');
     }
     // Root-relative URLs: /path/to/image.jpg
@@ -302,6 +314,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   }
 
   List<Widget> _buildInlineBody(BuildContext context) {
+    _cleanupLinkRecognizers();
     final rawHtml = _article.content ?? _article.summary ?? '';
     if (rawHtml.isEmpty) {
       return [_buildTextBlock(context, _stripHtml(rawHtml))];
@@ -360,7 +373,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     }
 
     if (widgets.isEmpty) {
-      return [_buildTextBlock(context, _stripHtml(rawHtml))];
+      return [_buildTextBlock(context, rawHtml)];
     }
 
     if (widgets.isNotEmpty && widgets.last is SizedBox) {
@@ -375,25 +388,118 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     List<Widget> widgets,
     String fragment,
   ) {
-    final stripped = _stripHtml(fragment);
-    if (stripped.trim().isEmpty) return;
-    widgets.add(_buildTextBlock(context, stripped));
+    if (fragment.trim().isEmpty) return;
+    widgets.add(_buildTextBlock(context, fragment));
     widgets.add(const SizedBox(height: 12));
   }
 
-  Widget _buildTextBlock(BuildContext context, String text) {
-    final trimmed = text.trim();
-    if (trimmed.isEmpty) {
+  Widget _buildTextBlock(BuildContext context, String htmlFragment) {
+    final plainText = _normalizeBlockText(_stripHtml(htmlFragment));
+    if (plainText.isEmpty) {
       return const SizedBox.shrink();
     }
-    return SelectableText(
-      trimmed,
-      style: Theme.of(
-        context,
-      ).textTheme.bodyLarge?.copyWith(fontSize: _articleFontSize, height: 1.6),
-      textAlign: _getTextAlign(trimmed),
-      textDirection: _getTextDirection(trimmed),
+
+    final baseStyle =
+        Theme.of(context).textTheme.bodyLarge?.copyWith(
+          fontSize: _articleFontSize,
+          height: 1.6,
+        ) ??
+        TextStyle(fontSize: _articleFontSize, height: 1.6);
+
+    if (!_containsAnchorTag(htmlFragment)) {
+      return SelectableText(
+        plainText,
+        style: baseStyle,
+        textAlign: _getTextAlign(plainText),
+        textDirection: _getTextDirection(plainText),
+      );
+    }
+
+    final spans = _buildLinkifiedSpans(htmlFragment, context, baseStyle);
+    return SelectableText.rich(
+      TextSpan(children: spans),
+      style: baseStyle,
+      textAlign: _getTextAlign(plainText),
+      textDirection: _getTextDirection(plainText),
     );
+  }
+
+  bool _containsAnchorTag(String html) => html.toLowerCase().contains('<a ');
+
+  List<InlineSpan> _buildLinkifiedSpans(
+    String htmlFragment,
+    BuildContext context,
+    TextStyle baseStyle,
+  ) {
+    final fragment = html_parser.parseFragment(htmlFragment);
+    return fragment.nodes
+        .expand((node) => _convertNodeToSpans(node, context, baseStyle))
+        .toList(growable: false);
+  }
+
+  List<InlineSpan> _convertNodeToSpans(
+    html_dom.Node node,
+    BuildContext context,
+    TextStyle baseStyle,
+  ) {
+    if (node is html_dom.Text) {
+      final text = _normalizePlainText(node.text);
+      if (text.isEmpty) return const [];
+      return [TextSpan(text: text, style: baseStyle)];
+    }
+
+    if (node is html_dom.Element) {
+      final localName = node.localName?.toLowerCase();
+      if (localName == 'a') {
+        final href = node.attributes['href'];
+        final resolvedHref =
+            href != null && href.isNotEmpty
+                ? _resolveContentMediaUrl(href)
+                : '';
+        final childSpans =
+            node.nodes
+                .expand(
+                  (child) => _convertNodeToSpans(child, context, baseStyle),
+                )
+                .toList();
+
+        final recognizer =
+            TapGestureRecognizer()
+              ..onTap = () {
+                if (resolvedHref.isNotEmpty) {
+                  _openMediaLink(context, resolvedHref);
+                } else {
+                  _openMediaLink(context, href ?? '');
+                }
+              };
+        _linkRecognizers.add(recognizer);
+
+        return [
+          TextSpan(
+            children:
+                childSpans.isEmpty
+                    ? [
+                      TextSpan(
+                        text: _normalizePlainText(node.text),
+                        style: baseStyle,
+                      ),
+                    ]
+                    : childSpans,
+            style: baseStyle.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              decoration: TextDecoration.underline,
+            ),
+            recognizer: recognizer,
+          ),
+        ];
+      }
+
+      return node.nodes
+          .expand((child) => _convertNodeToSpans(child, context, baseStyle))
+          .toList();
+    }
+
+    return const [];
   }
 
   Widget? _buildInlineImageWidget(
@@ -529,8 +635,146 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final isRtlTitle = _isRTLText(_article.title);
+    final isIOSPlatform = Theme.of(context).platform == TargetPlatform.iOS;
+    final scrollPhysics =
+        isIOSPlatform
+            ? const BouncingScrollPhysics(
+              parent: AlwaysScrollableScrollPhysics(),
+            )
+            : const ClampingScrollPhysics();
 
-    final actions = <Widget>[
+    return Scaffold(
+      body: Stack(
+        children: [
+          NotificationListener<UserScrollNotification>(
+            onNotification: (notification) {
+              if (notification.metrics.axis != Axis.vertical) return false;
+              if (notification.direction == ScrollDirection.reverse &&
+                  !_isBottomBarHidden &&
+                  notification.metrics.pixels > 0) {
+                setState(() => _isBottomBarHidden = true);
+              } else if (notification.direction == ScrollDirection.forward &&
+                  _isBottomBarHidden) {
+                setState(() => _isBottomBarHidden = false);
+              }
+              return false;
+            },
+            child: CustomScrollView(
+              controller: _scrollController,
+              physics: scrollPhysics,
+              slivers: [
+                SliverAppBar(
+                  floating: true,
+                  snap: true,
+                  title: Text(
+                    _article.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  actions: _buildAppBarActions(),
+                ),
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_article.imageUrl != null)
+                        SizedBox(
+                          height: 220,
+                          width: double.infinity,
+                          child: _ArticleHeroImage(
+                            imageUrl: _article.imageUrl!,
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18.0,
+                          vertical: 16.0,
+                        ),
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 720),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _article.title,
+                                  style:
+                                      Theme.of(context).textTheme.headlineSmall,
+                                  textAlign: _getTextAlign(_article.title),
+                                  textDirection: _getTextDirection(
+                                    _article.title,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                if (_article.author != null)
+                                  Align(
+                                    alignment:
+                                        isRtlTitle
+                                            ? Alignment.centerRight
+                                            : Alignment.centerLeft,
+                                    child: Text(
+                                      _article.author!,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(color: Colors.grey[600]),
+                                    ),
+                                  ),
+                                const SizedBox(height: 4),
+                                Align(
+                                  alignment:
+                                      isRtlTitle
+                                          ? Alignment.centerRight
+                                          : Alignment.centerLeft,
+                                  child: Text(
+                                    _formatDate(_article.publishedDate),
+                                    style: Theme.of(context).textTheme.bodySmall
+                                        ?.copyWith(color: Colors.grey[600]),
+                                  ),
+                                ),
+                                if (_article.offlineCachePath != null) ...[
+                                  const SizedBox(height: 8),
+                                  Align(
+                                    alignment:
+                                        isRtlTitle
+                                            ? Alignment.centerRight
+                                            : Alignment.centerLeft,
+                                    child: Chip(
+                                      avatar: const Icon(
+                                        Icons.offline_pin,
+                                        size: 16,
+                                        color: Colors.green,
+                                      ),
+                                      label: const Text('Available offline'),
+                                      visualDensity: VisualDensity.compact,
+                                      backgroundColor: Colors.green.withValues(
+                                        alpha: 0.12,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 16),
+                                ..._buildInlineBody(context),
+                                const SizedBox(height: 140),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildFloatingButtons(context),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildAppBarActions() {
+    return [
       if (_article.offlineCachePath != null)
         IconButton(
           icon: const Icon(Icons.offline_pin),
@@ -545,164 +789,104 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         onPressed: _isLoading ? null : _toggleStarred,
       ),
     ];
+  }
 
-    return Scaffold(
-      appBar: PlatformAppBar(title: _article.title, actions: actions),
-      body: SingleChildScrollView(
-        physics:
-            isIOS
-                ? const BouncingScrollPhysics(
-                  parent: AlwaysScrollableScrollPhysics(),
-                )
-                : const ClampingScrollPhysics(),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (_article.imageUrl != null)
-              SizedBox(
-                height: 220,
-                width: double.infinity,
-                child: _ArticleHeroImage(imageUrl: _article.imageUrl!),
+  Widget _buildFloatingButtons(BuildContext context) {
+    if (_article.link == null) return const SizedBox.shrink();
+
+    return Positioned(
+      right: 16,
+      bottom: 16,
+      child: AnimatedSlide(
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+        offset: _isBottomBarHidden ? const Offset(0, 1) : Offset.zero,
+        child: AnimatedOpacity(
+          duration: const Duration(milliseconds: 220),
+          opacity: _isBottomBarHidden ? 0 : 1,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildLiquidFab(
+                icon: Icons.open_in_browser,
+                tooltip: 'Open original article',
+                onTap: _isLoading ? null : _openInBrowser,
               ),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 18.0,
-                vertical: 16.0,
+              const SizedBox(width: 12),
+              _buildLiquidFab(
+                icon: Icons.share_outlined,
+                tooltip: 'Share article',
+                onTapWithContext: _isLoading ? null : _handleShareTap,
               ),
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 720),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _article.title,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                        textAlign: _getTextAlign(_article.title),
-                        textDirection: _getTextDirection(_article.title),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLiquidFab({
+    required IconData icon,
+    required String tooltip,
+    VoidCallback? onTap,
+    void Function(BuildContext context)? onTapWithContext,
+  }) {
+    return Builder(
+      builder: (buttonContext) {
+        final handler =
+            onTapWithContext != null
+                ? () => onTapWithContext(buttonContext)
+                : onTap;
+        final theme = Theme.of(buttonContext);
+
+        return LiquidGlassLayer(
+          settings: const LiquidGlassSettings(
+            thickness: 18,
+            blur: 28,
+            glassColor: Color(0x33FFFFFF),
+          ),
+          child: LiquidGlass(
+            shape: LiquidRoundedSuperellipse(borderRadius: 28),
+            glassContainsChild: false,
+            child: Tooltip(
+              message: tooltip,
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(28),
+                  onTap: handler,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(28),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        width: 0.8,
                       ),
-                      const SizedBox(height: 8),
-                      if (_article.author != null)
-                        Align(
-                          alignment:
-                              isRtlTitle
-                                  ? Alignment.centerRight
-                                  : Alignment.centerLeft,
-                          child: Text(
-                            _article.author!,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(color: Colors.grey[600]),
-                          ),
-                        ),
-                      const SizedBox(height: 4),
-                      Align(
-                        alignment:
-                            isRtlTitle
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                        child: Text(
-                          _formatDate(_article.publishedDate),
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: Colors.grey[600]),
-                        ),
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.35),
+                          Colors.white.withValues(alpha: 0.12),
+                        ],
                       ),
-                      const SizedBox(height: 16),
-                      ..._buildInlineBody(context),
-                      if (_article.link != null) ...[
-                        const SizedBox(height: 20),
-                        _buildFooterActions(context),
-                      ],
-                    ],
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 20,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFooterActions(BuildContext context) {
-    final children = <Widget>[];
-
-    // Open original in browser
-    children.add(
-      _buildGlassIconButton(
-        context: context,
-        icon: Icons.open_in_browser,
-        tooltip: 'Open original article',
-        onTap: _isLoading ? null : _openInBrowser,
-      ),
-    );
-
-    // Re-pull full text with Chrome UA
-    children.add(const SizedBox(width: 12));
-    children.add(
-      _buildGlassIconButton(
-        context: context,
-        icon: Icons.article,
-        tooltip: 'Re-pull full text',
-        onTap: _isLoading ? null : _repullFullText,
-        showBusy: _isLoading,
-      ),
-    );
-
-    return Row(mainAxisAlignment: MainAxisAlignment.end, children: children);
-  }
-
-  Widget _buildGlassIconButton({
-    required BuildContext context,
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback? onTap,
-    bool showBusy = false,
-  }) {
-    if (!isIOS) {
-      return IconButton(
-        tooltip: tooltip,
-        icon:
-            showBusy
-                ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-                : Icon(icon),
-        onPressed: onTap,
-      );
-    }
-
-    final content =
-        showBusy
-            ? const SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-            : Icon(icon, size: 18);
-
-    return Tooltip(
-      message: tooltip,
-      child: LiquidGlassLayer(
-        settings: const LiquidGlassSettings(
-          thickness: 16,
-          blur: 18,
-          glassColor: Color(0x33FFFFFF),
-        ),
-        child: LiquidGlass(
-          shape: LiquidRoundedSuperellipse(borderRadius: 18),
-          glassContainsChild: false,
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              child: content,
-            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -745,7 +929,7 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
   @override
   Widget build(BuildContext context) {
     final placeholder = Container(
-      color: Theme.of(context).colorScheme.surfaceVariant,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: const Center(child: Icon(Icons.image_not_supported, size: 40)),
     );
 
@@ -923,7 +1107,8 @@ class _ArticleContentImage extends StatelessWidget {
                   (_) => Container(
                     width: double.infinity,
                     height: width * 0.56,
-                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    color:
+                        Theme.of(context).colorScheme.surfaceContainerHighest,
                     child: const Center(
                       child: SizedBox(
                         width: 18,
@@ -953,7 +1138,7 @@ class _ArticleContentImage extends StatelessWidget {
                 (_, __) => Container(
                   width: double.infinity,
                   height: width * 0.56, // ~16:9
-                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   child: const Center(
                     child: SizedBox(
                       width: 18,
@@ -969,7 +1154,7 @@ class _ArticleContentImage extends StatelessWidget {
               return Container(
                 width: double.infinity,
                 height: width * 0.56,
-                color: Theme.of(context).colorScheme.surfaceVariant,
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
                 child: const Center(child: Icon(Icons.broken_image)),
               );
             },
@@ -1160,7 +1345,7 @@ class _VideoPlaceholder extends StatelessWidget {
     final placeholder = Container(
       height: height,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
         borderRadius: borderRadius,
       ),
       child: const Center(
@@ -1255,7 +1440,7 @@ class _ArticleMediaLinkCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant,
+        color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
