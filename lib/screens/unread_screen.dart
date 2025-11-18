@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
@@ -8,7 +6,7 @@ import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/swipe_action.dart';
 import '../notifiers/preview_lines_notifier.dart';
-import '../notifiers/starred_refresh_notifier.dart';
+import '../notifiers/article_list_padding_notifier.dart';
 import '../notifiers/unread_refresh_notifier.dart';
 import '../services/database_service.dart';
 import '../services/storage_service.dart';
@@ -40,8 +38,12 @@ class _UnreadScreenState extends State<UnreadScreen> {
   Map<String, String> _feedTitles = {};
   SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
-  final PreviewLinesNotifier _previewLinesNotifier = PreviewLinesNotifier.instance;
+  final PreviewLinesNotifier _previewLinesNotifier =
+      PreviewLinesNotifier.instance;
+  final ArticleListPaddingNotifier _listPaddingNotifier =
+      ArticleListPaddingNotifier.instance;
   int _previewLines = 3;
+  double _listPadding = 16.0;
   DateTime? _lastSync;
   bool _swipeAllowsDelete = false;
   final SwipePrefsNotifier _swipePrefsNotifier = SwipePrefsNotifier.instance;
@@ -51,7 +53,9 @@ class _UnreadScreenState extends State<UnreadScreen> {
   void initState() {
     super.initState();
     _previewLines = _previewLinesNotifier.lines;
+    _listPadding = _listPaddingNotifier.padding;
     _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
+    _listPaddingNotifier.addListener(_handleListPaddingChanged);
     _unreadNotifier.addListener(_handleUnreadRefresh);
     _swipePrefsNotifier.addListener(_handleSwipePrefsChanged);
     _lastSyncNotifier.addListener(_handleLastSyncChanged);
@@ -61,6 +65,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
   @override
   void dispose() {
     _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
+    _listPaddingNotifier.removeListener(_handleListPaddingChanged);
     _unreadNotifier.removeListener(_handleUnreadRefresh);
     _swipePrefsNotifier.removeListener(_handleSwipePrefsChanged);
     _lastSyncNotifier.removeListener(_handleLastSyncChanged);
@@ -75,6 +80,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
     await _loadFeedTitles();
     await _loadSwipePreferences();
     await _loadPreviewLines();
+    await _loadListPadding();
     await _loadLastSyncTime();
     await _loadSwipeDeleteSetting();
     await _loadArticles();
@@ -89,10 +95,23 @@ class _UnreadScreenState extends State<UnreadScreen> {
     _previewLinesNotifier.setLines(lines);
   }
 
+  Future<void> _loadListPadding() async {
+    final padding = await _storageService.getArticleListPadding();
+    if (!mounted) return;
+    setState(() => _listPadding = padding);
+    _listPaddingNotifier.setPadding(padding);
+  }
+
   void _handlePreviewLinesChanged() {
     final lines = _previewLinesNotifier.lines;
     if (!mounted || _previewLines == lines) return;
     setState(() => _previewLines = lines);
+  }
+
+  void _handleListPaddingChanged() {
+    final padding = _listPaddingNotifier.padding;
+    if (!mounted || (_listPadding - padding).abs() < 0.5) return;
+    setState(() => _listPadding = padding);
   }
 
   void _handleSwipePrefsChanged() {
@@ -140,14 +159,11 @@ class _UnreadScreenState extends State<UnreadScreen> {
     // Only show the big centered loader when there are no articles yet.
     final hadArticles = _articles.isNotEmpty;
     if (!hadArticles) {
-    setState(() => _isLoading = true);
+      setState(() => _isLoading = true);
     }
     try {
       // Always show unread only
-      final articles = await _db.getArticles(
-        limit: 100,
-        isRead: false,
-      );
+      final articles = await _db.getArticles(limit: 100, isRead: false);
       if (mounted) {
         setState(() {
           _articles = articles;
@@ -197,7 +213,9 @@ class _UnreadScreenState extends State<UnreadScreen> {
     if (!hasConfig) {
       if (!initial && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to sync: missing account configuration')),
+          const SnackBar(
+            content: Text('Unable to sync: missing account configuration'),
+          ),
         );
       }
       return;
@@ -214,9 +232,9 @@ class _UnreadScreenState extends State<UnreadScreen> {
     } catch (e) {
       print('Error syncing articles from server: $e');
       if (!initial && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sync failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sync failed: $e')));
       }
     } finally {
       if (mounted) {
@@ -227,13 +245,19 @@ class _UnreadScreenState extends State<UnreadScreen> {
     await _loadArticles();
   }
 
-  Future<bool> _handleSwipeAction(Article article, DismissDirection direction) async {
+  Future<bool> _handleSwipeAction(
+    Article article,
+    DismissDirection direction,
+  ) async {
     final hasConfig = await _ensureSyncConfigured();
     if (!hasConfig) {
       return false;
     }
 
-    final action = direction == DismissDirection.startToEnd ? _leftSwipeAction : _rightSwipeAction;
+    final action =
+        direction == DismissDirection.startToEnd
+            ? _leftSwipeAction
+            : _rightSwipeAction;
 
     // Destructive delete via swipe when action is set to Delete
     if (action == SwipeAction.delete) {
@@ -244,7 +268,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
       // Do not dismiss the card; list reload will reflect removal
       return false;
     }
-    
+
     switch (action) {
       case SwipeAction.toggleRead:
         await _syncService.markArticleAsRead(article.id, !article.isRead);
@@ -264,14 +288,11 @@ class _UnreadScreenState extends State<UnreadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isIOSPlatform =
-        Theme.of(context).platform == TargetPlatform.iOS;
+    final isIOSPlatform = Theme.of(context).platform == TargetPlatform.iOS;
     return Scaffold(
       appBar: PlatformAppBar(
         titleWidget: _buildTitleWidget(),
-        actions: [
-          _buildSyncAction(context),
-        ],
+        actions: [_buildSyncAction(context)],
       ),
       body: Column(
         children: [
@@ -279,44 +300,47 @@ class _UnreadScreenState extends State<UnreadScreen> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             height: _isSyncing ? 2 : 0,
-            child: _isSyncing
-                ? const LinearProgressIndicator(minHeight: 2)
-                : const SizedBox.shrink(),
+            child:
+                _isSyncing
+                    ? const LinearProgressIndicator(minHeight: 2)
+                    : const SizedBox.shrink(),
           ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _syncArticlesFromServer(),
-              child: _isLoading && _articles.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : _articles.isEmpty
+              child:
+                  _isLoading && _articles.isEmpty
+                      ? const Center(child: CircularProgressIndicator())
+                      : _articles.isEmpty
                       ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: const [
-                            SizedBox(height: 120),
-                            Center(
-                              child: Text(
-                                'No unread articles\nPull down to refresh',
-                                textAlign: TextAlign.center,
-                              ),
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 120),
+                          Center(
+                            child: Text(
+                              'No unread articles\nPull down to refresh',
+                              textAlign: TextAlign.center,
                             ),
-                          ],
-                        )
+                          ),
+                        ],
+                      )
                       : ListView.separated(
-                          physics: isIOSPlatform
-                              ? const BouncingScrollPhysics(
+                        physics:
+                            isIOSPlatform
+                                ? const BouncingScrollPhysics(
                                   parent: AlwaysScrollableScrollPhysics(),
                                 )
-                              : const ClampingScrollPhysics(),
-                          cacheExtent: 800,
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-                          itemCount: _articles.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final article = _articles[index];
-                            return _buildSwipeableCard(article);
-                          },
-                        ),
+                                : const ClampingScrollPhysics(),
+                        cacheExtent: 800,
+                        padding: _listViewPadding(),
+                        itemCount: _articles.length,
+                        separatorBuilder:
+                            (_, __) => SizedBox(height: _cardSpacing),
+                        itemBuilder: (context, index) {
+                          final article = _articles[index];
+                          return _buildSwipeableCard(article);
+                        },
+                      ),
             ),
           ),
         ],
@@ -357,13 +381,14 @@ class _UnreadScreenState extends State<UnreadScreen> {
   }
 
   Widget _buildSyncAction(BuildContext context) {
-    final icon = _isSyncing
-        ? const SizedBox(
-            width: 18,
-            height: 18,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        : const Icon(Icons.sync, size: 18);
+    final icon =
+        _isSyncing
+            ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+            : const Icon(Icons.sync, size: 18);
 
     if (!isIOS) {
       return IconButton(
@@ -411,14 +436,23 @@ class _UnreadScreenState extends State<UnreadScreen> {
     );
   }
 
+  EdgeInsets _listViewPadding() {
+    final horizontal = _listPadding;
+    final top = _listPadding * 0.75;
+    final bottom = 64 + _listPadding;
+    return EdgeInsets.fromLTRB(horizontal, top, horizontal, bottom);
+  }
+
+  double get _cardSpacing {
+    final spacing = (_listPadding / 16.0) * 12.0;
+    return spacing.clamp(8.0, 28.0).toDouble();
+  }
+
   Widget _buildTitleWidget() {
     final theme = Theme.of(context);
 
     final children = <Widget>[
-      Text(
-        'Unread',
-        style: theme.textTheme.titleLarge,
-      ),
+      Text('Unread', style: theme.textTheme.titleLarge),
     ];
 
     if (_lastSync != null) {
@@ -486,9 +520,10 @@ class _SwipeBackground extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(color: color),
       child: Row(
-        mainAxisAlignment: alignment == Alignment.centerLeft
-            ? MainAxisAlignment.start
-            : MainAxisAlignment.end,
+        mainAxisAlignment:
+            alignment == Alignment.centerLeft
+                ? MainAxisAlignment.start
+                : MainAxisAlignment.end,
         children: [
           Icon(icon, color: Colors.white, size: 28),
           const SizedBox(width: 8),
@@ -505,4 +540,3 @@ class _SwipeBackground extends StatelessWidget {
     );
   }
 }
-

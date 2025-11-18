@@ -33,6 +33,41 @@ class ArticleDetailScreen extends StatefulWidget {
 }
 
 class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
+  static const Set<String> _blockLevelTags = {
+    'article',
+    'section',
+    'div',
+    'p',
+    'blockquote',
+    'ul',
+    'ol',
+    'li',
+    'figure',
+    'figcaption',
+    'header',
+    'footer',
+    'table',
+    'tr',
+    'td',
+    'th',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'pre',
+  };
+
+  static const Map<String, double> _headingFontScale = {
+    'h1': 1.6,
+    'h2': 1.45,
+    'h3': 1.3,
+    'h4': 1.2,
+    'h5': 1.1,
+    'h6': 1.05,
+  };
+
   late Article _article;
   final SyncService _syncService = SyncService();
   final DatabaseService _db = DatabaseService();
@@ -43,17 +78,20 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   final List<TapGestureRecognizer> _linkRecognizers = [];
   final ScrollController _scrollController = ScrollController();
   bool _isBottomBarHidden = false;
+  double _scrollProgress = 0.0;
 
   @override
   void initState() {
     super.initState();
     _article = widget.article;
+    _scrollController.addListener(_handleScrollPositionChanged);
     _initializePreferences();
   }
 
   @override
   void dispose() {
     _cleanupLinkRecognizers();
+    _scrollController.removeListener(_handleScrollPositionChanged);
     _scrollController.dispose();
     super.dispose();
   }
@@ -263,11 +301,35 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
   String _normalizePlainText(String text) {
     if (text.isEmpty) return '';
     var normalized = text.replaceAll('\u00A0', ' ');
-    normalized = normalized.replaceAll(RegExp(r'[ \t]+\n'), '\n');
-    normalized = normalized.replaceAll(RegExp(r'\n{3,}'), '\n\n');
-    final lines =
-        normalized.split('\n').map((line) => line.trimLeft()).toList();
-    return lines.join('\n').trim();
+    normalized = normalized.replaceAll(RegExp(r'[\r\f\t]+'), ' ');
+    normalized = normalized.replaceAll(RegExp(r'\n+'), ' ');
+    normalized = normalized.replaceAll(RegExp(r' {2,}'), ' ');
+    if (normalized.isEmpty) return '';
+    if (normalized.trim().isEmpty) {
+      return ' ';
+    }
+    return normalized;
+  }
+
+  void _handleScrollPositionChanged() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    final maxExtent = position.maxScrollExtent;
+    double progress = 0.0;
+    if (maxExtent > 0) {
+      progress = (position.pixels / maxExtent).clamp(0.0, 1.0);
+    }
+    if ((progress - _scrollProgress).abs() > 0.01) {
+      setState(() => _scrollProgress = progress);
+    }
+  }
+
+  String? get _heroCaption {
+    final link = _article.link;
+    if (link == null || link.isEmpty) return null;
+    final host = Uri.tryParse(link)?.host;
+    if (host == null || host.isEmpty) return null;
+    return host.startsWith('www.') ? host.substring(4) : host;
   }
 
   void _cleanupLinkRecognizers() {
@@ -406,51 +468,67 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         ) ??
         TextStyle(fontSize: _articleFontSize, height: 1.6);
 
-    if (!_containsAnchorTag(htmlFragment)) {
+    final spans = _buildFormattedSpans(htmlFragment, context, baseStyle);
+    final textAlign = _getTextAlign(plainText);
+    final textDirection = _getTextDirection(plainText);
+
+    if (spans == null) {
       return SelectableText(
         plainText,
         style: baseStyle,
-        textAlign: _getTextAlign(plainText),
-        textDirection: _getTextDirection(plainText),
+        textAlign: textAlign,
+        textDirection: textDirection,
       );
     }
 
-    final spans = _buildLinkifiedSpans(htmlFragment, context, baseStyle);
     return SelectableText.rich(
-      TextSpan(children: spans),
-      style: baseStyle,
-      textAlign: _getTextAlign(plainText),
-      textDirection: _getTextDirection(plainText),
+      TextSpan(children: spans, style: baseStyle),
+      textAlign: textAlign,
+      textDirection: textDirection,
     );
   }
 
-  bool _containsAnchorTag(String html) => html.toLowerCase().contains('<a ');
-
-  List<InlineSpan> _buildLinkifiedSpans(
+  List<InlineSpan>? _buildFormattedSpans(
     String htmlFragment,
     BuildContext context,
     TextStyle baseStyle,
   ) {
+    if (!htmlFragment.contains('<')) {
+      return null;
+    }
     final fragment = html_parser.parseFragment(htmlFragment);
-    return fragment.nodes
+    final spans = fragment.nodes
         .expand((node) => _convertNodeToSpans(node, context, baseStyle))
         .toList(growable: false);
+    final trimmed = _trimWhitespaceSpans(spans);
+    if (trimmed.isEmpty) return null;
+    return trimmed;
   }
 
   List<InlineSpan> _convertNodeToSpans(
     html_dom.Node node,
     BuildContext context,
-    TextStyle baseStyle,
+    TextStyle currentStyle,
   ) {
     if (node is html_dom.Text) {
       final text = _normalizePlainText(node.text);
       if (text.isEmpty) return const [];
-      return [TextSpan(text: text, style: baseStyle)];
+      return [TextSpan(text: text, style: currentStyle)];
     }
 
     if (node is html_dom.Element) {
-      final localName = node.localName?.toLowerCase();
-      if (localName == 'a') {
+      final tag = node.localName?.toLowerCase() ?? '';
+      if (tag == 'br') {
+        return [TextSpan(text: '\n', style: currentStyle)];
+      }
+
+      final derivedStyle = _deriveTextStyleForElement(
+        currentStyle,
+        node,
+        context,
+      );
+
+      if (tag == 'a') {
         final href = node.attributes['href'];
         final resolvedHref =
             href != null && href.isNotEmpty
@@ -459,47 +537,352 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         final childSpans =
             node.nodes
                 .expand(
-                  (child) => _convertNodeToSpans(child, context, baseStyle),
+                  (child) => _convertNodeToSpans(child, context, derivedStyle),
                 )
                 .toList();
+
+        if (childSpans.isEmpty && node.text.isNotEmpty) {
+          childSpans.add(
+            TextSpan(text: _normalizePlainText(node.text), style: derivedStyle),
+          );
+        }
 
         final recognizer =
             TapGestureRecognizer()
               ..onTap = () {
-                if (resolvedHref.isNotEmpty) {
-                  _openMediaLink(context, resolvedHref);
-                } else {
-                  _openMediaLink(context, href ?? '');
+                final target =
+                    resolvedHref.isNotEmpty ? resolvedHref : (href ?? '');
+                if (target.isNotEmpty) {
+                  _openMediaLink(context, target);
                 }
               };
         _linkRecognizers.add(recognizer);
 
+        final linkStyle = derivedStyle.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+          decoration: TextDecoration.underline,
+        );
+
         return [
           TextSpan(
-            children:
-                childSpans.isEmpty
-                    ? [
-                      TextSpan(
-                        text: _normalizePlainText(node.text),
-                        style: baseStyle,
-                      ),
-                    ]
-                    : childSpans,
-            style: baseStyle.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              decoration: TextDecoration.underline,
-            ),
+            children: childSpans,
+            style: linkStyle,
             recognizer: recognizer,
           ),
         ];
       }
 
-      return node.nodes
-          .expand((child) => _convertNodeToSpans(child, context, baseStyle))
-          .toList();
+      List<InlineSpan> childSpans =
+          node.nodes
+              .expand(
+                (child) => _convertNodeToSpans(child, context, derivedStyle),
+              )
+              .toList();
+
+      if (tag == 'li') {
+        childSpans.insert(0, TextSpan(text: '• ', style: derivedStyle));
+      }
+
+      if (_blockLevelTags.contains(tag) && childSpans.isNotEmpty) {
+        childSpans = [
+          TextSpan(text: '\n', style: derivedStyle),
+          ...childSpans,
+          TextSpan(text: '\n', style: derivedStyle),
+        ];
+      }
+
+      return childSpans;
     }
 
     return const [];
+  }
+
+  List<InlineSpan> _trimWhitespaceSpans(List<InlineSpan> spans) {
+    if (spans.isEmpty) return spans;
+    int start = 0;
+    int end = spans.length - 1;
+
+    while (start <= end && _isWhitespaceSpan(spans[start])) {
+      start++;
+    }
+    while (end >= start && _isWhitespaceSpan(spans[end])) {
+      end--;
+    }
+
+    if (start > end) {
+      return const [];
+    }
+    if (start == 0 && end == spans.length - 1) {
+      return spans;
+    }
+    return spans.sublist(start, end + 1);
+  }
+
+  bool _isWhitespaceSpan(InlineSpan span) {
+    if (span is! TextSpan) return false;
+    final text = span.text;
+    return text == null || text.trim().isEmpty;
+  }
+
+  TextStyle _deriveTextStyleForElement(
+    TextStyle base,
+    html_dom.Element element,
+    BuildContext context,
+  ) {
+    var style = base;
+    final tag = element.localName?.toLowerCase() ?? '';
+    final baseFontSize = style.fontSize ?? _articleFontSize;
+
+    switch (tag) {
+      case 'strong':
+      case 'b':
+      case 'th':
+      case 'dt':
+        style = style.merge(const TextStyle(fontWeight: FontWeight.w600));
+        break;
+      case 'em':
+      case 'i':
+      case 'cite':
+      case 'dfn':
+        style = style.merge(const TextStyle(fontStyle: FontStyle.italic));
+        break;
+      case 'u':
+      case 'ins':
+        style = style.merge(
+          const TextStyle(decoration: TextDecoration.underline),
+        );
+        break;
+      case 's':
+      case 'del':
+      case 'strike':
+        style = style.merge(
+          const TextStyle(decoration: TextDecoration.lineThrough),
+        );
+        break;
+      case 'mark':
+        style = style.merge(
+          TextStyle(
+            backgroundColor: Theme.of(
+              context,
+            ).colorScheme.primary.withValues(alpha: 0.2),
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        );
+        break;
+      case 'small':
+        style = style.merge(TextStyle(fontSize: baseFontSize * 0.9));
+        break;
+      case 'big':
+        style = style.merge(TextStyle(fontSize: baseFontSize * 1.1));
+        break;
+      case 'code':
+      case 'pre':
+      case 'tt':
+        style = style.merge(
+          TextStyle(
+            fontFamily: 'monospace',
+            backgroundColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.7),
+          ),
+        );
+        break;
+      case 'blockquote':
+        style = style.merge(
+          TextStyle(
+            fontStyle: FontStyle.italic,
+            color: Theme.of(
+              context,
+            ).colorScheme.onSurface.withValues(alpha: 0.8),
+          ),
+        );
+        break;
+      default:
+        final headingScale = _headingFontScale[tag];
+        if (headingScale != null) {
+          style = style.merge(
+            TextStyle(
+              fontSize: baseFontSize * headingScale,
+              fontWeight: FontWeight.w600,
+              height: 1.3,
+            ),
+          );
+        }
+        break;
+    }
+
+    final inlineStyle = element.attributes['style'];
+    if (inlineStyle != null && inlineStyle.trim().isNotEmpty) {
+      style = _applyInlineTextStyle(style, inlineStyle, context);
+    }
+
+    return style;
+  }
+
+  TextStyle _applyInlineTextStyle(
+    TextStyle base,
+    String inlineStyle,
+    BuildContext context,
+  ) {
+    TextStyle? delta;
+
+    void mergeDelta(TextStyle addition) {
+      delta = delta == null ? addition : delta!.merge(addition);
+    }
+
+    final declarations = inlineStyle.split(';');
+    for (final declaration in declarations) {
+      final parts = declaration.split(':');
+      if (parts.length != 2) continue;
+      final property = parts[0].trim().toLowerCase();
+      final rawValue = parts[1].trim();
+      final value = rawValue.toLowerCase();
+
+      switch (property) {
+        case 'font-weight':
+          final numeric = int.tryParse(value);
+          if (value.contains('bold') || (numeric != null && numeric >= 600)) {
+            mergeDelta(const TextStyle(fontWeight: FontWeight.w600));
+          }
+          break;
+        case 'font-style':
+          if (value.contains('italic')) {
+            mergeDelta(const TextStyle(fontStyle: FontStyle.italic));
+          }
+          break;
+        case 'text-decoration':
+          if (value.contains('underline')) {
+            mergeDelta(const TextStyle(decoration: TextDecoration.underline));
+          } else if (value.contains('line-through')) {
+            mergeDelta(const TextStyle(decoration: TextDecoration.lineThrough));
+          }
+          break;
+        case 'font-size':
+          final newSize = _parseCssFontSize(
+            value,
+            base.fontSize ?? _articleFontSize,
+          );
+          if (newSize != null) {
+            mergeDelta(TextStyle(fontSize: newSize));
+          }
+          break;
+        case 'color':
+          final parsedColor = _parseCssColor(rawValue);
+          if (parsedColor != null) {
+            mergeDelta(TextStyle(color: parsedColor));
+          }
+          break;
+        case 'background-color':
+          final bg = _parseCssColor(rawValue);
+          if (bg != null) {
+            mergeDelta(TextStyle(backgroundColor: bg));
+          }
+          break;
+      }
+    }
+
+    if (delta == null) return base;
+    return base.merge(delta);
+  }
+
+  double? _parseCssFontSize(String value, double currentSize) {
+    final cleaned = value.trim();
+    if (cleaned.isEmpty) return null;
+    if (cleaned.endsWith('px') || cleaned.endsWith('pt')) {
+      final numeric = double.tryParse(
+        cleaned.substring(0, cleaned.length - 2).trim(),
+      );
+      return numeric;
+    }
+    if (cleaned.endsWith('%')) {
+      final numeric = double.tryParse(
+        cleaned.substring(0, cleaned.length - 1).trim(),
+      );
+      if (numeric != null) {
+        return currentSize * (numeric / 100);
+      }
+    }
+    if (cleaned.endsWith('em')) {
+      final numeric = double.tryParse(
+        cleaned.substring(0, cleaned.length - 2).trim(),
+      );
+      if (numeric != null) {
+        return currentSize * numeric;
+      }
+    }
+    final direct = double.tryParse(cleaned);
+    return direct;
+  }
+
+  ui.Color? _parseCssColor(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty || trimmed == 'inherit') return null;
+
+    if (trimmed.startsWith('#')) {
+      final hex = trimmed.substring(1);
+      if (hex.length == 3) {
+        final r = hex[0];
+        final g = hex[1];
+        final b = hex[2];
+        final expanded = '$r$r$g$g$b$b';
+        final parsed = int.tryParse(expanded, radix: 16);
+        if (parsed != null) {
+          return ui.Color(0xFF000000 | parsed);
+        }
+      } else if (hex.length == 6) {
+        final parsed = int.tryParse(hex, radix: 16);
+        if (parsed != null) {
+          return ui.Color(0xFF000000 | parsed);
+        }
+      } else if (hex.length == 8) {
+        final parsed = int.tryParse(hex, radix: 16);
+        if (parsed != null) {
+          return ui.Color(parsed);
+        }
+      }
+    }
+
+    if (trimmed.startsWith('rgb')) {
+      final start = trimmed.indexOf('(');
+      final end = trimmed.indexOf(')');
+      if (start != -1 && end != -1 && end > start) {
+        final params = trimmed.substring(start + 1, end).split(',');
+        if (params.length >= 3) {
+          final r = int.tryParse(params[0].trim());
+          final g = int.tryParse(params[1].trim());
+          final b = int.tryParse(params[2].trim());
+          final a =
+              params.length > 3 ? double.tryParse(params[3].trim()) : null;
+          if (r != null && g != null && b != null) {
+            final alpha = ((a ?? 1.0) * 255).clamp(0, 255).round();
+            return ui.Color.fromARGB(
+              alpha,
+              r.clamp(0, 255).toInt(),
+              g.clamp(0, 255).toInt(),
+              b.clamp(0, 255).toInt(),
+            );
+          }
+        }
+      }
+    }
+
+    switch (trimmed) {
+      case 'black':
+        return ui.Color(0xFF000000);
+      case 'white':
+        return ui.Color(0xFFFFFFFF);
+      case 'red':
+        return ui.Color(0xFFFF0000);
+      case 'green':
+        return ui.Color(0xFF008000);
+      case 'blue':
+        return ui.Color(0xFF0000FF);
+      case 'gray':
+      case 'grey':
+        return ui.Color(0xFF808080);
+    }
+
+    return null;
   }
 
   Widget? _buildInlineImageWidget(
@@ -683,6 +1066,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                           width: double.infinity,
                           child: _ArticleHeroImage(
                             imageUrl: _article.imageUrl!,
+                            caption: _heroCaption,
                           ),
                         ),
                       Padding(
@@ -768,6 +1152,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
             ),
           ),
           _buildFloatingButtons(context),
+          _buildReadingProgressBar(context),
         ],
       ),
     );
@@ -889,12 +1274,69 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       },
     );
   }
+
+  Widget _buildReadingProgressBar(BuildContext context) {
+    final hasClients = _scrollController.hasClients;
+    final maxExtent =
+        hasClients ? _scrollController.position.maxScrollExtent : 0.0;
+    final shouldShow = hasClients && maxExtent > 24;
+    final progress = shouldShow ? _scrollProgress.clamp(0.0, 1.0) : 0.0;
+
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: shouldShow ? 1 : 0,
+              child: Container(
+                height: 4,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
+                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: progress.clamp(0.0, 1.0),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        gradient: LinearGradient(
+                          colors: [
+                            Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.9),
+                            Theme.of(
+                              context,
+                            ).colorScheme.secondary.withValues(alpha: 0.9),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ArticleHeroImage extends StatefulWidget {
   final String imageUrl;
+  final String? caption;
 
-  const _ArticleHeroImage({required this.imageUrl});
+  const _ArticleHeroImage({required this.imageUrl, this.caption});
 
   @override
   State<_ArticleHeroImage> createState() => _ArticleHeroImageState();
@@ -902,6 +1344,8 @@ class _ArticleHeroImage extends StatefulWidget {
 
 class _ArticleHeroImageState extends State<_ArticleHeroImage> {
   Future<RemoteImageFormat>? _formatFuture;
+  Future<Uint8List?>? _bitmapFuture;
+  String? _bitmapFutureUrl;
 
   @override
   void initState() {
@@ -919,6 +1363,8 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
 
   void _prepareFormatFuture() {
     final url = widget.imageUrl;
+    _bitmapFuture = null;
+    _bitmapFutureUrl = null;
     if (!ImageUtils.isDataUri(url) && !ImageUtils.looksLikeSvgUrl(url)) {
       _formatFuture = ImageUtils.detectRemoteFormat(url);
     } else {
@@ -928,14 +1374,18 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = Container(
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: const Center(child: Icon(Icons.image_not_supported, size: 40)),
-    );
-
     final border = const BorderRadius.only(
       bottomLeft: Radius.circular(16),
       bottomRight: Radius.circular(16),
+    );
+    final placeholder = _wrapHeroChild(
+      context: context,
+      border: border,
+      child: Container(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: const Center(child: Icon(Icons.image_not_supported, size: 40)),
+      ),
+      showOverlay: false,
     );
 
     final url = widget.imageUrl;
@@ -945,15 +1395,17 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
       if (ImageUtils.isSvgDataUri(url)) {
         final svgString = ImageUtils.decodeSvgDataUri(url);
         if (svgString == null) return placeholder;
-        return ClipRRect(
-          borderRadius: border,
+        return _wrapHeroChild(
+          context: context,
+          border: border,
           child: SvgPicture.string(svgString, fit: BoxFit.cover),
         );
       } else {
         final bytes = ImageUtils.decodeBitmapDataUri(url);
         if (bytes == null) return placeholder;
-        return ClipRRect(
-          borderRadius: border,
+        return _wrapHeroChild(
+          context: context,
+          border: border,
           child: Image.memory(
             bytes,
             fit: BoxFit.cover,
@@ -964,8 +1416,9 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
     }
 
     if (ImageUtils.looksLikeSvgUrl(url)) {
-      return ClipRRect(
-        borderRadius: border,
+      return _wrapHeroChild(
+        context: context,
+        border: border,
         child: SvgPicture.network(
           url,
           fit: BoxFit.cover,
@@ -988,15 +1441,18 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
         future: _formatFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return ClipRRect(
-              borderRadius: border,
+            return _wrapHeroChild(
+              context: context,
+              border: border,
               child: const Center(child: CircularProgressIndicator()),
+              showOverlay: false,
             );
           }
           final format = snapshot.data ?? RemoteImageFormat.unknown;
           if (format == RemoteImageFormat.svg) {
-            return ClipRRect(
-              borderRadius: border,
+            return _wrapHeroChild(
+              context: context,
+              border: border,
               child: SvgPicture.network(
                 url,
                 fit: BoxFit.cover,
@@ -1028,13 +1484,17 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
     BorderRadius border,
     Widget placeholder,
   ) {
+    final future = _getBitmapFuture(url);
+
     return FutureBuilder<Uint8List?>(
-      future: ImageUtils.decodedBitmapBytes(url),
+      future: future,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return ClipRRect(
-            borderRadius: border,
+          return _wrapHeroChild(
+            context: context,
+            border: border,
             child: const Center(child: CircularProgressIndicator()),
+            showOverlay: false,
           );
         }
         final bytes = snapshot.data;
@@ -1042,8 +1502,9 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
           debugPrint('Hero decoded bytes unavailable for $url');
           return placeholder;
         }
-        return ClipRRect(
-          borderRadius: border,
+        return _wrapHeroChild(
+          context: context,
+          border: border,
           child: Image.memory(
             bytes,
             fit: BoxFit.cover,
@@ -1051,6 +1512,91 @@ class _ArticleHeroImageState extends State<_ArticleHeroImage> {
           ),
         );
       },
+    );
+  }
+
+  Future<Uint8List?> _getBitmapFuture(String url) {
+    if (_bitmapFuture == null || _bitmapFutureUrl != url) {
+      _bitmapFutureUrl = url;
+      _bitmapFuture = ImageUtils.decodedBitmapBytes(url);
+    }
+    return _bitmapFuture!;
+  }
+
+  Widget _wrapHeroChild({
+    required BuildContext context,
+    required BorderRadius border,
+    required Widget child,
+    bool showOverlay = true,
+  }) {
+    final caption = widget.caption;
+    final textStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
+      color: Colors.white,
+      fontWeight: FontWeight.w600,
+    );
+
+    return ClipRRect(
+      borderRadius: border,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Positioned.fill(child: child),
+          if (showOverlay)
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withValues(alpha: 0),
+                      Colors.black.withValues(alpha: 0.45),
+                    ],
+                    stops: const [0.5, 1],
+                  ),
+                ),
+              ),
+            ),
+          if (showOverlay && caption != null && caption.isNotEmpty)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 18,
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      width: 0.8,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.public, size: 15, color: Colors.white),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          caption,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textStyle,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

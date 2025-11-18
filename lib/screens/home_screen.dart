@@ -1,13 +1,11 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/swipe_action.dart';
+import '../notifiers/article_list_padding_notifier.dart';
 import '../notifiers/preview_lines_notifier.dart';
-import '../notifiers/starred_refresh_notifier.dart';
 import '../notifiers/unread_refresh_notifier.dart';
 import '../notifiers/swipe_prefs_notifier.dart';
 import '../notifiers/last_sync_notifier.dart';
@@ -16,7 +14,6 @@ import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import '../utils/article_text_utils.dart';
 import '../widgets/article_card.dart';
-import 'feeds_screen.dart';
 import 'starred_screen.dart';
 import 'unread_screen.dart';
 import 'settings_screen.dart';
@@ -60,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _unreadNotifier.addListener(_handleUnreadChanged);
     _loadUnreadCount();
   }
+
   @override
   void dispose() {
     _unreadNotifier.removeListener(_handleUnreadChanged);
@@ -76,12 +74,11 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _unreadCount = count);
   }
 
-
   Future<void> _loadTabPreferences() async {
     final showStarred = await _storageService.getShowStarredTab();
     final defaultTab = await _storageService.getDefaultTab();
     if (!mounted) return;
-    
+
     // Find the index of the default tab
     final tabs = _getTabConfigs(showStarred);
     int defaultIndex = 0;
@@ -91,13 +88,13 @@ class _HomeScreenState extends State<HomeScreen> {
         break;
       }
     }
-    
+
     setState(() {
       _showStarredTab = showStarred;
       _currentIndex = defaultIndex;
     });
   }
-  
+
   List<_TabConfig> _getTabConfigs(bool showStarred) {
     final tabs = <_TabConfig>[
       const _TabConfig(
@@ -114,19 +111,25 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     ];
     if (showStarred) {
-      tabs.add(const _TabConfig(
-        id: 'starred',
-        widget: StarredScreen(),
-        icon: Icons.star,
-        label: 'Starred',
-      ));
+      tabs.add(
+        const _TabConfig(
+          id: 'starred',
+          widget: StarredScreen(),
+          icon: Icons.star,
+          label: 'Starred',
+        ),
+      );
     }
-    tabs.add(_TabConfig(
-      id: 'settings',
-      widget: SettingsScreen(onShowStarredTabChanged: _handleShowStarredTabChanged),
-      icon: Icons.settings,
-      label: 'Settings',
-    ));
+    tabs.add(
+      _TabConfig(
+        id: 'settings',
+        widget: SettingsScreen(
+          onShowStarredTabChanged: _handleShowStarredTabChanged,
+        ),
+        icon: Icons.settings,
+        label: 'Settings',
+      ),
+    );
     return tabs;
   }
 
@@ -167,15 +170,17 @@ class _HomeScreenState extends State<HomeScreen> {
             alignment: Alignment.bottomCenter,
             child: PlatformBottomNav(
               currentIndex: _currentIndex,
-              items: tabs
-                  .map(
-                    (tab) => BottomNavItem(
-                      icon: tab.icon,
-                      label: tab.label,
-                      hasNotification: tab.id == 'unread' && _unreadCount > 0,
-                    ),
-                  )
-                  .toList(),
+              items:
+                  tabs
+                      .map(
+                        (tab) => BottomNavItem(
+                          icon: tab.icon,
+                          label: tab.label,
+                          hasNotification:
+                              tab.id == 'unread' && _unreadCount > 0,
+                        ),
+                      )
+                      .toList(),
               onTap: (index) => setState(() => _currentIndex = index),
             ),
           ),
@@ -203,8 +208,12 @@ class _HomeTabState extends State<_HomeTab> {
   Map<String, String> _feedTitles = {};
   SwipeAction _leftSwipeAction = SwipeAction.toggleRead;
   SwipeAction _rightSwipeAction = SwipeAction.toggleStar;
-  final PreviewLinesNotifier _previewLinesNotifier = PreviewLinesNotifier.instance;
+  final PreviewLinesNotifier _previewLinesNotifier =
+      PreviewLinesNotifier.instance;
+  final ArticleListPaddingNotifier _listPaddingNotifier =
+      ArticleListPaddingNotifier.instance;
   int _previewLines = 3;
+  double _listPadding = 16.0;
   DateTime? _lastSync;
   bool _swipeAllowsDelete = false;
   final SwipePrefsNotifier _swipePrefsNotifier = SwipePrefsNotifier.instance;
@@ -215,7 +224,9 @@ class _HomeTabState extends State<_HomeTab> {
   void initState() {
     super.initState();
     _previewLines = _previewLinesNotifier.lines;
+    _listPadding = _listPaddingNotifier.padding;
     _previewLinesNotifier.addListener(_handlePreviewLinesChanged);
+    _listPaddingNotifier.addListener(_handleListPaddingChanged);
     _unreadNotifier.addListener(_handleUnreadChanged);
     _swipePrefsNotifier.addListener(_handleSwipePrefsChanged);
     _lastSyncNotifier.addListener(_handleLastSyncChanged);
@@ -225,6 +236,7 @@ class _HomeTabState extends State<_HomeTab> {
   @override
   void dispose() {
     _previewLinesNotifier.removeListener(_handlePreviewLinesChanged);
+    _listPaddingNotifier.removeListener(_handleListPaddingChanged);
     _unreadNotifier.removeListener(_handleUnreadChanged);
     _swipePrefsNotifier.removeListener(_handleSwipePrefsChanged);
     _lastSyncNotifier.removeListener(_handleLastSyncChanged);
@@ -235,6 +247,7 @@ class _HomeTabState extends State<_HomeTab> {
     await _loadFeedTitles();
     await _loadSwipePreferences();
     await _loadPreviewLines();
+    await _loadListPadding();
     await _loadLastSyncTime();
     await _loadSwipeDeleteSetting();
     await _loadArticles();
@@ -249,10 +262,23 @@ class _HomeTabState extends State<_HomeTab> {
     _previewLinesNotifier.setLines(lines);
   }
 
+  Future<void> _loadListPadding() async {
+    final padding = await _storageService.getArticleListPadding();
+    if (!mounted) return;
+    setState(() => _listPadding = padding);
+    _listPaddingNotifier.setPadding(padding);
+  }
+
   void _handlePreviewLinesChanged() {
     final lines = _previewLinesNotifier.lines;
     if (!mounted || _previewLines == lines) return;
     setState(() => _previewLines = lines);
+  }
+
+  void _handleListPaddingChanged() {
+    final padding = _listPaddingNotifier.padding;
+    if (!mounted || (_listPadding - padding).abs() < 0.5) return;
+    setState(() => _listPadding = padding);
   }
 
   void _handleUnreadChanged() {
@@ -277,6 +303,7 @@ class _HomeTabState extends State<_HomeTab> {
       _lastSync = ts;
     });
   }
+
   Future<void> _loadFeedTitles() async {
     final List<Feed> feeds = await _db.getAllFeeds();
     if (!mounted) return;
@@ -315,15 +342,14 @@ class _HomeTabState extends State<_HomeTab> {
       final totalUnread = allArticles.where((a) => !a.isRead).length;
       final totalRead = allArticles.where((a) => a.isRead).length;
       print('Total unread: $totalUnread, Total read: $totalRead');
-      
+
       // Always show all articles in Home tab
-      final articles = await _db.getArticles(
-        limit: 100,
-        isRead: null,
-      );
+      final articles = await _db.getArticles(limit: 100, isRead: null);
       final unreadCount = articles.where((a) => !a.isRead).length;
-      print('Loaded ${articles.length} articles from database (all articles, actually unread in result: $unreadCount)');
-      
+      print(
+        'Loaded ${articles.length} articles from database (all articles, actually unread in result: $unreadCount)',
+      );
+
       // Debug: print first few article read statuses
       if (articles.isNotEmpty) {
         print('First 5 articles read status:');
@@ -331,13 +357,19 @@ class _HomeTabState extends State<_HomeTab> {
           print('  ${articles[i].title}: isRead=${articles[i].isRead}');
         }
       } else if (allArticles.isNotEmpty) {
-        print('WARNING: Filter returned 0 articles but DB has ${allArticles.length} total articles!');
+        print(
+          'WARNING: Filter returned 0 articles but DB has ${allArticles.length} total articles!',
+        );
         print('Sample article read statuses:');
-        for (var i = 0; i < (allArticles.length > 5 ? 5 : allArticles.length); i++) {
+        for (
+          var i = 0;
+          i < (allArticles.length > 5 ? 5 : allArticles.length);
+          i++
+        ) {
           print('  ${allArticles[i].title}: isRead=${allArticles[i].isRead}');
         }
       }
-      
+
       if (mounted) {
         setState(() {
           _articles = articles;
@@ -387,7 +419,9 @@ class _HomeTabState extends State<_HomeTab> {
     if (!hasConfig) {
       if (!initial && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Unable to sync: missing account configuration')),
+          const SnackBar(
+            content: Text('Unable to sync: missing account configuration'),
+          ),
         );
       }
       return;
@@ -404,9 +438,9 @@ class _HomeTabState extends State<_HomeTab> {
     } catch (e) {
       print('Error syncing articles from server: $e');
       if (!initial && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Sync failed: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sync failed: $e')));
       }
     } finally {
       if (mounted) {
@@ -420,8 +454,7 @@ class _HomeTabState extends State<_HomeTab> {
   @override
   Widget build(BuildContext context) {
     final textDirection = Directionality.of(context);
-    final isIOSPlatform =
-        Theme.of(context).platform == TargetPlatform.iOS;
+    final isIOSPlatform = Theme.of(context).platform == TargetPlatform.iOS;
     return Scaffold(
       appBar: PlatformAppBar(
         titleWidget: _buildTitleWidget(),
@@ -435,44 +468,47 @@ class _HomeTabState extends State<_HomeTab> {
           AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             height: _isSyncing ? 2 : 0,
-            child: _isSyncing
-                ? const LinearProgressIndicator(minHeight: 2)
-                : const SizedBox.shrink(),
+            child:
+                _isSyncing
+                    ? const LinearProgressIndicator(minHeight: 2)
+                    : const SizedBox.shrink(),
           ),
           Expanded(
             child: RefreshIndicator(
               onRefresh: () => _syncArticlesFromServer(),
-              child: _isLoading && _articles.isEmpty
-                  ? const Center(child: CircularProgressIndicator())
-                  : _articles.isEmpty
+              child:
+                  _isLoading && _articles.isEmpty
+                      ? const Center(child: CircularProgressIndicator())
+                      : _articles.isEmpty
                       ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: const [
-                            SizedBox(height: 120),
-                            Center(
-                              child: Text(
-                                'No articles found\nPull down to refresh',
-                                textAlign: TextAlign.center,
-                              ),
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: const [
+                          SizedBox(height: 120),
+                          Center(
+                            child: Text(
+                              'No articles found\nPull down to refresh',
+                              textAlign: TextAlign.center,
                             ),
-                          ],
-                        )
+                          ),
+                        ],
+                      )
                       : ListView.separated(
-                          physics: isIOSPlatform
-                              ? const BouncingScrollPhysics(
+                        physics:
+                            isIOSPlatform
+                                ? const BouncingScrollPhysics(
                                   parent: AlwaysScrollableScrollPhysics(),
                                 )
-                              : const ClampingScrollPhysics(),
-                          cacheExtent: 800,
-                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-                          itemCount: _articles.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
-                          itemBuilder: (context, index) {
-                            final article = _articles[index];
-                            return _buildSwipeableCard(article);
-                          },
-                        ),
+                                : const ClampingScrollPhysics(),
+                        cacheExtent: 800,
+                        padding: _listViewPadding(),
+                        itemCount: _articles.length,
+                        separatorBuilder:
+                            (_, __) => SizedBox(height: _cardSpacing),
+                        itemBuilder: (context, index) {
+                          final article = _articles[index];
+                          return _buildSwipeableCard(article);
+                        },
+                      ),
             ),
           ),
         ],
@@ -480,15 +516,24 @@ class _HomeTabState extends State<_HomeTab> {
     );
   }
 
-    Widget _buildTitleWidget() {
-      final theme = Theme.of(context);
+  EdgeInsets _listViewPadding() {
+    final horizontal = _listPadding;
+    final top = _listPadding * 0.75;
+    final bottom = 64 + _listPadding;
+    return EdgeInsets.fromLTRB(horizontal, top, horizontal, bottom);
+  }
 
-      final children = <Widget>[
-        Text(
-          'All Articles',
-          style: theme.textTheme.titleLarge,
-        ),
-      ];
+  double get _cardSpacing {
+    final spacing = (_listPadding / 16.0) * 12.0;
+    return spacing.clamp(8.0, 28.0).toDouble();
+  }
+
+  Widget _buildTitleWidget() {
+    final theme = Theme.of(context);
+
+    final children = <Widget>[
+      Text('All Articles', style: theme.textTheme.titleLarge),
+    ];
 
     if (_lastSync != null) {
       children.add(
@@ -502,17 +547,17 @@ class _HomeTabState extends State<_HomeTab> {
       );
     }
 
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: children,
-      );
-    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: children,
+    );
+  }
 
   String _formatSyncTimestamp(DateTime ts) {
     final formatter = DateFormat('MMM d, y • h:mm a');
     return 'Synced ${formatter.format(ts)}';
-    }
+  }
 
   Widget _buildSwipeableCard(Article article) {
     return Dismissible(
@@ -546,13 +591,19 @@ class _HomeTabState extends State<_HomeTab> {
     );
   }
 
-  Future<bool> _handleSwipeAction(Article article, DismissDirection direction) async {
+  Future<bool> _handleSwipeAction(
+    Article article,
+    DismissDirection direction,
+  ) async {
     final hasConfig = await _ensureSyncConfigured();
     if (!hasConfig) {
       return false;
     }
 
-    final action = direction == DismissDirection.startToEnd ? _leftSwipeAction : _rightSwipeAction;
+    final action =
+        direction == DismissDirection.startToEnd
+            ? _leftSwipeAction
+            : _rightSwipeAction;
 
     // Destructive delete via swipe when action is set to Delete
     if (action == SwipeAction.delete) {
@@ -645,12 +696,13 @@ class _SwipeBackground extends StatelessWidget {
           const SizedBox(width: 8),
           Text(
             _label,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
     );
   }
 }
-
-

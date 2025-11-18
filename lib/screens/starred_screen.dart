@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/article.dart';
+import '../notifiers/article_list_padding_notifier.dart';
 import '../notifiers/preview_lines_notifier.dart';
 import '../notifiers/starred_refresh_notifier.dart';
 import '../services/database_service.dart';
@@ -19,27 +20,34 @@ class StarredScreen extends StatefulWidget {
 
 class _StarredScreenState extends State<StarredScreen> {
   final DatabaseService _db = DatabaseService();
-  final StarredRefreshNotifier _starredNotifier = StarredRefreshNotifier.instance;
+  final StarredRefreshNotifier _starredNotifier =
+      StarredRefreshNotifier.instance;
   final PreviewLinesNotifier _previewNotifier = PreviewLinesNotifier.instance;
+  final ArticleListPaddingNotifier _listPaddingNotifier =
+      ArticleListPaddingNotifier.instance;
   final StorageService _storage = StorageService();
   List<Article> _articles = [];
   bool _isLoading = true;
   Map<String, String> _feedTitles = {};
   int _previewLines = 3;
+  double _listPadding = 16.0;
 
   @override
   void initState() {
     super.initState();
     _previewLines = _previewNotifier.lines;
+    _listPadding = _listPaddingNotifier.padding;
     _loadInitialData();
     _starredNotifier.addListener(_handleRefreshNotification);
     _previewNotifier.addListener(_handlePreviewLinesChanged);
+    _listPaddingNotifier.addListener(_handleListPaddingChanged);
   }
 
   @override
   void dispose() {
     _starredNotifier.removeListener(_handleRefreshNotification);
     _previewNotifier.removeListener(_handlePreviewLinesChanged);
+    _listPaddingNotifier.removeListener(_handleListPaddingChanged);
     super.dispose();
   }
 
@@ -47,6 +55,7 @@ class _StarredScreenState extends State<StarredScreen> {
     await Future.wait([
       _loadFeedTitles(),
       _loadPreviewLines(),
+      _loadListPadding(),
       _loadArticles(),
     ]);
   }
@@ -55,9 +64,7 @@ class _StarredScreenState extends State<StarredScreen> {
     final feeds = await _db.getAllFeeds();
     if (!mounted) return;
     setState(() {
-      _feedTitles = {
-        for (final feed in feeds) feed.id: feed.title,
-      };
+      _feedTitles = {for (final feed in feeds) feed.id: feed.title};
     });
   }
 
@@ -71,11 +78,24 @@ class _StarredScreenState extends State<StarredScreen> {
     setState(() => _previewLines = lines);
   }
 
+  void _handleListPaddingChanged() {
+    final padding = _listPaddingNotifier.padding;
+    if (!mounted || (_listPadding - padding).abs() < 0.5) return;
+    setState(() => _listPadding = padding);
+  }
+
   Future<void> _loadPreviewLines() async {
     final lines = await _storage.getPreviewLines();
     if (!mounted) return;
     setState(() => _previewLines = lines);
     _previewNotifier.setLines(lines);
+  }
+
+  Future<void> _loadListPadding() async {
+    final padding = await _storage.getArticleListPadding();
+    if (!mounted) return;
+    setState(() => _listPadding = padding);
+    _listPaddingNotifier.setPadding(padding);
   }
 
   Future<void> _loadArticles() async {
@@ -92,50 +112,64 @@ class _StarredScreenState extends State<StarredScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: const PlatformAppBar(
-        title: 'Starred',
-      ),
+      appBar: const PlatformAppBar(title: 'Starred'),
       body: RefreshIndicator(
         onRefresh: _loadArticles,
-        child: _isLoading
-            ? ListView(
-                children: const [
-                  SizedBox(height: 200),
-                  Center(child: CircularProgressIndicator()),
-                ],
-              )
-            : _articles.isEmpty
+        child:
+            _isLoading
                 ? ListView(
-                    children: const [
-                      SizedBox(height: 120),
-                      Center(child: Text('No starred articles')),
-                    ],
-                  )
+                  children: const [
+                    SizedBox(height: 200),
+                    Center(child: CircularProgressIndicator()),
+                  ],
+                )
+                : _articles.isEmpty
+                ? ListView(
+                  children: const [
+                    SizedBox(height: 120),
+                    Center(child: Text('No starred articles')),
+                  ],
+                )
                 : ListView.separated(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 80),
-                    itemCount: _articles.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      final article = _articles[index];
-                      return ArticleCard(
-                        article: article,
-                        summary: stripHtml(article.summary ?? article.content ?? ''),
-                        sourceName: _feedTitles[article.feedId] ?? 'Unknown source',
-                        summaryLines: _previewLines,
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => ArticleDetailScreen(article: article),
-                            ),
-                          ).then((_) => _loadArticles());
-                        },
-                      );
-                    },
-                  ),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: _listViewPadding(),
+                  itemCount: _articles.length,
+                  separatorBuilder: (_, __) => SizedBox(height: _cardSpacing),
+                  itemBuilder: (context, index) {
+                    final article = _articles[index];
+                    return ArticleCard(
+                      article: article,
+                      summary: stripHtml(
+                        article.summary ?? article.content ?? '',
+                      ),
+                      sourceName:
+                          _feedTitles[article.feedId] ?? 'Unknown source',
+                      summaryLines: _previewLines,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (_) => ArticleDetailScreen(article: article),
+                          ),
+                        ).then((_) => _loadArticles());
+                      },
+                    );
+                  },
+                ),
       ),
     );
   }
-}
 
+  EdgeInsets _listViewPadding() {
+    final horizontal = _listPadding;
+    final top = _listPadding * 0.75;
+    final bottom = 64 + _listPadding;
+    return EdgeInsets.fromLTRB(horizontal, top, horizontal, bottom);
+  }
+
+  double get _cardSpacing {
+    final spacing = (_listPadding / 16.0) * 12.0;
+    return spacing.clamp(8.0, 28.0).toDouble();
+  }
+}

@@ -18,6 +18,7 @@ class StorageService {
   static const String _keyDeletedArticleIds = 'deleted_article_ids';
   static const String _keySyncLogEntries = 'sync_log_entries';
   static const String _keyLastSyncLogTimestamp = 'last_sync_log_timestamp';
+  static const String _keyArticleListPadding = 'article_list_padding';
 
   Future<void> saveUserConfig(UserConfig config) async {
     final prefs = await SharedPreferences.getInstance();
@@ -48,11 +49,13 @@ class StorageService {
   Future<void> saveBackgroundSyncInterval(int minutes) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('background_sync_interval', minutes);
-    
+
     // Update user config if exists
     final config = await getUserConfig();
     if (config != null) {
-      await saveUserConfig(config.copyWith(backgroundSyncIntervalMinutes: minutes));
+      await saveUserConfig(
+        config.copyWith(backgroundSyncIntervalMinutes: minutes),
+      );
     }
   }
 
@@ -64,7 +67,7 @@ class StorageService {
   Future<void> saveArticleFetchLimit(int limit) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('article_fetch_limit', limit);
-    
+
     // Update user config if exists
     final config = await getUserConfig();
     if (config != null) {
@@ -165,6 +168,17 @@ class StorageService {
     return prefs.getDouble(_keyArticleFontSize) ?? 16.0;
   }
 
+  Future<void> saveArticleListPadding(double padding) async {
+    final prefs = await SharedPreferences.getInstance();
+    final clamped = padding.clamp(8.0, 32.0);
+    await prefs.setDouble(_keyArticleListPadding, clamped);
+  }
+
+  Future<double> getArticleListPadding() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_keyArticleListPadding) ?? 16.0;
+  }
+
   Future<void> saveSwipeAllowsDelete(bool value) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keySwipeAllowsDelete, value);
@@ -195,9 +209,10 @@ class StorageService {
     final existing = prefs.getStringList(_keySyncLogEntries) ?? <String>[];
     existing.add(line);
     const maxEntries = 100;
-    final trimmed = existing.length > maxEntries
-        ? existing.sublist(existing.length - maxEntries)
-        : existing;
+    final trimmed =
+        existing.length > maxEntries
+            ? existing.sublist(existing.length - maxEntries)
+            : existing;
     await prefs.setStringList(_keySyncLogEntries, trimmed);
   }
 
@@ -230,4 +245,3 @@ class StorageService {
     }
   }
 }
-
