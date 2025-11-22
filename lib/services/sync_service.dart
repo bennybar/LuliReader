@@ -14,10 +14,12 @@ class SyncService {
   final OfflineCacheService _offlineCacheService = OfflineCacheService();
   final StorageService _storage = StorageService();
   int _articleFetchLimit = 200;
+  int _maxArticleAgeDays = 30;
 
   void setUserConfig(UserConfig config) {
     _api.setConfig(config);
     _articleFetchLimit = config.articleFetchLimit;
+    _maxArticleAgeDays = config.maxArticleAgeDays;
   }
 
   Future<void> syncAll({
@@ -42,6 +44,19 @@ class SyncService {
         excludeRead: false,
       );
       print('Got ${allArticles.length} total articles from reading list');
+
+      if (_maxArticleAgeDays > 0) {
+        final cutoff = DateTime.now().subtract(Duration(days: _maxArticleAgeDays));
+        final before = allArticles.length;
+        allArticles =
+            allArticles.where((a) => a.publishedDate.isAfter(cutoff)).toList();
+        final dropped = before - allArticles.length;
+        if (dropped > 0) {
+          print(
+            'Filtered out $dropped articles older than $_maxArticleAgeDays days',
+          );
+        }
+      }
 
       // Filter out articles the user has deleted locally so they don't come back.
       final deletedIds = (await _storage.getDeletedArticleIds()).toSet();

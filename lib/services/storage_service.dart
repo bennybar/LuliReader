@@ -19,11 +19,13 @@ class StorageService {
   static const String _keySyncLogEntries = 'sync_log_entries';
   static const String _keyLastSyncLogTimestamp = 'last_sync_log_timestamp';
   static const String _keyArticleListPadding = 'article_list_padding';
+  static const String _keyMaxArticleAgeDays = 'max_article_age_days';
 
   Future<void> saveUserConfig(UserConfig config) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyUserConfig, jsonEncode(config.toMap()));
     await prefs.setBool(_keyIsLoggedIn, true);
+    await prefs.setInt(_keyMaxArticleAgeDays, config.maxArticleAgeDays);
   }
 
   Future<UserConfig?> getUserConfig() async {
@@ -44,6 +46,7 @@ class StorageService {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyUserConfig);
     await prefs.setBool(_keyIsLoggedIn, false);
+    await prefs.remove(_keyMaxArticleAgeDays);
   }
 
   Future<void> saveBackgroundSyncInterval(int minutes) async {
@@ -78,6 +81,26 @@ class StorageService {
   Future<int> getArticleFetchLimit() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt('article_fetch_limit') ?? 200;
+  }
+
+  Future<void> saveMaxArticleAgeDays(int days) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyMaxArticleAgeDays, days);
+
+    final config = await getUserConfig();
+    if (config != null) {
+      await saveUserConfig(config.copyWith(maxArticleAgeDays: days));
+    }
+  }
+
+  Future<int> getMaxArticleAgeDays() async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getInt(_keyMaxArticleAgeDays);
+    if (stored != null) {
+      return stored;
+    }
+    final config = await getUserConfig();
+    return config?.maxArticleAgeDays ?? 30;
   }
 
   Future<void> saveAutoMarkRead(bool value) async {

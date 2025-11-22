@@ -6,6 +6,7 @@ class UserConfig {
   final int backgroundSyncIntervalMinutes;
   final int articleFetchLimit;
   final String? locale;
+  final int maxArticleAgeDays;
 
   UserConfig({
     required this.serverUrl,
@@ -15,6 +16,7 @@ class UserConfig {
     this.backgroundSyncIntervalMinutes = 60,
     this.articleFetchLimit = 200,
     this.locale,
+    this.maxArticleAgeDays = 30,
   });
 
   String get apiUrl {
@@ -33,6 +35,7 @@ class UserConfig {
       'backgroundSyncIntervalMinutes': backgroundSyncIntervalMinutes,
       'articleFetchLimit': articleFetchLimit,
       'locale': locale,
+      'maxArticleAgeDays': maxArticleAgeDays,
     };
   }
 
@@ -46,6 +49,7 @@ class UserConfig {
           map['backgroundSyncIntervalMinutes'] as int? ?? 60,
       articleFetchLimit: map['articleFetchLimit'] as int? ?? 200,
       locale: map['locale'] as String?,
+      maxArticleAgeDays: map['maxArticleAgeDays'] as int? ?? 30,
     );
   }
 
@@ -57,6 +61,7 @@ class UserConfig {
     int? backgroundSyncIntervalMinutes,
     int? articleFetchLimit,
     String? locale,
+    int? maxArticleAgeDays,
   }) {
     return UserConfig(
       serverUrl: serverUrl ?? this.serverUrl,
@@ -67,6 +72,7 @@ class UserConfig {
           backgroundSyncIntervalMinutes ?? this.backgroundSyncIntervalMinutes,
       articleFetchLimit: articleFetchLimit ?? this.articleFetchLimit,
       locale: locale ?? this.locale,
+      maxArticleAgeDays: maxArticleAgeDays ?? this.maxArticleAgeDays,
     );
   }
 }

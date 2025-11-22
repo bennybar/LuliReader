@@ -44,6 +44,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _swipeAllowsDelete = false;
   bool _isLoadingSyncLog = false;
   List<String> _syncLogEntries = const [];
+  int _maxArticleAgeDays = 30;
 
   @override
   void initState() {
@@ -54,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     final interval = await _storage.getBackgroundSyncInterval();
     final limit = await _storage.getArticleFetchLimit();
+    final maxAgeDays = await _storage.getMaxArticleAgeDays();
     final config = await _storage.getUserConfig();
     final autoMark = await _storage.getAutoMarkRead();
     final leftSwipe = await _storage.getSwipeLeftAction();
@@ -67,6 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _syncInterval = interval;
       _articleFetchLimit = limit;
+      _maxArticleAgeDays = maxAgeDays;
       _autoMarkRead = autoMark;
       _leftSwipeAction = leftSwipe;
       _rightSwipeAction = rightSwipe;
@@ -547,6 +550,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (limit != null) {
                   await _storage.saveArticleFetchLimit(limit);
                   setState(() => _articleFetchLimit = limit);
+                }
+              },
+            ),
+            ListTile(
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              title: const Text('Article age limit'),
+              subtitle: Text('Last $_maxArticleAgeDays days'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                final options = [3, 7, 14, 30, 60, 90, 180];
+                final selection = await showDialog<int>(
+                  context: context,
+                  builder: (context) {
+                    int selected = _maxArticleAgeDays;
+                    return StatefulBuilder(
+                      builder:
+                          (context, setDialogState) => AlertDialog(
+                            title: const Text('Only fetch articles from'),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: options
+                                  .map(
+                                    (days) => RadioListTile<int>(
+                                      title: Text('Last $days days'),
+                                      value: days,
+                                      groupValue: selected,
+                                      onChanged: (value) {
+                                        if (value == null) return;
+                                        setDialogState(() => selected = value);
+                                        Navigator.pop(context, value);
+                                      },
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ),
+                    );
+                  },
+                );
+                if (selection != null) {
+                  await _storage.saveMaxArticleAgeDays(selection);
+                  setState(() => _maxArticleAgeDays = selection);
                 }
               },
             ),
