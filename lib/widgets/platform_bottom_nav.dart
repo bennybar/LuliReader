@@ -26,8 +26,8 @@ class PlatformBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return NavigationBar(
-      height: 60,
+    final bar = NavigationBar(
+      height: 64,
       backgroundColor: Theme.of(context).colorScheme.surface,
       surfaceTintColor: Colors.transparent,
       indicatorShape: const StadiumBorder(),
@@ -43,6 +43,14 @@ class PlatformBottomNav extends StatelessWidget {
             ),
           )
           .toList(),
+    );
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: bar,
+      ),
     );
   }
 
