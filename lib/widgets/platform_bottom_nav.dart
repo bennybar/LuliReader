@@ -1,7 +1,4 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:cupertino_native/cupertino_native.dart';
 
 class BottomNavItem {
   final IconData icon;
@@ -29,35 +26,19 @@ class PlatformBottomNav extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isApplePlatform = Platform.isIOS || Platform.isMacOS;
-    return isApplePlatform ? _buildCupertinoNativeNav(context) : _buildMaterialNav(context);
-  }
-
-  Widget _buildCupertinoNativeNav(BuildContext context) {
-    // CNTabBar already handles safe areas; returning it directly keeps it closer
-    // to the bottom edge while still respecting the system inset.
-    return CNTabBar(
-      items: items
-          .map(
-            (item) => CNTabBarItem(
-              label: item.label,
-              icon: CNSymbol(_symbolNameForItem(item)),
-            ),
-          )
-          .toList(),
-      currentIndex: currentIndex,
-      onTap: onTap,
-    );
-  }
-
-  Widget _buildMaterialNav(BuildContext context) {
     return NavigationBar(
+      height: 60,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      surfaceTintColor: Colors.transparent,
+      indicatorShape: const StadiumBorder(),
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
       selectedIndex: currentIndex,
       onDestinationSelected: onTap,
       destinations: items
           .map(
             (item) => NavigationDestination(
-              icon: Icon(item.icon),
+              icon: _buildIcon(context, item, false),
+              selectedIcon: _buildIcon(context, item, true),
               label: item.label,
             ),
           )
@@ -65,46 +46,36 @@ class PlatformBottomNav extends StatelessWidget {
     );
   }
 
-  Widget _buildNavItem(BuildContext context, BottomNavItem item, int index) {
-    final isSelected = currentIndex == index;
-    return GestureDetector(
-      onTap: () => onTap(index),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            item.icon,
-            color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
-            size: 28,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            item.label,
-            style: TextStyle(
-              fontSize: 12,
-              color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey,
+  Widget _buildIcon(BuildContext context, BottomNavItem item, bool selected) {
+    final icon = Icon(
+      item.icon,
+      color: selected
+          ? Theme.of(context).colorScheme.onPrimaryContainer
+          : null,
+    );
+
+    if (!item.hasNotification) {
+      return icon;
+    }
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        icon,
+        Positioned(
+          right: -2,
+          top: -2,
+          child: Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.error,
+              shape: BoxShape.circle,
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
-  }
-
-  String _symbolNameForItem(BottomNavItem item) {
-    switch (item.label.toLowerCase()) {
-      case 'home':
-        return 'house';
-      case 'unread':
-        // Only show the badge symbol when there are unread items; otherwise
-        // use the plain envelope icon to avoid a misleading dot.
-        return item.hasNotification ? 'envelope.badge' : 'envelope';
-      case 'starred':
-        return 'star';
-      case 'settings':
-        return 'gearshape';
-      default:
-        return 'circle';
-    }
   }
 }
 

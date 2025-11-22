@@ -8,6 +8,7 @@ import 'package:readability/article.dart' as readability;
 import 'package:readability/readability.dart';
 
 import '../models/article.dart';
+import '../notifiers/offline_cache_progress_notifier.dart';
 import 'database_service.dart';
 
 class OfflineCacheService {
@@ -18,16 +19,56 @@ class OfflineCacheService {
   final DatabaseService _db = DatabaseService();
   final http.Client _client = http.Client();
   Directory? _baseDir;
+  Future<void>? _activeRefresh;
+  final OfflineCacheProgressNotifier _progressNotifier =
+      OfflineCacheProgressNotifier.instance;
 
   Future<void> refreshUnreadArticles({bool force = false}) async {
-    final unreadArticles = await _db.getArticles(isRead: false);
-    for (final article in unreadArticles) {
-      if (!force &&
-          article.offlineCachePath != null &&
-          await _fileExists(article.offlineCachePath!)) {
-        continue;
+    if (_activeRefresh != null) {
+      if (!force) {
+        return _activeRefresh!;
       }
-      await _cacheArticle(article, force: force);
+      await _activeRefresh;
+    }
+
+    final future = _performRefreshUnreadArticles(force: force);
+    _activeRefresh = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_activeRefresh, future)) {
+        _activeRefresh = null;
+      }
+    }
+  }
+
+  Future<void> _performRefreshUnreadArticles({required bool force}) async {
+    final unreadArticles = await _db.getArticles(isRead: false);
+    if (unreadArticles.isEmpty) {
+      _progressNotifier.reset();
+      return;
+    }
+
+    _progressNotifier.begin(total: unreadArticles.length);
+    var processed = 0;
+
+    try {
+      for (final article in unreadArticles) {
+        final shouldRefresh =
+            force ||
+            article.offlineCachePath == null ||
+            !await _fileExists(article.offlineCachePath!);
+        if (shouldRefresh) {
+          await _cacheArticle(article, force: force);
+        }
+        processed++;
+        _progressNotifier.report(
+          processed: processed,
+          total: unreadArticles.length,
+        );
+      }
+    } finally {
+      _progressNotifier.complete();
     }
   }
 

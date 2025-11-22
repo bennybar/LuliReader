@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import 'dart:ui' as ui;
 
 import 'screens/home_screen.dart';
@@ -8,7 +7,6 @@ import 'screens/login_screen.dart';
 import 'services/background_sync_service.dart';
 import 'services/storage_service.dart';
 import 'services/notification_service.dart';
-import 'utils/platform_utils.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -96,42 +94,37 @@ class _LuliReaderAppState extends State<LuliReaderApp> {
           child: child!,
         );
       },
-      // Material Design 3 for Android, default for iOS
-      theme: isAndroid
-          ? ThemeData(
-              useMaterial3: true,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.blue,
-                brightness: Brightness.light,
-              ),
-            )
-          : ThemeData(
-              useMaterial3: false,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.blue,
-                brightness: Brightness.light,
-              ),
-              scaffoldBackgroundColor: Colors.white,
-            ),
-      darkTheme: isAndroid
-          ? ThemeData(
-              useMaterial3: true,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.blue,
-                brightness: Brightness.dark,
-              ),
-            )
-          : ThemeData(
-              useMaterial3: false,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: Colors.blue,
-                brightness: Brightness.dark,
-              ),
-              scaffoldBackgroundColor: Colors.black,
-            ),
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
+      themeMode: ThemeMode.system,
       home: _isLoggedIn ? const HomeScreen() : const LoginScreen(),
     );
 
     return app;
+  }
+  ThemeData _buildTheme(Brightness brightness) {
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: Colors.blue,
+      brightness: brightness,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      scaffoldBackgroundColor: colorScheme.surface,
+      appBarTheme: AppBarTheme(
+        backgroundColor: colorScheme.surface,
+        foregroundColor: colorScheme.onSurface,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        height: 60,
+        backgroundColor: colorScheme.surface,
+        indicatorColor: colorScheme.primaryContainer.withOpacity(0.4),
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      ),
+    );
   }
 }

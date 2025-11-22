@@ -10,7 +10,6 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:html/dom.dart' as html_dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:intl/intl.dart';
-import 'package:liquid_glass_renderer/liquid_glass_renderer.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:video_player/video_player.dart';
 
@@ -1189,28 +1188,44 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         child: AnimatedOpacity(
           duration: const Duration(milliseconds: 220),
           opacity: _isBottomBarHidden ? 0 : 1,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildLiquidFab(
-                icon: Icons.open_in_browser,
-                tooltip: 'Open original article',
-                onTap: _isLoading ? null : _openInBrowser,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surface,
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildActionButton(
+                    icon: Icons.open_in_browser,
+                    tooltip: 'Open original article',
+                    onTap: _isLoading ? null : _openInBrowser,
+                  ),
+                  const SizedBox(width: 12),
+                  _buildActionButton(
+                    icon: Icons.share_outlined,
+                    tooltip: 'Share article',
+                    onTapWithContext: _isLoading ? null : _handleShareTap,
+                  ),
+                ],
               ),
-              const SizedBox(width: 12),
-              _buildLiquidFab(
-                icon: Icons.share_outlined,
-                tooltip: 'Share article',
-                onTapWithContext: _isLoading ? null : _handleShareTap,
-              ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildLiquidFab({
+  Widget _buildActionButton({
     required IconData icon,
     required String tooltip,
     VoidCallback? onTap,
@@ -1224,50 +1239,19 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                 : onTap;
         final theme = Theme.of(buttonContext);
 
-        return LiquidGlassLayer(
-          settings: const LiquidGlassSettings(
-            thickness: 18,
-            blur: 28,
-            glassColor: Color(0x33FFFFFF),
-          ),
-          child: LiquidGlass(
-            shape: LiquidRoundedSuperellipse(borderRadius: 28),
-            glassContainsChild: false,
-            child: Tooltip(
-              message: tooltip,
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(28),
-                  onTap: handler,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(28),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.35),
-                        width: 0.8,
-                      ),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          Colors.white.withValues(alpha: 0.35),
-                          Colors.white.withValues(alpha: 0.12),
-                        ],
-                      ),
-                    ),
-                    child: Icon(
-                      icon,
-                      size: 20,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-              ),
+        return Tooltip(
+          message: tooltip,
+          child: FilledButton.tonal(
+            onPressed: handler,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              shape: const StadiumBorder(),
+              elevation: 0,
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
         );

@@ -10,6 +10,7 @@ import '../notifiers/unread_refresh_notifier.dart';
 import '../notifiers/swipe_prefs_notifier.dart';
 import '../notifiers/last_sync_notifier.dart';
 import '../services/database_service.dart';
+import '../services/offline_cache_service.dart';
 import '../services/storage_service.dart';
 import '../services/sync_service.dart';
 import '../utils/article_text_utils.dart';
@@ -20,6 +21,7 @@ import 'settings_screen.dart';
 import 'article_detail_screen.dart';
 import '../widgets/platform_bottom_nav.dart';
 import '../widgets/platform_app_bar.dart';
+import '../notifiers/offline_cache_progress_notifier.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -49,18 +51,28 @@ class _HomeScreenState extends State<HomeScreen> {
   final DatabaseService _db = DatabaseService();
   final UnreadRefreshNotifier _unreadNotifier = UnreadRefreshNotifier.instance;
   int _unreadCount = 0;
+  final OfflineCacheService _offlineCacheService = OfflineCacheService();
+  final OfflineCacheProgressNotifier _offlineProgressNotifier =
+      OfflineCacheProgressNotifier.instance;
+  bool _isOfflineCaching = false;
+  double _offlineCachingProgress = 0.0;
+  bool _offlinePrefetchScheduled = false;
 
   @override
   void initState() {
     super.initState();
     _loadTabPreferences();
     _unreadNotifier.addListener(_handleUnreadChanged);
+    _offlineProgressNotifier.addListener(_handleOfflineCacheProgress);
+    _handleOfflineCacheProgress();
+    _scheduleOfflineCaching();
     _loadUnreadCount();
   }
 
   @override
   void dispose() {
     _unreadNotifier.removeListener(_handleUnreadChanged);
+    _offlineProgressNotifier.removeListener(_handleOfflineCacheProgress);
     super.dispose();
   }
 
@@ -72,6 +84,22 @@ class _HomeScreenState extends State<HomeScreen> {
     final count = await _db.getUnreadCount();
     if (!mounted) return;
     setState(() => _unreadCount = count);
+  }
+
+  void _scheduleOfflineCaching() {
+    if (_offlinePrefetchScheduled) return;
+    _offlinePrefetchScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _offlineCacheService.refreshUnreadArticles();
+    });
+  }
+
+  void _handleOfflineCacheProgress() {
+    if (!mounted) return;
+    setState(() {
+      _isOfflineCaching = _offlineProgressNotifier.isActive;
+      _offlineCachingProgress = _offlineProgressNotifier.progress;
+    });
   }
 
   Future<void> _loadTabPreferences() async {
@@ -149,6 +177,49 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<_TabConfig> get _tabConfigs => _getTabConfigs(_showStarredTab);
 
+  Widget _buildBottomNavigationArea(List<_TabConfig> tabs) {
+    return SafeArea(
+      top: false,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildOfflineProgressBar(),
+          PlatformBottomNav(
+            currentIndex: _currentIndex,
+            items: tabs
+                .map(
+                  (tab) => BottomNavItem(
+                    icon: tab.icon,
+                    label: tab.label,
+                    hasNotification: tab.id == 'unread' && _unreadCount > 0,
+                  ),
+                )
+                .toList(),
+            onTap: (index) => setState(() => _currentIndex = index),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOfflineProgressBar() {
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 220),
+      child: _isOfflineCaching
+          ? Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 6),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: _offlineCachingProgress.clamp(0.0, 1.0),
+                  minHeight: 3,
+                ),
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final tabs = _tabConfigs;
@@ -158,34 +229,11 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Scaffold(
-      body: Stack(
-        children: [
-          Positioned.fill(
-            child: IndexedStack(
-              index: _currentIndex,
-              children: tabs.map((tab) => tab.widget).toList(),
-            ),
-          ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: PlatformBottomNav(
-              currentIndex: _currentIndex,
-              items:
-                  tabs
-                      .map(
-                        (tab) => BottomNavItem(
-                          icon: tab.icon,
-                          label: tab.label,
-                          hasNotification:
-                              tab.id == 'unread' && _unreadCount > 0,
-                        ),
-                      )
-                      .toList(),
-              onTap: (index) => setState(() => _currentIndex = index),
-            ),
-          ),
-        ],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: tabs.map((tab) => tab.widget).toList(),
       ),
+      bottomNavigationBar: _buildBottomNavigationArea(tabs),
     );
   }
 }
@@ -664,8 +712,8 @@ class _HomeTabState extends State<_HomeTab> {
     }
     return false; // Don't dismiss
   }
-}
 
+}
 class _SwipeBackground extends StatelessWidget {
   final Alignment alignment;
   final SwipeAction action;
