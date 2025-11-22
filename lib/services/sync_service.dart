@@ -20,7 +20,10 @@ class SyncService {
     _articleFetchLimit = config.articleFetchLimit;
   }
 
-  Future<void> syncAll({bool fetchFullContent = false}) async {
+  Future<void> syncAll({
+    bool fetchFullContent = false,
+    bool refreshOfflineCache = true,
+  }) async {
     try {
       print('Starting sync...');
 
@@ -66,8 +69,10 @@ class SyncService {
       // Sync starred status
       await syncStarredStatus();
 
-      // Refresh offline cache (unread) and cleanup expired caches
-      await _offlineCacheService.refreshAndCleanup();
+      // Refresh offline cache (unread) and cleanup expired caches when requested
+      if (refreshOfflineCache) {
+        await _offlineCacheService.refreshAndCleanup();
+      }
 
       // Persist last sync and notify listeners so all tabs can refresh
       await _storage.saveLastSyncTimestamp(DateTime.now());

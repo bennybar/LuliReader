@@ -504,7 +504,10 @@ class _HomeTabState extends State<_HomeTab> {
     if (!mounted) return;
     setState(() => _isSyncing = true);
     try {
-      await _syncService.syncAll(fetchFullContent: false);
+      await _syncService.syncAll(
+        fetchFullContent: false,
+        refreshOfflineCache: false,
+      );
       print('Manual sync completed');
       await _loadFeedTitles();
       await _storageService.saveLastSyncTimestamp(DateTime.now());
