@@ -28,15 +28,20 @@ class _StarredScreenState extends State<StarredScreen> {
   final StorageService _storage = StorageService();
   List<Article> _articles = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMoreArticles = true;
   Map<String, String> _feedTitles = {};
   int _previewLines = 3;
   double _listPadding = 16.0;
+  final ScrollController _scrollController = ScrollController();
+  static const int _pageSize = 20;
 
   @override
   void initState() {
     super.initState();
     _previewLines = _previewNotifier.lines;
     _listPadding = _listPaddingNotifier.padding;
+    _scrollController.addListener(_onScroll);
     _loadInitialData();
     _starredNotifier.addListener(_handleRefreshNotification);
     _previewNotifier.addListener(_handlePreviewLinesChanged);
@@ -48,6 +53,8 @@ class _StarredScreenState extends State<StarredScreen> {
     _starredNotifier.removeListener(_handleRefreshNotification);
     _previewNotifier.removeListener(_handlePreviewLinesChanged);
     _listPaddingNotifier.removeListener(_handleListPaddingChanged);
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -69,7 +76,7 @@ class _StarredScreenState extends State<StarredScreen> {
   }
 
   void _handleRefreshNotification() {
-    _loadArticles();
+    _loadArticles(reset: true);
   }
 
   void _handlePreviewLinesChanged() {
@@ -98,15 +105,73 @@ class _StarredScreenState extends State<StarredScreen> {
     _listPaddingNotifier.setPadding(padding);
   }
 
-  Future<void> _loadArticles() async {
+  Future<void> _loadArticles({bool reset = false}) async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
-    final articles = await _db.getArticles(isStarred: true, limit: 100);
-    if (!mounted) return;
-    setState(() {
-      _articles = articles;
-      _isLoading = false;
-    });
+
+    if (reset) {
+      setState(() {
+        _articles = [];
+        _isLoading = true;
+        _hasMoreArticles = true;
+      });
+    } else {
+      setState(() => _isLoading = true);
+    }
+
+    try {
+      final articles = await _db.getArticles(
+        isStarred: true,
+        limit: _pageSize,
+        offset: reset ? 0 : _articles.length,
+      );
+      if (!mounted) return;
+      setState(() {
+        if (reset) {
+          _articles = articles;
+        } else {
+          _articles.addAll(articles);
+        }
+        _hasMoreArticles = articles.length == _pageSize;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error loading articles: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _loadMoreArticles() async {
+    if (_isLoadingMore || !_hasMoreArticles || !mounted) return;
+
+    setState(() => _isLoadingMore = true);
+    try {
+      final articles = await _db.getArticles(
+        isStarred: true,
+        limit: _pageSize,
+        offset: _articles.length,
+      );
+      if (mounted) {
+        setState(() {
+          _articles.addAll(articles);
+          _hasMoreArticles = articles.length == _pageSize;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading more articles: $e');
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreArticles();
+    }
   }
 
   @override
@@ -114,7 +179,7 @@ class _StarredScreenState extends State<StarredScreen> {
     return Scaffold(
       appBar: const PlatformAppBar(title: 'Starred'),
       body: RefreshIndicator(
-        onRefresh: _loadArticles,
+        onRefresh: () => _loadArticles(reset: true),
         child:
             _isLoading
                 ? ListView(
@@ -131,11 +196,18 @@ class _StarredScreenState extends State<StarredScreen> {
                   ],
                 )
                 : ListView.separated(
+                  controller: _scrollController,
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: _listViewPadding(),
-                  itemCount: _articles.length,
+                  itemCount: _articles.length + (_hasMoreArticles ? 1 : 0),
                   separatorBuilder: (_, __) => SizedBox(height: _cardSpacing),
                   itemBuilder: (context, index) {
+                    if (index >= _articles.length) {
+                      return const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Center(child: CircularProgressIndicator()),
+                      );
+                    }
                     final article = _articles[index];
                     return ArticleCard(
                       article: article,
@@ -152,7 +224,7 @@ class _StarredScreenState extends State<StarredScreen> {
                             builder:
                                 (_) => ArticleDetailScreen(article: article),
                           ),
-                        ).then((_) => _loadArticles());
+                        ).then((_) => _loadArticles(reset: true));
                       },
                     );
                   },

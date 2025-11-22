@@ -203,6 +203,8 @@ class _HomeTabState extends State<_HomeTab> {
   final StorageService _storageService = StorageService();
   List<Article> _articles = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMoreArticles = true;
   bool _isSyncing = false;
   bool _hasSyncConfig = false;
   Map<String, String> _feedTitles = {};
@@ -219,6 +221,8 @@ class _HomeTabState extends State<_HomeTab> {
   final SwipePrefsNotifier _swipePrefsNotifier = SwipePrefsNotifier.instance;
   final LastSyncNotifier _lastSyncNotifier = LastSyncNotifier.instance;
   final UnreadRefreshNotifier _unreadNotifier = UnreadRefreshNotifier.instance;
+  final ScrollController _scrollController = ScrollController();
+  static const int _pageSize = 20;
 
   @override
   void initState() {
@@ -230,6 +234,7 @@ class _HomeTabState extends State<_HomeTab> {
     _unreadNotifier.addListener(_handleUnreadChanged);
     _swipePrefsNotifier.addListener(_handleSwipePrefsChanged);
     _lastSyncNotifier.addListener(_handleLastSyncChanged);
+    _scrollController.addListener(_onScroll);
     _initialize();
   }
 
@@ -240,6 +245,8 @@ class _HomeTabState extends State<_HomeTab> {
     _unreadNotifier.removeListener(_handleUnreadChanged);
     _swipePrefsNotifier.removeListener(_handleSwipePrefsChanged);
     _lastSyncNotifier.removeListener(_handleLastSyncChanged);
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -250,7 +257,7 @@ class _HomeTabState extends State<_HomeTab> {
     await _loadListPadding();
     await _loadLastSyncTime();
     await _loadSwipeDeleteSetting();
-    await _loadArticles();
+    await _loadArticles(reset: true);
   }
 
   Future<void> _loadPreviewLines() async {
@@ -284,7 +291,7 @@ class _HomeTabState extends State<_HomeTab> {
   void _handleUnreadChanged() {
     // Whenever unread status changes (including from Unread tab or article
     // detail), refresh the Home tab list so read state is immediately reflected.
-    _loadArticles();
+    _loadArticles(reset: true);
   }
 
   void _handleSwipePrefsChanged() {
@@ -323,56 +330,43 @@ class _HomeTabState extends State<_HomeTab> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Refresh articles when returning to this tab
-    _loadArticles();
+    _loadArticles(reset: true);
     _loadSwipePreferences();
   }
 
-  Future<void> _loadArticles() async {
+  Future<void> _loadArticles({bool reset = false}) async {
     if (!mounted) return;
 
-    // Only show the big centered loader when there are no articles yet.
-    final hadArticles = _articles.isNotEmpty;
-    if (!hadArticles) {
-      setState(() => _isLoading = true);
-    }
-    try {
-      // First, check total articles in DB
-      final allArticles = await _db.getArticles(limit: 1000);
-      print('Total articles in DB: ${allArticles.length}');
-      final totalUnread = allArticles.where((a) => !a.isRead).length;
-      final totalRead = allArticles.where((a) => a.isRead).length;
-      print('Total unread: $totalUnread, Total read: $totalRead');
-
-      // Always show all articles in Home tab
-      final articles = await _db.getArticles(limit: 100, isRead: null);
-      final unreadCount = articles.where((a) => !a.isRead).length;
-      print(
-        'Loaded ${articles.length} articles from database (all articles, actually unread in result: $unreadCount)',
-      );
-
-      // Debug: print first few article read statuses
-      if (articles.isNotEmpty) {
-        print('First 5 articles read status:');
-        for (var i = 0; i < (articles.length > 5 ? 5 : articles.length); i++) {
-          print('  ${articles[i].title}: isRead=${articles[i].isRead}');
-        }
-      } else if (allArticles.isNotEmpty) {
-        print(
-          'WARNING: Filter returned 0 articles but DB has ${allArticles.length} total articles!',
-        );
-        print('Sample article read statuses:');
-        for (
-          var i = 0;
-          i < (allArticles.length > 5 ? 5 : allArticles.length);
-          i++
-        ) {
-          print('  ${allArticles[i].title}: isRead=${allArticles[i].isRead}');
-        }
+    if (reset) {
+      setState(() {
+        _articles = [];
+        _isLoading = true;
+        _hasMoreArticles = true;
+      });
+    } else {
+      // Only show the big centered loader when there are no articles yet.
+      final hadArticles = _articles.isNotEmpty;
+      if (!hadArticles) {
+        setState(() => _isLoading = true);
       }
+    }
+
+    try {
+      // Always show all articles in Home tab
+      final articles = await _db.getArticles(
+        limit: _pageSize,
+        offset: reset ? 0 : _articles.length,
+        isRead: null,
+      );
 
       if (mounted) {
         setState(() {
-          _articles = articles;
+          if (reset) {
+            _articles = articles;
+          } else {
+            _articles.addAll(articles);
+          }
+          _hasMoreArticles = articles.length == _pageSize;
           _isLoading = false;
         });
       }
@@ -381,6 +375,38 @@ class _HomeTabState extends State<_HomeTab> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _loadMoreArticles() async {
+    if (_isLoadingMore || !_hasMoreArticles || !mounted) return;
+
+    setState(() => _isLoadingMore = true);
+    try {
+      final articles = await _db.getArticles(
+        limit: _pageSize,
+        offset: _articles.length,
+        isRead: null,
+      );
+      if (mounted) {
+        setState(() {
+          _articles.addAll(articles);
+          _hasMoreArticles = articles.length == _pageSize;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading more articles: $e');
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreArticles();
     }
   }
 
@@ -447,8 +473,6 @@ class _HomeTabState extends State<_HomeTab> {
         setState(() => _isSyncing = false);
       }
     }
-
-    await _loadArticles();
   }
 
   @override
@@ -475,7 +499,10 @@ class _HomeTabState extends State<_HomeTab> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _syncArticlesFromServer(),
+              onRefresh: () async {
+                await _syncArticlesFromServer();
+                await _loadArticles(reset: true);
+              },
               child:
                   _isLoading && _articles.isEmpty
                       ? const Center(child: CircularProgressIndicator())
@@ -493,6 +520,7 @@ class _HomeTabState extends State<_HomeTab> {
                         ],
                       )
                       : ListView.separated(
+                        controller: _scrollController,
                         physics:
                             isIOSPlatform
                                 ? const BouncingScrollPhysics(
@@ -501,10 +529,16 @@ class _HomeTabState extends State<_HomeTab> {
                                 : const ClampingScrollPhysics(),
                         cacheExtent: 800,
                         padding: _listViewPadding(),
-                        itemCount: _articles.length,
+                        itemCount: _articles.length + (_hasMoreArticles ? 1 : 0),
                         separatorBuilder:
                             (_, __) => SizedBox(height: _cardSpacing),
                         itemBuilder: (context, index) {
+                          if (index >= _articles.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
                           final article = _articles[index];
                           return _buildSwipeableCard(article);
                         },
@@ -585,7 +619,7 @@ class _HomeTabState extends State<_HomeTab> {
             MaterialPageRoute(
               builder: (context) => ArticleDetailScreen(article: article),
             ),
-          ).then((_) => _loadArticles());
+          ).then((_) => _loadArticles(reset: true));
         },
       ),
     );
@@ -609,7 +643,7 @@ class _HomeTabState extends State<_HomeTab> {
     if (action == SwipeAction.delete) {
       final deleted = await _syncService.deleteArticle(article.id);
       if (deleted) {
-        await _loadArticles();
+        await _loadArticles(reset: true);
       }
       // Do not dismiss the card; list reload will reflect removal
       return false;
@@ -618,11 +652,11 @@ class _HomeTabState extends State<_HomeTab> {
     switch (action) {
       case SwipeAction.toggleRead:
         await _syncService.markArticleAsRead(article.id, !article.isRead);
-        await _loadArticles();
+        await _loadArticles(reset: true);
         break;
       case SwipeAction.toggleStar:
         await _syncService.markArticleAsStarred(article.id, !article.isStarred);
-        await _loadArticles();
+        await _loadArticles(reset: true);
         break;
       case SwipeAction.delete:
         // Handled in the delete branch above.

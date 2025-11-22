@@ -33,6 +33,8 @@ class _UnreadScreenState extends State<UnreadScreen> {
   final UnreadRefreshNotifier _unreadNotifier = UnreadRefreshNotifier.instance;
   List<Article> _articles = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  bool _hasMoreArticles = true;
   bool _isSyncing = false;
   bool _hasSyncConfig = false;
   Map<String, String> _feedTitles = {};
@@ -48,6 +50,8 @@ class _UnreadScreenState extends State<UnreadScreen> {
   bool _swipeAllowsDelete = false;
   final SwipePrefsNotifier _swipePrefsNotifier = SwipePrefsNotifier.instance;
   final LastSyncNotifier _lastSyncNotifier = LastSyncNotifier.instance;
+  final ScrollController _scrollController = ScrollController();
+  static const int _pageSize = 20;
 
   @override
   void initState() {
@@ -59,6 +63,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
     _unreadNotifier.addListener(_handleUnreadRefresh);
     _swipePrefsNotifier.addListener(_handleSwipePrefsChanged);
     _lastSyncNotifier.addListener(_handleLastSyncChanged);
+    _scrollController.addListener(_onScroll);
     _initialize();
   }
 
@@ -69,11 +74,13 @@ class _UnreadScreenState extends State<UnreadScreen> {
     _unreadNotifier.removeListener(_handleUnreadRefresh);
     _swipePrefsNotifier.removeListener(_handleSwipePrefsChanged);
     _lastSyncNotifier.removeListener(_handleLastSyncChanged);
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _handleUnreadRefresh() {
-    _loadArticles();
+    _loadArticles(reset: true);
   }
 
   Future<void> _initialize() async {
@@ -149,24 +156,42 @@ class _UnreadScreenState extends State<UnreadScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _loadArticles();
+    _loadArticles(reset: true);
     _loadSwipePreferences();
   }
 
-  Future<void> _loadArticles() async {
+  Future<void> _loadArticles({bool reset = false}) async {
     if (!mounted) return;
 
-    // Only show the big centered loader when there are no articles yet.
-    final hadArticles = _articles.isNotEmpty;
-    if (!hadArticles) {
-      setState(() => _isLoading = true);
+    if (reset) {
+      setState(() {
+        _articles = [];
+        _isLoading = true;
+        _hasMoreArticles = true;
+      });
+    } else {
+      // Only show the big centered loader when there are no articles yet.
+      final hadArticles = _articles.isNotEmpty;
+      if (!hadArticles) {
+        setState(() => _isLoading = true);
+      }
     }
+
     try {
       // Always show unread only
-      final articles = await _db.getArticles(limit: 100, isRead: false);
+      final articles = await _db.getArticles(
+        limit: _pageSize,
+        offset: reset ? 0 : _articles.length,
+        isRead: false,
+      );
       if (mounted) {
         setState(() {
-          _articles = articles;
+          if (reset) {
+            _articles = articles;
+          } else {
+            _articles.addAll(articles);
+          }
+          _hasMoreArticles = articles.length == _pageSize;
           _isLoading = false;
         });
       }
@@ -175,6 +200,38 @@ class _UnreadScreenState extends State<UnreadScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  Future<void> _loadMoreArticles() async {
+    if (_isLoadingMore || !_hasMoreArticles || !mounted) return;
+
+    setState(() => _isLoadingMore = true);
+    try {
+      final articles = await _db.getArticles(
+        limit: _pageSize,
+        offset: _articles.length,
+        isRead: false,
+      );
+      if (mounted) {
+        setState(() {
+          _articles.addAll(articles);
+          _hasMoreArticles = articles.length == _pageSize;
+          _isLoadingMore = false;
+        });
+      }
+    } catch (e) {
+      print('Error loading more articles: $e');
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreArticles();
     }
   }
 
@@ -277,7 +334,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
       case SwipeAction.toggleStar:
         await _syncService.markArticleAsStarred(article.id, !article.isStarred);
         // Starring doesn't affect unread status, but refresh anyway
-        await _loadArticles();
+        await _loadArticles(reset: true);
         break;
       case SwipeAction.delete:
         // Handled in the delete branch above.
@@ -307,7 +364,10 @@ class _UnreadScreenState extends State<UnreadScreen> {
           ),
           Expanded(
             child: RefreshIndicator(
-              onRefresh: () => _syncArticlesFromServer(),
+              onRefresh: () async {
+                await _syncArticlesFromServer();
+                await _loadArticles(reset: true);
+              },
               child:
                   _isLoading && _articles.isEmpty
                       ? const Center(child: CircularProgressIndicator())
@@ -325,6 +385,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
                         ],
                       )
                       : ListView.separated(
+                        controller: _scrollController,
                         physics:
                             isIOSPlatform
                                 ? const BouncingScrollPhysics(
@@ -333,10 +394,16 @@ class _UnreadScreenState extends State<UnreadScreen> {
                                 : const ClampingScrollPhysics(),
                         cacheExtent: 800,
                         padding: _listViewPadding(),
-                        itemCount: _articles.length,
+                        itemCount: _articles.length + (_hasMoreArticles ? 1 : 0),
                         separatorBuilder:
                             (_, __) => SizedBox(height: _cardSpacing),
                         itemBuilder: (context, index) {
+                          if (index >= _articles.length) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
                           final article = _articles[index];
                           return _buildSwipeableCard(article);
                         },
@@ -374,7 +441,7 @@ class _UnreadScreenState extends State<UnreadScreen> {
             MaterialPageRoute(
               builder: (context) => ArticleDetailScreen(article: article),
             ),
-          ).then((_) => _loadArticles());
+          ).then((_) => _loadArticles(reset: true));
         },
       ),
     );
