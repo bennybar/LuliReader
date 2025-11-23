@@ -39,9 +39,12 @@ class ArticleCard extends StatelessWidget {
           padding: const EdgeInsets.all(16.0),
           child: IntrinsicHeight(
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _UnreadIndicator(isUnread: !article.isRead),
+                SizedBox(
+                  height: double.infinity,
+                  child: _UnreadIndicator(isUnread: !article.isRead),
+                ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
