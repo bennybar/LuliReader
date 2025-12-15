@@ -1,5 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:battery_plus/battery_plus.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/account.dart';
@@ -34,6 +36,29 @@ class LocalRssService {
     final account = await _accountDao.getById(accountId);
     if (account == null || account.type != AccountType.local) {
       throw Exception('Invalid account');
+    }
+    
+    // Check WiFi-only setting
+    if (account.syncOnlyOnWiFi) {
+      final connectivity = Connectivity();
+      final connectivityResult = await connectivity.checkConnectivity();
+      final isWifi = connectivityResult.contains(ConnectivityResult.wifi);
+      if (!isWifi) {
+        print('Sync skipped: WiFi-only mode enabled but not on WiFi');
+        return; // Skip sync if not on WiFi
+      }
+    }
+    
+    // Check charging-only setting
+    if (account.syncOnlyWhenCharging) {
+      final battery = Battery();
+      final batteryStatus = await battery.batteryState;
+      final isCharging = batteryStatus == BatteryState.charging || 
+                        batteryStatus == BatteryState.full;
+      if (!isCharging) {
+        print('Sync skipped: Charging-only mode enabled but device is not charging');
+        return; // Skip sync if not charging
+      }
     }
     
     // Store account-level full content setting for use in sync
