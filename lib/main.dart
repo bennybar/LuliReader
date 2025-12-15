@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:workmanager/workmanager.dart';
 import 'theme/app_theme.dart';
 import 'screens/startup_screen.dart';
+import 'background/background_sync.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Workmanager().initialize(backgroundSyncDispatcher, isInDebugMode: false);
   runApp(const ProviderScope(child: LuliReaderApp()));
 }
 

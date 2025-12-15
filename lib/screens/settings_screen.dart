@@ -4,6 +4,7 @@ import '../providers/app_provider.dart';
 import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
 import '../database/database_helper.dart';
+import '../background/background_sync.dart';
 import '../models/account.dart';
 import 'opml_import_export_screen.dart';
 
@@ -390,41 +391,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showSyncIntervalDialog(BuildContext context, Account account) async {
-    final controller = TextEditingController(text: account.syncInterval.toString());
-    final interval = await showDialog<int>(
+    const options = [15, 30, 60, 120];
+    final selected = await showDialog<int>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Sync Interval'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Minutes',
-            hintText: 'Enter sync interval in minutes',
-            border: OutlineInputBorder(),
-          ),
-          keyboardType: TextInputType.number,
-          autofocus: true,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options
+              .map((mins) => RadioListTile<int>(
+                    title: Text('$mins minutes'),
+                    value: mins,
+                    groupValue: account.syncInterval,
+                    onChanged: (value) => Navigator.of(context).pop(value),
+                  ))
+              .toList(),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final value = int.tryParse(controller.text.trim());
-              if (value != null && value > 0) {
-                Navigator.of(context).pop(value);
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
 
-    if (interval != null && interval != account.syncInterval) {
-      await _updateAccountSetting('syncInterval', interval);
+    if (selected != null && selected != account.syncInterval) {
+      await _updateAccountSetting('syncInterval', selected);
+      await registerBackgroundSync(selected);
     }
   }
 

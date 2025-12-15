@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
 import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
+import '../background/background_sync.dart';
 import 'feeds_page.dart';
 import 'flow_page.dart';
 import 'settings_screen.dart';
@@ -21,6 +22,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   final GlobalKey<FlowPageState> _flowPageKey = GlobalKey();
   Timer? _syncTimer;
   bool _initialized = false;
+  bool _accountListenerSet = false;
 
   Future<void> _syncAll({bool showMessage = true}) async {
     final account = await ref.read(accountServiceProvider).getCurrentAccount();
@@ -28,6 +30,10 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
       try {
         final rssService = ref.read(localRssServiceProvider);
         await rssService.sync(account.id!);
+        // Update last sync time
+        await ref.read(accountServiceProvider).updateAccount(
+              account.copyWith(updateAt: DateTime.now()),
+            );
         if (mounted && showMessage) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Sync completed')),
@@ -59,6 +65,9 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
           Duration(minutes: account.syncInterval),
           (_) => _syncAll(showMessage: false),
         );
+        await registerBackgroundSync(account.syncInterval);
+      } else {
+        await cancelBackgroundSync();
       }
     });
   }
@@ -129,6 +138,13 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_accountListenerSet) {
+      _accountListenerSet = true;
+      ref.listen(currentAccountProvider, (_, __) {
+        _startPeriodicSync();
+      });
+    }
+
     if (!_initialized) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
