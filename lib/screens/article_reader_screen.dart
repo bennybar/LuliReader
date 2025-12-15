@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as html_dom;
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../database/article_dao.dart';
@@ -220,12 +221,17 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                   if (widget.article.img != null && widget.article.img!.isNotEmpty) ...[
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        widget.article.img!,
+                      child: CachedNetworkImage(
+                        imageUrl: widget.article.img!,
                         width: double.infinity,
                         height: 200,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
+                        errorWidget: (context, url, error) => const SizedBox.shrink(),
+                        placeholder: (context, url) => Container(
+                          height: 200,
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          child: const Center(child: CircularProgressIndicator()),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -366,14 +372,15 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                src,
+              child: CachedNetworkImage(
+                imageUrl: src,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const SizedBox.shrink(),
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return const Center(child: CircularProgressIndicator());
-                },
+                errorWidget: (context, url, error) => const SizedBox.shrink(),
+                placeholder: (context, url) => Container(
+                  height: 200,
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
               ),
             ),
           );

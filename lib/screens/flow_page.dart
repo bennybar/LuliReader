@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../database/article_dao.dart';
@@ -11,6 +13,7 @@ import '../services/local_rss_service.dart';
 import '../services/account_service.dart';
 import '../utils/rtl_helper.dart';
 import 'article_reader_screen.dart';
+import 'settings_screen.dart';
 
 class FlowPage extends ConsumerStatefulWidget {
   final VoidCallback? onSync;
@@ -194,28 +197,25 @@ class FlowPageState extends ConsumerState<FlowPage> {
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.done_all),
+            tooltip: 'Mark All as Read',
+            onPressed: _markAllAsRead,
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Settings',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              );
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.sync),
             tooltip: 'Sync All Feeds',
             onPressed: widget.onSync ?? _syncAll,
-          ),
-          PopupMenuButton(
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'mark_all_read',
-                child: Row(
-                  children: [
-                    Icon(Icons.done_all, size: 20),
-                    SizedBox(width: 8),
-                    Text('Mark All as Read'),
-                  ],
-                ),
-              ),
-            ],
-            onSelected: (value) {
-              if (value == 'mark_all_read') {
-                _markAllAsRead();
-              }
-            },
           ),
         ],
       ),
@@ -276,6 +276,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
           key: ValueKey(article.id),
           startActionPane: _buildStartActionPane(swipeStartAction, article, isRtl),
           endActionPane: _buildEndActionPane(swipeEndAction, article, isRtl),
+          closeOnScroll: true,
           child: Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(
@@ -290,6 +291,9 @@ class FlowPageState extends ConsumerState<FlowPage> {
             ),
           ).then((_) => _loadArticles());
         },
+        onLongPress: () {
+          _showLongPressMenu(context, article);
+        },
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: IntrinsicHeight(
@@ -303,22 +307,19 @@ class FlowPageState extends ConsumerState<FlowPage> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: article.img != null && article.img!.isNotEmpty
-                        ? Image.network(
-                            article.img!,
+                        ? CachedNetworkImage(
+                            imageUrl: article.img!,
                             width: 100,
                             height: 100,
                             fit: BoxFit.cover,
                             alignment: Alignment.topLeft,
-                            errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Container(
-                                width: 100,
-                                height: 100,
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                              );
-                            },
+                            errorWidget: (context, url, error) => _buildPlaceholderImage(),
+                            placeholder: (context, url) => Container(
+                              width: 100,
+                              height: 100,
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
                           )
                         : _buildPlaceholderImage(),
                   ),
@@ -415,22 +416,19 @@ class FlowPageState extends ConsumerState<FlowPage> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: article.img != null && article.img!.isNotEmpty
-                        ? Image.network(
-                            article.img!,
+                        ? CachedNetworkImage(
+                            imageUrl: article.img!,
                             width: 100,
                             height: 100,
                             fit: BoxFit.cover,
                             alignment: Alignment.topLeft,
-                            errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
-                            loadingBuilder: (context, child, loadingProgress) {
-                              if (loadingProgress == null) return child;
-                              return Container(
-                                width: 100,
-                                height: 100,
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                              );
-                            },
+                            errorWidget: (context, url, error) => _buildPlaceholderImage(),
+                            placeholder: (context, url) => Container(
+                              width: 100,
+                              height: 100,
+                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                            ),
                           )
                         : _buildPlaceholderImage(),
                   ),
@@ -439,9 +437,9 @@ class FlowPageState extends ConsumerState<FlowPage> {
             ),
           ),
         ),
-      ),
-      ),
-    );
+            ),
+          ),
+        );
       },
     );
   }
@@ -451,7 +449,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
 
     return ActionPane(
       motion: const DrawerMotion(),
-      extentRatio: 0.25,
+      extentRatio: 0.3,
       children: [
         SlidableAction(
           onPressed: (_) => _handleSwipeAction(action, article),
@@ -460,6 +458,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
           icon: _getActionIcon(action),
           label: _getActionLabel(action, article),
           autoClose: true,
+          flex: 1,
         ),
       ],
     );
@@ -470,7 +469,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
 
     return ActionPane(
       motion: const DrawerMotion(),
-      extentRatio: 0.25,
+      extentRatio: 0.3,
       children: [
         SlidableAction(
           onPressed: (_) => _handleSwipeAction(action, article),
@@ -479,6 +478,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
           icon: _getActionIcon(action),
           label: _getActionLabel(action, article),
           autoClose: true,
+          flex: 1,
         ),
       ],
     );
@@ -589,6 +589,84 @@ class FlowPageState extends ConsumerState<FlowPage> {
         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
       ),
     );
+  }
+
+  void _showLongPressMenu(BuildContext context, Article article) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.share),
+              title: const Text('Share'),
+              onTap: () {
+                Navigator.pop(context);
+                _shareArticle(article);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.done_all),
+              title: const Text('Mark Below as Read'),
+              onTap: () {
+                Navigator.pop(context);
+                _markBelowAsRead(article);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _shareArticle(Article article) async {
+    await Clipboard.setData(ClipboardData(text: article.link));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Link copied to clipboard')),
+      );
+    }
+  }
+
+  Future<void> _markBelowAsRead(Article article) async {
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      final currentIndex = _articles.indexWhere((a) => a.article.id == article.id);
+      
+      if (currentIndex != -1) {
+        // Mark all articles below this one as read
+        int markedCount = 0;
+        for (int i = currentIndex + 1; i < _articles.length; i++) {
+          if (_articles[i].article.isUnread) {
+            await articleDao.markAsRead(_articles[i].article.id);
+            markedCount++;
+          }
+        }
+        
+        // Update UI
+        setState(() {
+          for (int i = currentIndex + 1; i < _articles.length; i++) {
+            _articles[i] = ArticleWithFeed(
+              article: _articles[i].article.copyWith(isUnread: false),
+              feed: _articles[i].feed,
+            );
+          }
+        });
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Marked $markedCount articles as read')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   String _formatDate(DateTime date) {

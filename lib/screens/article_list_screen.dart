@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/feed.dart';
 import '../models/article.dart';
@@ -175,12 +176,18 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
         leading: article.img != null
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  article.img!,
+                child: CachedNetworkImage(
+                  imageUrl: article.img!,
                   width: 80,
                   height: 80,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.article),
+                  errorWidget: (_, __, ___) => const Icon(Icons.article),
+                  placeholder: (_, __) => Container(
+                    width: 80,
+                    height: 80,
+                    color: Colors.grey[300],
+                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  ),
                 ),
               )
             : const Icon(Icons.article, size: 40),
