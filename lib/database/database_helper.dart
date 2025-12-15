@@ -1,4 +1,5 @@
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite/sqflite.dart' as sqflite;
 import 'package:path/path.dart';
 import '../models/account.dart';
 import '../models/article.dart';
@@ -20,6 +21,8 @@ class DatabaseHelper {
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
+    print('[DB_HELPER] Database path: $path');
+    print('[DB_HELPER] Database file exists: ${await sqflite.databaseExists(path)}');
 
     return await openDatabase(
       path,

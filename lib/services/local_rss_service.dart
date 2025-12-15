@@ -169,12 +169,20 @@ class LocalRssService {
 
       // Insert new articles
       onProgress?.call('  → Saving articles to database...');
+      print('[SYNC] Inserting ${newArticles.length} articles for feed ${feed.name} (accountId=$accountId)');
       final insertedArticles = await _articleDao.insertListIfNotExist(
         articles: newArticles,
         feed: feed,
       );
       
+      print('[SYNC] Successfully inserted ${insertedArticles.length} articles for feed ${feed.name}');
       onProgress?.call('  → Saved ${insertedArticles.length} new article(s)');
+      
+      // Verify articles were saved
+      if (insertedArticles.isNotEmpty) {
+        final verifyArticles = await _articleDao.getByFeedId(feed.id, limit: 5);
+        print('[SYNC] Verification: Found ${verifyArticles.length} articles in database for feed ${feed.id}');
+      }
 
       // If account or feed has isFullContent enabled, download full content in background
       // Feed-level setting overrides account-level setting

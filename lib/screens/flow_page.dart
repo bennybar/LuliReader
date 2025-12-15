@@ -44,29 +44,52 @@ class FlowPageState extends ConsumerState<FlowPage> {
   }
 
   Future<void> _loadArticles() async {
+    print('[FLOW_PAGE] _loadArticles() called, filter: $_filter');
     setState(() => _isLoading = true);
     try {
+      print('[FLOW_PAGE] Getting current account...');
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
       if (account == null) {
+        print('[FLOW_PAGE] ERROR: No account found!');
         setState(() => _isLoading = false);
         return;
       }
+      print('[FLOW_PAGE] Account found: id=${account.id}, name=${account.name}');
 
       final articleDao = ref.read(articleDaoProvider);
       final feedDao = ref.read(feedDaoProvider);
 
       List<Article> articles;
+      print('[FLOW_PAGE] Loading articles with filter: $_filter');
       if (_filter == 'unread') {
+        print('[FLOW_PAGE] Calling getUnread(accountId=${account.id})');
         articles = await articleDao.getUnread(account.id!, limit: 500);
+        print('[FLOW_PAGE] getUnread returned ${articles.length} articles');
       } else if (_filter == 'starred') {
+        print('[FLOW_PAGE] Calling getStarred(accountId=${account.id})');
         articles = await articleDao.getStarred(account.id!, limit: 500);
+        print('[FLOW_PAGE] getStarred returned ${articles.length} articles');
       } else {
-        // Get all articles from all feeds (optimized query)
+        print('[FLOW_PAGE] Calling getAllArticles(accountId=${account.id})');
         articles = await articleDao.getAllArticles(account.id!, limit: 500);
+        print('[FLOW_PAGE] getAllArticles returned ${articles.length} articles');
+      }
+
+      if (articles.isEmpty) {
+        print('[FLOW_PAGE] WARNING: No articles returned from database query!');
+        print('[FLOW_PAGE] Filter: $_filter, Account ID: ${account.id}');
+      } else {
+        print('[FLOW_PAGE] Processing ${articles.length} articles...');
+        // Log first few article IDs for debugging
+        for (int i = 0; i < articles.length && i < 3; i++) {
+          print('[FLOW_PAGE] Article[$i]: id=${articles[i].id}, title=${articles[i].title.substring(0, articles[i].title.length > 30 ? 30 : articles[i].title.length)}, feedId=${articles[i].feedId}');
+        }
       }
 
       // Get feeds for each article
+      print('[FLOW_PAGE] Loading feeds for articles...');
       final articlesWithFeed = <ArticleWithFeed>[];
+      int feedNotFoundCount = 0;
       for (final article in articles) {
         final feed = await feedDao.getById(article.feedId);
         if (feed != null) {
@@ -74,14 +97,25 @@ class FlowPageState extends ConsumerState<FlowPage> {
             article: article,
             feed: feed as dynamic,
           ));
+        } else {
+          feedNotFoundCount++;
+          print('[FLOW_PAGE] WARNING: Feed not found for article ${article.id}, feedId=${article.feedId}');
         }
       }
 
+      if (feedNotFoundCount > 0) {
+        print('[FLOW_PAGE] WARNING: $feedNotFoundCount articles had missing feeds!');
+      }
+
+      print('[FLOW_PAGE] Final article count: ${articlesWithFeed.length} (from ${articles.length} articles)');
       setState(() {
         _articles = articlesWithFeed;
         _isLoading = false;
       });
-    } catch (e) {
+      print('[FLOW_PAGE] State updated, _articles.length = ${_articles.length}');
+    } catch (e, stackTrace) {
+      print('[FLOW_PAGE] ERROR in _loadArticles: $e');
+      print('[FLOW_PAGE] Stack trace: $stackTrace');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -219,42 +253,63 @@ class FlowPageState extends ConsumerState<FlowPage> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _articles.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.article,
-                        size: 64,
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+      body: Builder(
+        builder: (context) {
+          print('[FLOW_PAGE] build() called: _isLoading=$_isLoading, _articles.length=${_articles.length}, filter=$_filter');
+          return _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _articles.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.article,
+                            size: 64,
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No articles',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Sync feeds to load articles',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 16),
+                          // Debug info
+                          Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Text(
+                              'Debug: Filter=$_filter\nArticles in state: ${_articles.length}',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontFamily: 'monospace',
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No articles',
-                        style: Theme.of(context).textTheme.titleLarge,
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _loadArticles,
+                      child: ListView.builder(
+                        key: ValueKey(_refreshKey),
+                        itemCount: _articles.length,
+                        itemBuilder: (context, index) {
+                          if (index == 0) {
+                            print('[FLOW_PAGE] Building first article card, total items: ${_articles.length}');
+                          }
+                          final articleWithFeed = _articles[index];
+                          return _buildArticleCard(articleWithFeed);
+                        },
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Sync feeds to load articles',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadArticles,
-                  child: ListView.builder(
-                    key: ValueKey(_refreshKey),
-                    itemCount: _articles.length,
-                    itemBuilder: (context, index) {
-                      final articleWithFeed = _articles[index];
-                      return _buildArticleCard(articleWithFeed);
-                    },
-                  ),
-                ),
+                    );
+        },
+      ),
     );
   }
 
@@ -687,4 +742,5 @@ class FlowPageState extends ConsumerState<FlowPage> {
     }
   }
 }
+
 
