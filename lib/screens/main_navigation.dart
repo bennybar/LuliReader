@@ -35,6 +35,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
         await ref.read(accountServiceProvider).updateAccount(
               account.copyWith(updateAt: DateTime.now()),
             );
+        ref.invalidate(currentAccountProvider);
         if (mounted && showMessage) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Sync completed')),
@@ -179,13 +180,13 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   Widget _buildGlassNavBar(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final glassColor = scheme.surface.withOpacity(0.2);
+    final glassColor = scheme.surface.withOpacity(0.18);
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          height: 72,
+          height: 66,
           decoration: BoxDecoration(
             color: glassColor,
             borderRadius: BorderRadius.circular(28),
@@ -193,7 +194,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
               color: scheme.onSurface.withOpacity(0.06),
             ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -223,7 +224,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 2),
         child: Material(
           color:
               isSelected ? colorScheme.primary.withOpacity(0.16) : Colors.transparent,
@@ -238,7 +239,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(

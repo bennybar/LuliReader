@@ -100,6 +100,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
         await ref.read(accountServiceProvider).updateAccount(
               account.copyWith(updateAt: DateTime.now()),
             );
+        ref.invalidate(currentAccountProvider);
         _loadArticles();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -744,10 +745,9 @@ class FlowPageState extends ConsumerState<FlowPage> {
   }
 
   Widget _buildSyncInfo() {
-    return FutureBuilder(
-      future: ref.read(accountServiceProvider).getCurrentAccount(),
-      builder: (context, snapshot) {
-        final account = snapshot.data;
+    final accountAsync = ref.watch(currentAccountProvider);
+    return accountAsync.when(
+      data: (account) {
         final lastSync = account?.updateAt;
         if (lastSync == null) return const SizedBox.shrink();
         return Padding(
@@ -767,6 +767,8 @@ class FlowPageState extends ConsumerState<FlowPage> {
           ),
         );
       },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

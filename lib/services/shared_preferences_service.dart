@@ -41,5 +41,15 @@ class SharedPreferencesService {
     await init();
     return await _prefs!.remove(key);
   }
+
+  Future<bool> setDouble(String key, double value) async {
+    await init();
+    return await _prefs!.setDouble(key, value);
+  }
+
+  Future<double?> getDouble(String key) async {
+    await init();
+    return _prefs?.getDouble(key);
+  }
 }
 

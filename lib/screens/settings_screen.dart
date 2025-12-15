@@ -5,6 +5,7 @@ import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
 import '../database/database_helper.dart';
 import '../background/background_sync.dart';
+import '../services/shared_preferences_service.dart';
 import '../models/account.dart';
 import 'opml_import_export_screen.dart';
 
@@ -17,6 +18,33 @@ class SettingsScreen extends ConsumerStatefulWidget {
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isResyncing = false;
+  double _articleFontScale = 1.0;
+  double _articlePadding = 16.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReadingPrefs();
+  }
+
+  Future<void> _loadReadingPrefs() async {
+    final prefs = SharedPreferencesService();
+    await prefs.init();
+    final font = await prefs.getDouble('articleFontScale') ?? 1.0;
+    final pad = await prefs.getDouble('articlePadding') ?? 16.0;
+    if (mounted) {
+      setState(() {
+        _articleFontScale = font;
+        _articlePadding = pad;
+      });
+    }
+  }
+
+  Future<void> _saveReadingPref(String key, double value) async {
+    final prefs = SharedPreferencesService();
+    await prefs.init();
+    await prefs.setDouble(key, value);
+  }
 
   Future<void> _updateAccountSetting(String field, dynamic value) async {
     try {
@@ -117,6 +145,57 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _showDefaultScreenDialog(context, account),
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Article Appearance
+              Text(
+                'Article Appearance',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Font Size',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      Slider(
+                        value: _articleFontScale,
+                        min: 0.8,
+                        max: 1.4,
+                        divisions: 12,
+                        label: '${_articleFontScale.toStringAsFixed(2)}x',
+                        onChanged: (v) async {
+                          setState(() => _articleFontScale = v);
+                          await _saveReadingPref('articleFontScale', v);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Content Padding',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      Slider(
+                        value: _articlePadding,
+                        min: 8,
+                        max: 32,
+                        divisions: 24,
+                        label: '${_articlePadding.toStringAsFixed(0)} px',
+                        onChanged: (v) async {
+                          setState(() => _articlePadding = v);
+                          await _saveReadingPref('articlePadding', v);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 24),

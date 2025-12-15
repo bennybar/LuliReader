@@ -15,6 +15,7 @@ import '../providers/app_provider.dart';
 import '../services/local_rss_service.dart';
 import '../services/account_service.dart';
 import '../utils/rtl_helper.dart';
+import '../services/shared_preferences_service.dart';
 
 class ArticleReaderScreen extends ConsumerStatefulWidget {
   final Article article;
@@ -34,14 +35,30 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   late bool _isStarred;
   late bool _isUnread;
   Set<String> _seenContentImages = {};
+  double _fontScale = 1.0;
+  double _contentPadding = 16.0;
 
   @override
   void initState() {
     super.initState();
     _isStarred = widget.article.isStarred;
     _isUnread = widget.article.isUnread;
+    _loadReadingPrefs();
     _loadFeed();
     _markAsRead();
+  }
+
+  Future<void> _loadReadingPrefs() async {
+    final prefs = SharedPreferencesService();
+    await prefs.init();
+    final font = await prefs.getDouble('articleFontScale') ?? 1.0;
+    final pad = await prefs.getDouble('articlePadding') ?? 16.0;
+    if (mounted) {
+      setState(() {
+        _fontScale = font;
+        _contentPadding = pad;
+      });
+    }
   }
 
   Future<void> _loadFeed() async {
@@ -205,130 +222,131 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.article.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        actions: [
-          IconButton(
-            icon: Icon(
-              _useFullContent ? Icons.article : Icons.article_outlined,
-              color: _useFullContent 
-                  ? Theme.of(context).colorScheme.primary 
-                  : null,
-            ),
-            tooltip: 'Parse Full Content',
-            onPressed: _toggleFullContent,
+    final media = MediaQuery.of(context);
+    final scaledMedia = media.copyWith(
+      textScaler: TextScaler.linear(_fontScale),
+    );
+    return MediaQuery(
+      data: scaledMedia,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+            widget.article.title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          IconButton(
-            icon: Icon(_isUnread ? Icons.mark_email_unread : Icons.mark_email_read),
-            tooltip: _isUnread ? 'Mark as read' : 'Mark as unread',
-            onPressed: _toggleRead,
-          ),
-          IconButton(
-            icon: Icon(_isStarred ? Icons.star : Icons.star_border),
-            onPressed: _toggleStarred,
-          ),
-          IconButton(
-            icon: const Icon(Icons.share),
-            onPressed: _shareArticle,
-          ),
-          IconButton(
-            icon: const Icon(Icons.open_in_browser),
-            onPressed: _openInBrowser,
-          ),
-        ],
-      ),
-      body: Builder(
-        builder: (context) {
-          // Detect RTL from article content (Hebrew/Arabic detection)
-          // Feed setting can force RTL, otherwise analyze content
-          final finalIsRtl = _isRtl();
-          final finalTextDir = _getTextDirection();
-          
-          return Directionality(
-            textDirection: finalTextDir,
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Show hero image if available
-                  if (widget.article.img != null && widget.article.img!.isNotEmpty) ...[
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: CachedNetworkImage(
-                        imageUrl: widget.article.img!,
-                        width: double.infinity,
-                        height: 200,
-                        fit: BoxFit.cover,
-                        errorWidget: (context, url, error) => const SizedBox.shrink(),
-                        placeholder: (context, url) => Container(
-                          height: 200,
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          child: const Center(child: CircularProgressIndicator()),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  // Title - use textAlign for RTL
-                  Text(
-                    widget.article.title,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                    textAlign: finalIsRtl ? TextAlign.right : TextAlign.left,
-                    textDirection: finalTextDir,
-                  ),
-                  const SizedBox(height: 8),
-                  // Author and date
-                  Row(
-                    mainAxisAlignment: finalIsRtl ? MainAxisAlignment.end : MainAxisAlignment.start,
-                    textDirection: finalTextDir,
-                    children: [
-                      if (widget.article.author != null) ...[
-                        Text(
-                          widget.article.author!,
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '•',
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      Text(
-                        _formatDate(widget.article.date),
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                  const Divider(height: 32),
-                  // Content
-                  if (_useFullContent)
-                    if (_isLoadingFullContent)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(32.0),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    else if (_fullContent != null)
-                      _buildHtmlContent(_fullContent!)
-                    else
-                      _buildFallbackContent()
-                  else
-                    _buildFallbackContent(),
-                ],
+          actions: [
+            IconButton(
+              icon: Icon(
+                _useFullContent ? Icons.article : Icons.article_outlined,
+                color: _useFullContent 
+                    ? Theme.of(context).colorScheme.primary 
+                    : null,
               ),
+              tooltip: 'Parse Full Content',
+              onPressed: _toggleFullContent,
             ),
-          );
-        },
+            IconButton(
+              icon: Icon(_isUnread ? Icons.mark_email_unread : Icons.mark_email_read),
+              tooltip: _isUnread ? 'Mark as read' : 'Mark as unread',
+              onPressed: _toggleRead,
+            ),
+            IconButton(
+              icon: Icon(_isStarred ? Icons.star : Icons.star_border),
+              onPressed: _toggleStarred,
+            ),
+            IconButton(
+              icon: const Icon(Icons.share),
+              onPressed: _shareArticle,
+            ),
+            IconButton(
+              icon: const Icon(Icons.open_in_browser),
+              onPressed: _openInBrowser,
+            ),
+          ],
+        ),
+        body: Builder(
+          builder: (context) {
+            final finalIsRtl = _isRtl();
+            final finalTextDir = _getTextDirection();
+            
+            return Directionality(
+              textDirection: finalTextDir,
+              child: SingleChildScrollView(
+                padding: EdgeInsets.all(_contentPadding),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (widget.article.img != null && widget.article.img!.isNotEmpty) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(
+                          imageUrl: widget.article.img!,
+                          width: double.infinity,
+                          height: 200,
+                          fit: BoxFit.cover,
+                          errorWidget: (context, url, error) => const SizedBox.shrink(),
+                          placeholder: (context, url) => Container(
+                            height: 200,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            child: const Center(child: CircularProgressIndicator()),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    Text(
+                      widget.article.title,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                      textAlign: finalIsRtl ? TextAlign.right : TextAlign.left,
+                      textDirection: finalTextDir,
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: finalIsRtl ? MainAxisAlignment.end : MainAxisAlignment.start,
+                      textDirection: finalTextDir,
+                      children: [
+                        if (widget.article.author != null) ...[
+                          Text(
+                            widget.article.author!,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '•',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                        Text(
+                          _formatDate(widget.article.date),
+                          style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 32),
+                    if (_useFullContent)
+                      if (_isLoadingFullContent)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(32.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        )
+                      else if (_fullContent != null)
+                        _buildHtmlContent(_fullContent!)
+                      else
+                        _buildFallbackContent()
+                    else
+                      _buildFallbackContent(),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
