@@ -67,15 +67,8 @@ class OpmlService {
         }
       }
       
-      // Auto-sync new feeds after import
-      if (newFeeds.isNotEmpty) {
-        try {
-          await _rssService.sync(accountId);
-        } catch (e) {
-          print('Error auto-syncing after OPML import: $e');
-          // Don't throw - import was successful, sync can happen later
-        }
-      }
+      // Note: Sync is now handled by the UI (sync progress dialog)
+      // This allows users to see progress and logs
   }
 
   Future<void> _processOutline(

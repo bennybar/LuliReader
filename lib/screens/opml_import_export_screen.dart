@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import '../providers/app_provider.dart';
+import '../widgets/sync_progress_dialog.dart';
 
 class OpmlImportExportScreen extends ConsumerStatefulWidget {
   const OpmlImportExportScreen({super.key});
@@ -40,15 +41,40 @@ class _OpmlImportExportScreenState extends ConsumerState<OpmlImportExportScreen>
 
       final opmlService = ref.read(opmlServiceProvider);
       await opmlService.importFromString(content, account.id!);
+      
+      if (!mounted) return;
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('OPML imported successfully. Syncing feeds...'),
-          duration: Duration(seconds: 3),
+      // Show sync progress dialog
+      final syncResult = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => SyncProgressDialog(
+          syncFunction: (onProgress) async {
+            final localRssService = ref.read(localRssServiceProvider);
+            await localRssService.sync(account.id!, onProgress: onProgress);
+          },
         ),
       );
+
+      if (!mounted) return;
+
+      if (syncResult == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('OPML imported and synced successfully!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else if (syncResult == false) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('OPML imported but sync had errors. Check logs.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
       
       // Pop and refresh home screen
       Navigator.of(context).pop(true);
