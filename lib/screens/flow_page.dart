@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
@@ -80,6 +81,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
   bool _isLoading = true;
   String _filter = 'all'; // all, unread, starred
   int _refreshKey = 0;
+  bool _showSwipeHint = true;
 
   void refresh() {
     setState(() {
@@ -221,6 +223,25 @@ class FlowPageState extends ConsumerState<FlowPage> {
   }
 
   Future<void> _markAllAsRead() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Mark all as read?'),
+        content: const Text('This will mark all articles as read. Continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Mark all'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
     try {
       final articleDao = ref.read(articleDaoProvider);
       for (final articleWithFeed in _articles) {
@@ -331,60 +352,116 @@ class FlowPageState extends ConsumerState<FlowPage> {
       body: Builder(
         builder: (context) {
           print('[FLOW_PAGE] build() called: _isLoading=$_isLoading, _articles.length=${_articles.length}, filter=$_filter');
-          return _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _articles.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.article,
-                            size: 64,
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+          Widget content;
+          if (_isLoading) {
+            content = const Center(child: CircularProgressIndicator());
+          } else if (_articles.isEmpty) {
+            content = Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    _filter == 'starred' ? Icons.star_outline : Icons.article,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    _filter == 'starred' ? 'No starred articles' : 'No articles',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    _filter == 'starred'
+                        ? 'Star items from Articles to see them here.'
+                        : 'Sync feeds to load articles',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  // Debug info
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text(
+                      'Debug: Filter=$_filter\nArticles in state: ${_articles.length}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            fontFamily: 'monospace',
+                            color: Theme.of(context).colorScheme.error,
                           ),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No articles',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Sync feeds to load articles',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                          const SizedBox(height: 16),
-                          // Debug info
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Text(
-                              'Debug: Filter=$_filter\nArticles in state: ${_articles.length}',
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    fontFamily: 'monospace',
-                                    color: Theme.of(context).colorScheme.error,
-                                  ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ],
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            content = RefreshIndicator(
+              onRefresh: _loadArticles,
+              child: ListView.builder(
+                key: ValueKey(_refreshKey),
+                itemCount: _articles.length,
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    print('[FLOW_PAGE] Building first article card, total items: ${_articles.length}');
+                  }
+                  final articleWithFeed = _articles[index];
+                  return _buildArticleCard(articleWithFeed);
+                },
+              ),
+            );
+          }
+
+          return Column(
+            children: [
+              _buildSyncInfo(),
+              if (_showSwipeHint)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                  child: Material(
+                    color: Theme.of(context).colorScheme.surfaceVariant,
+                    borderRadius: BorderRadius.circular(12),
+                    child: ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.swipe),
+                      title: const Text('Tip: swipe articles to mark read or star'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => setState(() => _showSwipeHint = false),
                       ),
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _loadArticles,
-                      child: ListView.builder(
-                        key: ValueKey(_refreshKey),
-                        itemCount: _articles.length,
-                        itemBuilder: (context, index) {
-                          if (index == 0) {
-                            print('[FLOW_PAGE] Building first article card, total items: ${_articles.length}');
-                          }
-                          final articleWithFeed = _articles[index];
-                          return _buildArticleCard(articleWithFeed);
-                        },
-                      ),
-                    );
+                    ),
+                  ),
+                ),
+              Expanded(child: content),
+            ],
+          );
         },
       ),
+    );
+  }
+
+  Widget _buildSyncInfo() {
+    return FutureBuilder(
+      future: ref.read(accountServiceProvider).getCurrentAccount(),
+      builder: (context, snapshot) {
+        final account = snapshot.data;
+        final lastSync = account?.updateAt;
+        if (lastSync == null) return const SizedBox.shrink();
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+          child: Row(
+            children: [
+              const Icon(Icons.history, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Last sync: ${_formatDateShort(lastSync)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -849,11 +926,15 @@ class FlowPageState extends ConsumerState<FlowPage> {
   }
 
   Future<void> _shareArticle(Article article) async {
-    await Clipboard.setData(ClipboardData(text: article.link));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link copied to clipboard')),
-      );
+    try {
+      await Share.share('${article.title}\n${article.link}');
+    } catch (e) {
+      await Clipboard.setData(ClipboardData(text: article.link));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Link copied to clipboard')),
+        );
+      }
     }
   }
 
@@ -922,6 +1003,16 @@ class FlowPageState extends ConsumerState<FlowPage> {
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
+  }
+
+  String _formatDateShort(DateTime date) {
+    // Short human-friendly date/time for sync stamps
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 }
 

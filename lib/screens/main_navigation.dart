@@ -67,12 +67,25 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   void initState() {
     super.initState();
     _loadDefaultScreen();
+    _maybeSyncOnStart();
     // Start periodic sync after a short delay to allow widget tree to build
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         _startPeriodicSync();
       }
     });
+  }
+
+  Future<void> _maybeSyncOnStart() async {
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (account?.syncOnStart == true) {
+      // Delay slightly to allow UI build
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) {
+          _syncAll(showMessage: false);
+        }
+      });
+    }
   }
 
   Future<void> _loadDefaultScreen() async {

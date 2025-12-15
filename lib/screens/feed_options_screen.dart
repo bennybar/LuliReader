@@ -20,6 +20,8 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
   late bool _isBrowser;
   late bool _isNotification;
   late bool? _isRtl;
+  int? _articleCount;
+  DateTime? _latestArticleDate;
 
   @override
   void initState() {
@@ -28,6 +30,23 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
     _isBrowser = widget.feed.isBrowser;
     _isNotification = widget.feed.isNotification;
     _isRtl = widget.feed.isRtl;
+    _loadFeedStats();
+  }
+
+  Future<void> _loadFeedStats() async {
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      final count = await articleDao.countByFeedId(widget.feed.id);
+      final latest = await articleDao.latestByFeedId(widget.feed.id);
+      if (mounted) {
+        setState(() {
+          _articleCount = count;
+          _latestArticleDate = latest?.date;
+        });
+      }
+    } catch (e) {
+      print('Error loading feed stats: $e');
+    }
   }
 
   Future<void> _deleteFeed() async {
@@ -258,6 +277,17 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (_articleCount != null)
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.health_and_safety),
+                      title: const Text('Feed health'),
+                      subtitle: Text(
+                        'Articles cached: $_articleCount\nLatest: ${_latestArticleDate != null ? _latestArticleDate!.toLocal() : 'N/A'}',
+                      ),
+                    ),
+                  ),
+                if (_articleCount != null) const SizedBox(height: 12),
                 // Reading Page Settings
                 Text(
                   'Reading Page',

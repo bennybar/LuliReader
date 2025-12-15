@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as html_dom;
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:share_plus/share_plus.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../database/article_dao.dart';
@@ -30,10 +31,14 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   bool _isMarkedAsRead = false;
   bool _useFullContent = false;
   Feed? _feed;
+  late bool _isStarred;
+  late bool _isUnread;
 
   @override
   void initState() {
     super.initState();
+    _isStarred = widget.article.isStarred;
+    _isUnread = widget.article.isUnread;
     _loadFeed();
     _markAsRead();
   }
@@ -102,8 +107,31 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       try {
         final articleDao = ref.read(articleDaoProvider);
         await articleDao.markAsRead(widget.article.id);
+        setState(() {
+          _isUnread = false;
+        });
       } catch (e) {
         print('Error marking as read: $e');
+      }
+    }
+  }
+
+  Future<void> _toggleRead() async {
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      if (_isUnread) {
+        await articleDao.markAsRead(widget.article.id);
+      } else {
+        await articleDao.markAsUnread(widget.article.id);
+      }
+      setState(() {
+        _isUnread = !_isUnread;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
       }
     }
   }
@@ -112,12 +140,13 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     try {
       final articleDao = ref.read(articleDaoProvider);
       await articleDao.toggleStarred(widget.article.id);
+      setState(() {
+        _isStarred = !_isStarred;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              widget.article.isStarred ? 'Removed from starred' : 'Added to starred',
-            ),
+            content: Text(_isStarred ? 'Added to starred' : 'Removed from starred'),
           ),
         );
       }
@@ -138,11 +167,15 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   }
 
   Future<void> _shareArticle() async {
-    await Clipboard.setData(ClipboardData(text: widget.article.link));
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Link copied to clipboard')),
-      );
+    try {
+      await Share.share('${widget.article.title}\n${widget.article.link}');
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: widget.article.link));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Link copied to clipboard')),
+        );
+      }
     }
   }
 
@@ -190,7 +223,12 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             onPressed: _toggleFullContent,
           ),
           IconButton(
-            icon: Icon(widget.article.isStarred ? Icons.star : Icons.star_border),
+            icon: Icon(_isUnread ? Icons.mark_email_unread : Icons.mark_email_read),
+            tooltip: _isUnread ? 'Mark as read' : 'Mark as unread',
+            onPressed: _toggleRead,
+          ),
+          IconButton(
+            icon: Icon(_isStarred ? Icons.star : Icons.star_border),
             onPressed: _toggleStarred,
           ),
           IconButton(

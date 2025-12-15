@@ -170,6 +170,31 @@ class ArticleDao {
     );
   }
 
+  Future<int> countByFeedId(String feedId) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as cnt FROM article WHERE feedId = ?',
+      [feedId],
+    );
+    if (result.isNotEmpty && result.first['cnt'] != null) {
+      return (result.first['cnt'] as int?) ?? 0;
+    }
+    return 0;
+  }
+
+  Future<Article?> latestByFeedId(String feedId) async {
+    final db = await _dbHelper.database;
+    final maps = await db.query(
+      'article',
+      where: 'feedId = ?',
+      whereArgs: [feedId],
+      orderBy: 'date DESC',
+      limit: 1,
+    );
+    if (maps.isEmpty) return null;
+    return Article.fromMap(maps.first);
+  }
+
   Future<int> deleteOldArticles(int accountId, DateTime beforeDate) async {
     final db = await _dbHelper.database;
     return await db.delete(

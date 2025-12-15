@@ -46,6 +46,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         case 'maxPastDays':
           updatedAccount = account.copyWith(maxPastDays: value as int);
           break;
+        case 'syncOnStart':
+          updatedAccount = account.copyWith(syncOnStart: value as bool);
+          break;
         default:
           return;
       }
@@ -89,6 +92,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 16),
+
+              // App Settings
+              Text(
+                'App Settings',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.home),
+                  title: const Text('Default Screen'),
+                  subtitle: Text(
+                    account.defaultScreen == 0
+                        ? 'Feeds (opens on the folder view)'
+                        : 'Articles (Flow stream)',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showDefaultScreenDialog(context, account),
+                ),
+              ),
+              const SizedBox(height: 24),
               
               // Reading Settings
               Text(
@@ -162,10 +189,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 8),
               Card(
+                child: SwitchListTile(
+                  secondary: const Icon(Icons.play_circle_outline),
+                  title: const Text('Sync on App Start'),
+                  subtitle: const Text('Automatically sync when the app starts'),
+                  value: account.syncOnStart,
+                  onChanged: (value) => _updateAccountSetting('syncOnStart', value),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
                 child: ListTile(
                   leading: const Icon(Icons.history),
                   title: const Text('Max Past Days to Sync'),
-                  subtitle: Text('${account.maxPastDays} days'),
+                  subtitle: Text(
+                    '${account.maxPastDays} days • Older items will be skipped on sync',
+                  ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _showMaxPastDaysDialog(context, account),
                 ),

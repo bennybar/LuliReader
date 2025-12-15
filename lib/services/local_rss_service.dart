@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/account.dart';
@@ -155,7 +156,7 @@ class LocalRssService {
 
       // Fetch articles from RSS
       onProgress?.call('  → Fetching RSS feed: ${feed.url}...');
-      final articles = await _rssHelper.queryRssXml(feed, accountId, null, preDate);
+      final articles = await _fetchWithRetry(feed, accountId, preDate, onProgress);
       
       if (articles.isEmpty) {
         onProgress?.call('  → No articles found for feed: ${feed.name}');
@@ -258,12 +259,50 @@ class LocalRssService {
       if (content != null) {
         // Update article with full content
         await _articleDao.update(article.copyWith(fullContent: content));
+        // Prefetch images referenced in the content for offline
+        _prefetchImages(content);
         return content;
       }
     } catch (e) {
       print('Error downloading full content: $e');
     }
     return null;
+  }
+
+  Future<List<Article>> _fetchWithRetry(
+    Feed feed,
+    int accountId,
+    DateTime preDate,
+    void Function(String)? onProgress,
+  ) async {
+    const attempts = 3;
+    Duration delay = const Duration(milliseconds: 500);
+    for (int i = 0; i < attempts; i++) {
+      try {
+        return await _rssHelper.queryRssXml(feed, accountId, null, preDate);
+      } catch (e) {
+        onProgress?.call('  → Fetch failed (${i + 1}/$attempts): $e');
+        if (i == attempts - 1) rethrow;
+        await Future.delayed(delay);
+        delay *= 2;
+      }
+    }
+    return [];
+  }
+
+  void _prefetchImages(String html) {
+    try {
+      final regex = RegExp('<img[^>]+src=[\'"]([^\'"]+)[\'"]', caseSensitive: false);
+      final matches = regex.allMatches(html);
+      for (final m in matches) {
+        final url = m.group(1);
+        if (url != null && url.startsWith('http')) {
+          DefaultCacheManager().downloadFile(url).then((_) {}, onError: (_) {});
+        }
+      }
+    } catch (e) {
+      print('Error prefetching images: $e');
+    }
   }
 }
 
