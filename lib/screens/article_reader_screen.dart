@@ -336,16 +336,108 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     final document = html_parser.parse(html);
     final body = document.body ?? document.documentElement!;
 
-    return _buildHtmlElement(body);
+    final widget = _buildHtmlElement(body);
+    // Process the widget to limit consecutive spacing
+    return _limitConsecutiveSpacing(widget);
+  }
+
+  /// Limits consecutive spacing elements to a maximum of 2
+  Widget _limitConsecutiveSpacing(Widget widget) {
+    if (widget is Column) {
+      final processedChildren = _processChildrenForSpacing(
+        widget.children.map((child) => _limitConsecutiveSpacing(child)).toList(),
+      );
+      return Column(
+        crossAxisAlignment: widget.crossAxisAlignment,
+        mainAxisAlignment: widget.mainAxisAlignment,
+        mainAxisSize: widget.mainAxisSize,
+        textDirection: widget.textDirection,
+        verticalDirection: widget.verticalDirection,
+        textBaseline: widget.textBaseline,
+        children: processedChildren,
+      );
+    }
+    return widget;
+  }
+
+  /// Processes a list of widgets to limit consecutive spacing
+  List<Widget> _processChildrenForSpacing(List<Widget> children) {
+    if (children.isEmpty) return children;
+
+    final processed = <Widget>[];
+    int consecutiveSpacingCount = 0;
+    const maxConsecutiveSpacing = 2;
+
+    for (int i = 0; i < children.length; i++) {
+      final widget = children[i];
+      final isSpacing = _isSpacingWidget(widget);
+
+      if (isSpacing) {
+        consecutiveSpacingCount++;
+        if (consecutiveSpacingCount <= maxConsecutiveSpacing) {
+          processed.add(widget);
+        }
+        // Skip if we've exceeded max consecutive spacing
+      } else {
+        consecutiveSpacingCount = 0;
+        processed.add(widget);
+      }
+    }
+
+    return processed;
+  }
+
+  /// Checks if a widget is primarily for spacing (empty or minimal content)
+  bool _isSpacingWidget(Widget widget) {
+    if (widget is SizedBox) {
+      // SizedBox with only height >= 16 is spacing
+      return widget.width == null && (widget.height == null || widget.height! >= 16);
+    }
+    if (widget is Padding) {
+      final padding = widget.padding;
+      // Padding with only bottom padding >= 16 (from paragraphs) is spacing
+      if (padding is EdgeInsets) {
+        final isBottomOnly = padding.top == 0 &&
+            padding.left == 0 &&
+            padding.right == 0 &&
+            padding.bottom >= 16;
+        if (isBottomOnly) {
+          // Check if the child is empty or just whitespace
+          if (widget.child is Text) {
+            final text = (widget.child as Text).data ?? '';
+            return text.trim().isEmpty;
+          }
+          if (widget.child is SizedBox || widget.child is Align) {
+            // Check nested widgets
+            return _isSpacingWidget(widget.child);
+          }
+          return true;
+        }
+      }
+    }
+    // Empty Column or other containers
+    if (widget is Column && widget.children.isEmpty) {
+      return true;
+    }
+    return false;
   }
 
   Widget _buildHtmlElement(dynamic element) {
     final children = <Widget>[];
+    final isRtl = _isRtl();
+    final textDir = _getTextDirection();
     
     if (element.nodes != null) {
       for (final node in element.nodes!) {
         if (node is html_dom.Text && node.text?.trim().isNotEmpty == true) {
-          children.add(Text(node.text!));
+          final nodeText = node.text!;
+          final nodeIsRtl = RtlHelper.isRtlContent(nodeText) || isRtl;
+          final nodeTextDir = RtlHelper.getTextDirectionFromContent(nodeText, feedRtl: _feed?.isRtl);
+          children.add(Text(
+            nodeText,
+            textDirection: nodeTextDir,
+            textAlign: nodeIsRtl ? TextAlign.right : TextAlign.left,
+          ));
         } else if (node is html_dom.Element) {
           children.add(_buildHtmlElement(node));
         }
@@ -357,6 +449,24 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         final text = element.text ?? '';
         final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
+        // Skip empty paragraphs (they create unwanted spacing)
+        if (text.trim().isEmpty && children.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        // If paragraph has children (like links), build them; otherwise use text
+        if (children.isNotEmpty) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Align(
+              alignment: isRtl ? Alignment.centerRight : Alignment.centerLeft,
+              child: Wrap(
+                alignment: isRtl ? WrapAlignment.end : WrapAlignment.start,
+                textDirection: textDir,
+                children: children,
+              ),
+            ),
+          );
+        }
         return Padding(
           padding: const EdgeInsets.only(bottom: 16),
           child: Text(
@@ -428,6 +538,18 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         final text = element.text ?? '';
         final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
+        // If link has children (like formatted text), use them; otherwise use plain text
+        final linkWidget = children.isNotEmpty
+            ? Wrap(
+                alignment: isRtl ? WrapAlignment.end : WrapAlignment.start,
+                textDirection: textDir,
+                children: children,
+              )
+            : Text(
+                text,
+                textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                textDirection: textDir,
+              );
         return InkWell(
           onTap: () async {
             final href = element.attributes['href']?.toString();
@@ -438,14 +560,12 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               }
             }
           },
-          child: Text(
-            text,
+          child: DefaultTextStyle(
             style: TextStyle(
               color: Theme.of(context).colorScheme.primary,
               decoration: TextDecoration.underline,
             ),
-            textAlign: isRtl ? TextAlign.right : TextAlign.left,
-            textDirection: textDir,
+            child: linkWidget,
           ),
         );
       case 'ul':
@@ -482,7 +602,11 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           ),
         );
       default:
-        return Column(children: children);
+        if (children.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        final processedChildren = _processChildrenForSpacing(children);
+        return Column(children: processedChildren);
     }
   }
 

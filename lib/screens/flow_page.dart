@@ -4,8 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../database/article_dao.dart';
@@ -15,57 +13,6 @@ import '../services/account_service.dart';
 import '../utils/rtl_helper.dart';
 import 'article_reader_screen.dart';
 import 'settings_screen.dart';
-
-// Custom Slidable widget that auto-triggers on full swipe
-class _SlidableWithAutoTrigger extends StatefulWidget {
-  final Article article;
-  final int swipeStartAction;
-  final int swipeEndAction;
-  final bool isRtl;
-  final Function(int, Article) onSwipeAction;
-  final Function(int, Article) onDismissibleAction;
-  final ActionPane? Function(int, Article, bool) buildStartActionPane;
-  final ActionPane? Function(int, Article, bool) buildEndActionPane;
-  final Widget Function() buildCard;
-
-  const _SlidableWithAutoTrigger({
-    super.key,
-    required this.article,
-    required this.swipeStartAction,
-    required this.swipeEndAction,
-    required this.isRtl,
-    required this.onSwipeAction,
-    required this.onDismissibleAction,
-    required this.buildStartActionPane,
-    required this.buildEndActionPane,
-    required this.buildCard,
-  });
-
-  @override
-  State<_SlidableWithAutoTrigger> createState() => _SlidableWithAutoTriggerState();
-}
-
-class _SlidableWithAutoTriggerState extends State<_SlidableWithAutoTrigger> {
-  @override
-  Widget build(BuildContext context) {
-    return Slidable(
-      key: widget.key,
-      startActionPane: widget.buildStartActionPane(
-        widget.swipeStartAction,
-        widget.article,
-        widget.isRtl,
-      ),
-      endActionPane: widget.buildEndActionPane(
-        widget.swipeEndAction,
-        widget.article,
-        widget.isRtl,
-      ),
-      closeOnScroll: true,
-      child: widget.buildCard(),
-    );
-  }
-}
-
 
 class FlowPage extends ConsumerStatefulWidget {
   final VoidCallback? onSync;
@@ -81,7 +28,6 @@ class FlowPageState extends ConsumerState<FlowPage> {
   bool _isLoading = true;
   String _filter = 'all'; // all, unread, starred
   int _refreshKey = 0;
-  bool _showSwipeHint = true;
 
   void refresh() {
     setState(() {
@@ -93,16 +39,6 @@ class FlowPageState extends ConsumerState<FlowPage> {
   @override
   void initState() {
     super.initState();
-    _loadLastFilter();
-  }
-
-  Future<void> _loadLastFilter() async {
-    final account = await ref.read(accountServiceProvider).getCurrentAccount();
-    if (account != null && account.lastFlowFilter.isNotEmpty) {
-      setState(() {
-        _filter = account.lastFlowFilter;
-      });
-    }
     _loadArticles();
   }
 
@@ -124,12 +60,12 @@ class FlowPageState extends ConsumerState<FlowPage> {
       } else if (_filter == 'starred') {
         articles = await articleDao.getStarred(account.id!, limit: 500);
       } else {
+        // Get all articles from all feeds (optimized query)
         articles = await articleDao.getAllArticles(account.id!, limit: 500);
       }
 
       // Get feeds for each article
       final articlesWithFeed = <ArticleWithFeed>[];
-      int feedNotFoundCount = 0;
       for (final article in articles) {
         final feed = await feedDao.getById(article.feedId);
         if (feed != null) {
@@ -137,33 +73,21 @@ class FlowPageState extends ConsumerState<FlowPage> {
             article: article,
             feed: feed as dynamic,
           ));
-        } else {
-          feedNotFoundCount++;
         }
+
       }
+
       setState(() {
         _articles = articlesWithFeed;
         _isLoading = false;
       });
-    } catch (e, stackTrace) {
+    } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error loading articles: $e')),
         );
       }
-    }
-  }
-
-  Future<void> _saveFilter(String filter) async {
-    try {
-      final account = await ref.read(accountServiceProvider).getCurrentAccount();
-      if (account != null) {
-        final updatedAccount = account.copyWith(lastFlowFilter: filter);
-        await ref.read(accountServiceProvider).updateAccount(updatedAccount);
-      }
-    } catch (e) {
-      // Error saving filter
     }
   }
 
@@ -190,25 +114,6 @@ class FlowPageState extends ConsumerState<FlowPage> {
   }
 
   Future<void> _markAllAsRead() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Mark all as read?'),
-        content: const Text('This will mark all articles as read. Continue?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Mark all'),
-          ),
-        ],
-      ),
-    );
-    if (confirm != true) return;
-
     try {
       final articleDao = ref.read(articleDaoProvider);
       for (final articleWithFeed in _articles) {
@@ -267,7 +172,6 @@ class FlowPageState extends ConsumerState<FlowPage> {
                   _filter = 'unread';
                   _refreshKey++;
                 });
-                _saveFilter('unread');
                 _loadArticles();
               },
             ),
@@ -284,7 +188,6 @@ class FlowPageState extends ConsumerState<FlowPage> {
                   _filter = 'starred';
                   _refreshKey++;
                 });
-                _saveFilter('starred');
                 _loadArticles();
               },
             ),
@@ -316,120 +219,65 @@ class FlowPageState extends ConsumerState<FlowPage> {
           ),
         ],
       ),
-      body: Builder(
-        builder: (context) {
-          Widget content;
-          if (_isLoading) {
-            content = const Center(child: CircularProgressIndicator());
-          } else if (_articles.isEmpty) {
-            content = Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    _filter == 'starred' ? Icons.star_outline : Icons.article,
-                    size: 64,
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    _filter == 'starred' ? 'No starred articles' : 'No articles',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    _filter == 'starred'
-                        ? 'Star items from Articles to see them here.'
-                        : 'Sync feeds to load articles',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 16),
-                  // Debug info
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text(
-                      'Debug: Filter=$_filter\nArticles in state: ${_articles.length}',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontFamily: 'monospace',
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          } else {
-            content = RefreshIndicator(
-              onRefresh: _loadArticles,
-              child: ListView.builder(
-                key: ValueKey(_refreshKey),
-                itemCount: _articles.length,
-                itemBuilder: (context, index) {
-                  final articleWithFeed = _articles[index];
-                  return _buildArticleCard(articleWithFeed);
-                },
-              ),
-            );
-          }
-
-          return Column(
-            children: [
-              _buildSyncInfo(),
-              if (_showSwipeHint)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                  child: Material(
-                    color: Theme.of(context).colorScheme.surfaceVariant,
-                    borderRadius: BorderRadius.circular(12),
-                    child: ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.swipe),
-                      title: const Text('Tip: swipe articles to mark read or star'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() => _showSwipeHint = false),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _articles.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.article,
+                        size: 64,
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No articles',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Sync feeds to load articles',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ],
+                  ),
+                )
+              : RefreshIndicator(
+                  onRefresh: _loadArticles,
+                  child: ListView.builder(
+                    key: ValueKey(_refreshKey),
+                    itemCount: _articles.length,
+                    itemBuilder: (context, index) {
+                      final articleWithFeed = _articles[index];
+                      return _buildArticleCard(articleWithFeed);
+                    },
                   ),
                 ),
-              Expanded(child: content),
-            ],
-          );
-        },
-      ),
     );
   }
 
-  Widget _buildSyncInfo() {
+  Widget _buildArticleCard(ArticleWithFeed articleWithFeed) {
+    final article = articleWithFeed.article;
+    final feed = articleWithFeed.feed as Feed;
+    final locale = Localizations.localeOf(context);
+    final textDirection = RtlHelper.getTextDirection(locale, feedRtl: feed.isRtl);
+    final isRtl = textDirection == TextDirection.rtl;
+
     return FutureBuilder(
       future: ref.read(accountServiceProvider).getCurrentAccount(),
       builder: (context, snapshot) {
         final account = snapshot.data;
-        final lastSync = account?.updateAt;
-        if (lastSync == null) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: Row(
-            children: [
-              const Icon(Icons.history, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Last sync: ${_formatDateShort(lastSync)}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+        final swipeStartAction = account?.swipeStartAction ?? 2;
+        final swipeEndAction = account?.swipeEndAction ?? 1;
 
-  Widget _buildCardWidget(Article article, Feed feed, bool isRtl, TextDirection textDirection, BuildContext context) {
-    return Card(
+        return Slidable(
+          key: ValueKey(article.id),
+          startActionPane: _buildStartActionPane(swipeStartAction, article, isRtl, null),
+          endActionPane: _buildEndActionPane(swipeEndAction, article, isRtl, null),
+          closeOnScroll: true,
+          child: Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
@@ -459,19 +307,22 @@ class FlowPageState extends ConsumerState<FlowPage> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: article.img != null && article.img!.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: article.img!,
+                        ? Image.network(
+                            article.img!,
                             width: 100,
                             height: 100,
                             fit: BoxFit.cover,
                             alignment: Alignment.topLeft,
-                            errorWidget: (context, url, error) => _buildPlaceholderImage(),
-                            placeholder: (context, url) => Container(
-                              width: 100,
-                              height: 100,
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                            ),
+                            errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                width: 100,
+                                height: 100,
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                              );
+                            },
                           )
                         : _buildPlaceholderImage(),
                   ),
@@ -568,19 +419,22 @@ class FlowPageState extends ConsumerState<FlowPage> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: article.img != null && article.img!.isNotEmpty
-                        ? CachedNetworkImage(
-                            imageUrl: article.img!,
+                        ? Image.network(
+                            article.img!,
                             width: 100,
                             height: 100,
                             fit: BoxFit.cover,
                             alignment: Alignment.topLeft,
-                            errorWidget: (context, url, error) => _buildPlaceholderImage(),
-                            placeholder: (context, url) => Container(
-                              width: 100,
-                              height: 100,
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                              child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                            ),
+                            errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(),
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Container(
+                                width: 100,
+                                height: 100,
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                              );
+                            },
                           )
                         : _buildPlaceholderImage(),
                   ),
@@ -589,52 +443,22 @@ class FlowPageState extends ConsumerState<FlowPage> {
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildArticleCard(ArticleWithFeed articleWithFeed) {
-    final article = articleWithFeed.article;
-    final feed = articleWithFeed.feed as Feed;
-    final locale = Localizations.localeOf(context);
-    final textDirection = RtlHelper.getTextDirection(locale, feedRtl: feed.isRtl);
-    final isRtl = textDirection == TextDirection.rtl;
-
-    return FutureBuilder(
-      future: ref.read(accountServiceProvider).getCurrentAccount(),
-      builder: (context, snapshot) {
-        final account = snapshot.data;
-        final swipeStartAction = account?.swipeStartAction ?? 2;
-        final swipeEndAction = account?.swipeEndAction ?? 1;
-
-        return _SlidableWithAutoTrigger(
-          key: ValueKey(article.id),
-          article: article,
-          swipeStartAction: swipeStartAction,
-          swipeEndAction: swipeEndAction,
-          isRtl: isRtl,
-          onSwipeAction: _handleSwipeAction,
-          onDismissibleAction: _handleDismissibleAction,
-          buildStartActionPane: _buildStartActionPane,
-          buildEndActionPane: _buildEndActionPane,
-          buildCard: () => _buildCardWidget(article, feed, isRtl, textDirection, context),
+            ),
+          ),
         );
       },
     );
   }
 
-  ActionPane? _buildStartActionPane(int action, Article article, bool isRtl) {
+  ActionPane? _buildStartActionPane(int action, Article article, bool isRtl, SlidableController? controller) {
     if (action == 0) return null; // None
 
     return ActionPane(
       motion: const DrawerMotion(),
-      extentRatio: 0.35,
-      dismissible: DismissiblePane(
-        onDismissed: () => _handleDismissibleAction(action, article),
-      ),
+      extentRatio: 0.25,
       children: [
         SlidableAction(
-          onPressed: (_) => _handleSwipeAction(action, article),
+          onPressed: (_) => _handleSwipeAction(action, article, controller),
           backgroundColor: _getActionColor(action),
           foregroundColor: Colors.white,
           icon: _getActionIcon(action),
@@ -646,18 +470,15 @@ class FlowPageState extends ConsumerState<FlowPage> {
     );
   }
 
-  ActionPane? _buildEndActionPane(int action, Article article, bool isRtl) {
+  ActionPane? _buildEndActionPane(int action, Article article, bool isRtl, SlidableController? controller) {
     if (action == 0) return null; // None
 
     return ActionPane(
       motion: const DrawerMotion(),
-      extentRatio: 0.35,
-      dismissible: DismissiblePane(
-        onDismissed: () => _handleDismissibleAction(action, article),
-      ),
+      extentRatio: 0.25,
       children: [
         SlidableAction(
-          onPressed: (_) => _handleSwipeAction(action, article),
+          onPressed: (_) => _handleSwipeAction(action, article, controller),
           backgroundColor: _getActionColor(action),
           foregroundColor: Colors.white,
           icon: _getActionIcon(action),
@@ -669,110 +490,27 @@ class FlowPageState extends ConsumerState<FlowPage> {
     );
   }
 
-  Future<void> _handleDismissibleAction(int action, Article article) async {
-    // Required by DismissiblePane: remove from list immediately
-    final index = _articles.indexWhere((a) => a.article.id == article.id);
-    if (index == -1) return;
-
-    final current = _articles[index];
-    setState(() {
-      _articles.removeAt(index);
-    });
-
-    // Compute updated state and whether it should remain in list
-    Article updatedArticle = current.article;
-    bool shouldRemain = true;
-    switch (action) {
-      case 1: // Toggle Read
-        updatedArticle = current.article.copyWith(isUnread: !current.article.isUnread);
-        if (!updatedArticle.isUnread && _filter == 'unread') {
-          shouldRemain = false;
-        }
-        break;
-      case 2: // Toggle Starred
-        updatedArticle = current.article.copyWith(isStarred: !current.article.isStarred);
-        if (!updatedArticle.isStarred && _filter == 'starred') {
-          shouldRemain = false;
-        }
-        break;
-      default:
-        shouldRemain = false;
-    }
-
-    // Persist in background
-    Future.microtask(() async {
-      try {
-        final articleDao = ref.read(articleDaoProvider);
-        switch (action) {
-          case 1:
-            if (article.isUnread) {
-              await articleDao.markAsRead(article.id);
-            } else {
-              await articleDao.markAsUnread(article.id);
-            }
-            break;
-          case 2:
-            await articleDao.toggleStarred(article.id);
-            break;
-        }
-      } catch (e) {
-        // If failed, fallback to reload
-        if (mounted) _loadArticles();
-      }
-    });
-
-    // Reinsert on next frame if it should stay visible (e.g., in "all" filter)
-    if (shouldRemain && mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        setState(() {
-          _articles.insert(
-            index.clamp(0, _articles.length),
-            ArticleWithFeed(article: updatedArticle, feed: current.feed),
-          );
-        });
-      });
-    }
-  }
-
-  Future<void> _handleSwipeAction(int action, Article article) async {
+  Future<void> _handleSwipeAction(int action, Article article, SlidableController? controller) async {
     // Update UI immediately for instant feedback
     final index = _articles.indexWhere((a) => a.article.id == article.id);
     if (index != -1) {
       setState(() {
         final currentArticle = _articles[index].article;
         Article updatedArticle;
-        bool shouldRemove = false;
-        
         switch (action) {
           case 1: // Toggle Read
             updatedArticle = currentArticle.copyWith(isUnread: !currentArticle.isUnread);
-            // If marking as read and filter is "unread", remove from list
-            if (!updatedArticle.isUnread && _filter == 'unread') {
-              shouldRemove = true;
-            }
             break;
           case 2: // Toggle Starred
             updatedArticle = currentArticle.copyWith(isStarred: !currentArticle.isStarred);
-            // If unstarring and filter is "starred", remove from list
-            if (!updatedArticle.isStarred && _filter == 'starred') {
-              shouldRemove = true;
-            }
             break;
           default:
             return;
         }
-        
-        if (shouldRemove) {
-          // Remove article from list (dismissible behavior)
-          _articles.removeAt(index);
-        } else {
-          // Update article in place
-          _articles[index] = ArticleWithFeed(
-            article: updatedArticle,
-            feed: _articles[index].feed,
-          );
-        }
+        _articles[index] = ArticleWithFeed(
+          article: updatedArticle,
+          feed: _articles[index].feed,
+        );
       });
     }
 
@@ -889,15 +627,11 @@ class FlowPageState extends ConsumerState<FlowPage> {
   }
 
   Future<void> _shareArticle(Article article) async {
-    try {
-      await Share.share('${article.title}\n${article.link}');
-    } catch (e) {
-      await Clipboard.setData(ClipboardData(text: article.link));
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Link copied to clipboard')),
-        );
-      }
+    await Clipboard.setData(ClipboardData(text: article.link));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Link copied to clipboard')),
+      );
     }
   }
 
@@ -909,29 +643,20 @@ class FlowPageState extends ConsumerState<FlowPage> {
       if (currentIndex != -1) {
         // Mark all articles below this one as read
         int markedCount = 0;
-        final indicesToUpdate = <int>[];
         for (int i = currentIndex + 1; i < _articles.length; i++) {
           if (_articles[i].article.isUnread) {
             await articleDao.markAsRead(_articles[i].article.id);
-            indicesToUpdate.add(i);
             markedCount++;
           }
         }
-
-        // Update UI: remove in unread filter, otherwise mark as read in place
+        
+        // Update UI
         setState(() {
-          if (_filter == 'unread') {
-            // Remove from bottom to top to keep indices valid
-            for (final idx in indicesToUpdate.reversed) {
-              _articles.removeAt(idx);
-            }
-          } else {
-            for (final idx in indicesToUpdate) {
-              _articles[idx] = ArticleWithFeed(
-                article: _articles[idx].article.copyWith(isUnread: false),
-                feed: _articles[idx].feed,
-              );
-            }
+          for (int i = currentIndex + 1; i < _articles.length; i++) {
+            _articles[i] = ArticleWithFeed(
+              article: _articles[i].article.copyWith(isUnread: false),
+              feed: _articles[i].feed,
+            );
           }
         });
         
@@ -966,16 +691,6 @@ class FlowPageState extends ConsumerState<FlowPage> {
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
-  }
-
-  String _formatDateShort(DateTime date) {
-    // Short human-friendly date/time for sync stamps
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 }
 
