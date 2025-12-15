@@ -33,6 +33,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   Feed? _feed;
   late bool _isStarred;
   late bool _isUnread;
+  Set<String> _seenContentImages = {};
 
   @override
   void initState() {
@@ -333,6 +334,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   }
 
   Widget _buildHtmlContent(String html) {
+    _seenContentImages = {};
     final document = html_parser.parse(html);
     final body = document.body ?? document.documentElement!;
 
@@ -458,7 +460,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         // If paragraph has children (like links), build them; otherwise use text
         if (children.isNotEmpty) {
           return Padding(
-            padding: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Align(
               alignment: isRtl ? Alignment.centerRight : Alignment.centerLeft,
               child: Wrap(
@@ -470,7 +472,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           );
         }
         return Padding(
-          padding: const EdgeInsets.only(bottom: 16),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Text(
             text,
             style: Theme.of(context).textTheme.bodyLarge,
@@ -513,6 +515,11 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       case 'img':
         final src = element.attributes['src']?.toString();
         if (src != null && src.isNotEmpty) {
+          // Skip duplicate images within parsed content
+          if (_seenContentImages.contains(src)) {
+            return const SizedBox.shrink();
+          }
+          _seenContentImages.add(src);
           // Skip if this is the same image as the hero image
           // Normalize URLs for comparison (remove protocol, www, trailing slashes)
           if (widget.article.img != null && _isSameImage(src, widget.article.img!)) {

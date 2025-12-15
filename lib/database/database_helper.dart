@@ -169,5 +169,19 @@ class DatabaseHelper {
     final db = await database;
     await db.close();
   }
+
+  /// Clears all local articles and resets sync markers so a fresh sync can run.
+  /// Keeps accounts, feeds, and groups intact.
+  Future<void> clearArticlesAndSyncState() async {
+    final db = await database;
+    await db.delete('article');
+    await db.update(
+      'account',
+      {
+        'lastArticleId': null,
+        'updateAt': null,
+      },
+    );
+  }
 }
 

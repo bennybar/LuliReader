@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
 import '../services/account_service.dart';
+import '../services/local_rss_service.dart';
+import '../database/database_helper.dart';
 import '../models/account.dart';
 import 'opml_import_export_screen.dart';
 
@@ -13,6 +15,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
+  bool _isResyncing = false;
 
   Future<void> _updateAccountSetting(String field, dynamic value) async {
     try {
@@ -229,6 +232,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onChanged: (value) => _updateAccountSetting('syncOnlyWhenCharging', value),
                 ),
               ),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.restart_alt),
+                  title: const Text('Resync All Articles'),
+                  subtitle: const Text('Clear local articles and re-download everything'),
+                  trailing: _isResyncing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.chevron_right),
+                  onTap: _isResyncing ? null : () => _confirmResync(context, account),
+                ),
+              ),
               const SizedBox(height: 24),
               ListTile(
                 leading: const Icon(Icons.import_export),
@@ -406,6 +425,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     if (interval != null && interval != account.syncInterval) {
       await _updateAccountSetting('syncInterval', interval);
+    }
+  }
+
+  Future<void> _confirmResync(BuildContext context, Account account) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Resync All Articles'),
+        content: const Text(
+          'This will delete all locally stored articles and reset sync markers. '
+          'Feeds and settings stay intact. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Resync'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isResyncing = true);
+    try {
+      await DatabaseHelper.instance.clearArticlesAndSyncState();
+
+      final rssService = ref.read(localRssServiceProvider);
+      await rssService.sync(account.id!);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Resync started')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting resync: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isResyncing = false);
+      }
     }
   }
 }
