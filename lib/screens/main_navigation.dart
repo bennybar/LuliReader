@@ -180,7 +180,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   Widget _buildGlassNavBar(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final glassColor = scheme.surface.withOpacity(0.18);
+    final glassColor = scheme.surface.withOpacity(0.14);
     return ClipRRect(
       borderRadius: BorderRadius.circular(28),
       child: BackdropFilter(

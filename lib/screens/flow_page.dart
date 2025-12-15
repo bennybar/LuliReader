@@ -23,11 +23,12 @@ class FlowPage extends ConsumerStatefulWidget {
   ConsumerState<FlowPage> createState() => FlowPageState();
 }
 
-class FlowPageState extends ConsumerState<FlowPage> {
+class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver {
   List<ArticleWithFeed> _articles = [];
   bool _isLoading = true;
   String _filter = 'all'; // all, unread, starred
   int _refreshKey = 0;
+  Timer? _accountRefreshTimer;
 
   void refresh() {
     setState(() {
@@ -39,7 +40,31 @@ class FlowPageState extends ConsumerState<FlowPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadLastFilter();
+    _startAccountRefreshTimer();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _accountRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(currentAccountProvider);
+    }
+    super.didChangeAppLifecycleState(state);
+  }
+
+  void _startAccountRefreshTimer() {
+    _accountRefreshTimer?.cancel();
+    _accountRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      ref.invalidate(currentAccountProvider);
+    });
   }
 
   Future<void> _loadLastFilter() async {
