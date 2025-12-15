@@ -107,50 +107,27 @@ class FlowPageState extends ConsumerState<FlowPage> {
   }
 
   Future<void> _loadArticles() async {
-    print('[FLOW_PAGE] _loadArticles() called, filter: $_filter');
     setState(() => _isLoading = true);
     try {
-      print('[FLOW_PAGE] Getting current account...');
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
       if (account == null) {
-        print('[FLOW_PAGE] ERROR: No account found!');
         setState(() => _isLoading = false);
         return;
       }
-      print('[FLOW_PAGE] Account found: id=${account.id}, name=${account.name}');
 
       final articleDao = ref.read(articleDaoProvider);
       final feedDao = ref.read(feedDaoProvider);
 
       List<Article> articles;
-      print('[FLOW_PAGE] Loading articles with filter: $_filter');
       if (_filter == 'unread') {
-        print('[FLOW_PAGE] Calling getUnread(accountId=${account.id})');
         articles = await articleDao.getUnread(account.id!, limit: 500);
-        print('[FLOW_PAGE] getUnread returned ${articles.length} articles');
       } else if (_filter == 'starred') {
-        print('[FLOW_PAGE] Calling getStarred(accountId=${account.id})');
         articles = await articleDao.getStarred(account.id!, limit: 500);
-        print('[FLOW_PAGE] getStarred returned ${articles.length} articles');
       } else {
-        print('[FLOW_PAGE] Calling getAllArticles(accountId=${account.id})');
         articles = await articleDao.getAllArticles(account.id!, limit: 500);
-        print('[FLOW_PAGE] getAllArticles returned ${articles.length} articles');
-      }
-
-      if (articles.isEmpty) {
-        print('[FLOW_PAGE] WARNING: No articles returned from database query!');
-        print('[FLOW_PAGE] Filter: $_filter, Account ID: ${account.id}');
-      } else {
-        print('[FLOW_PAGE] Processing ${articles.length} articles...');
-        // Log first few article IDs for debugging
-        for (int i = 0; i < articles.length && i < 3; i++) {
-          print('[FLOW_PAGE] Article[$i]: id=${articles[i].id}, title=${articles[i].title.substring(0, articles[i].title.length > 30 ? 30 : articles[i].title.length)}, feedId=${articles[i].feedId}');
-        }
       }
 
       // Get feeds for each article
-      print('[FLOW_PAGE] Loading feeds for articles...');
       final articlesWithFeed = <ArticleWithFeed>[];
       int feedNotFoundCount = 0;
       for (final article in articles) {
@@ -162,23 +139,13 @@ class FlowPageState extends ConsumerState<FlowPage> {
           ));
         } else {
           feedNotFoundCount++;
-          print('[FLOW_PAGE] WARNING: Feed not found for article ${article.id}, feedId=${article.feedId}');
         }
       }
-
-      if (feedNotFoundCount > 0) {
-        print('[FLOW_PAGE] WARNING: $feedNotFoundCount articles had missing feeds!');
-      }
-
-      print('[FLOW_PAGE] Final article count: ${articlesWithFeed.length} (from ${articles.length} articles)');
       setState(() {
         _articles = articlesWithFeed;
         _isLoading = false;
       });
-      print('[FLOW_PAGE] State updated, _articles.length = ${_articles.length}');
     } catch (e, stackTrace) {
-      print('[FLOW_PAGE] ERROR in _loadArticles: $e');
-      print('[FLOW_PAGE] Stack trace: $stackTrace');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -196,7 +163,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
         await ref.read(accountServiceProvider).updateAccount(updatedAccount);
       }
     } catch (e) {
-      print('Error saving filter: $e');
+      // Error saving filter
     }
   }
 
@@ -351,7 +318,6 @@ class FlowPageState extends ConsumerState<FlowPage> {
       ),
       body: Builder(
         builder: (context) {
-          print('[FLOW_PAGE] build() called: _isLoading=$_isLoading, _articles.length=${_articles.length}, filter=$_filter');
           Widget content;
           if (_isLoading) {
             content = const Center(child: CircularProgressIndicator());
@@ -400,9 +366,6 @@ class FlowPageState extends ConsumerState<FlowPage> {
                 key: ValueKey(_refreshKey),
                 itemCount: _articles.length,
                 itemBuilder: (context, index) {
-                  if (index == 0) {
-                    print('[FLOW_PAGE] Building first article card, total items: ${_articles.length}');
-                  }
                   final articleWithFeed = _articles[index];
                   return _buildArticleCard(articleWithFeed);
                 },

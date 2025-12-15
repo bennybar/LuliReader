@@ -62,7 +62,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         }
       }
     } catch (e) {
-      print('Error loading feed: $e');
+      // Error loading feed
     }
   }
 
@@ -111,7 +111,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           _isUnread = false;
         });
       } catch (e) {
-        print('Error marking as read: $e');
+        // Error marking as read
       }
     }
   }

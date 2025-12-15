@@ -45,7 +45,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
         });
       }
     } catch (e) {
-      print('Error loading feed stats: $e');
+      // Error loading feed stats
     }
   }
 
@@ -239,7 +239,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
           // Download all in batch concurrently
           await Future.wait(
             batch.map((article) => localRssService.downloadFullContent(article).catchError((e) {
-              print('Error downloading full content for article ${article.id}: $e');
+              // Error downloading full content for article
               return null;
             })),
             eagerError: false,
@@ -251,7 +251,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
           }
         }
       } catch (e) {
-        print('Error in background full content download: $e');
+        // Error in background full content download
       }
     });
   }

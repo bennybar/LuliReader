@@ -110,7 +110,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
         await ref.read(accountServiceProvider).updateAccount(updatedAccount);
       }
     } catch (e) {
-      print('Error saving default screen: $e');
+      // Error saving default screen
     }
   }
 
