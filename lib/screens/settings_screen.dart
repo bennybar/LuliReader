@@ -40,6 +40,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         case 'syncInterval':
           updatedAccount = account.copyWith(syncInterval: value as int);
           break;
+        case 'defaultScreen':
+          updatedAccount = account.copyWith(defaultScreen: value as int);
+          break;
+        case 'maxPastDays':
+          updatedAccount = account.copyWith(maxPastDays: value as int);
+          break;
         default:
           return;
       }
@@ -156,6 +162,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 8),
               Card(
+                child: ListTile(
+                  leading: const Icon(Icons.history),
+                  title: const Text('Max Past Days to Sync'),
+                  subtitle: Text('${account.maxPastDays} days'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showMaxPastDaysDialog(context, account),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
                 child: SwitchListTile(
                   secondary: const Icon(Icons.wifi),
                   title: const Text('Sync Only on Wi-Fi'),
@@ -221,6 +237,31 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _showMaxPastDaysDialog(BuildContext context, Account account) async {
+    const options = [3, 5, 10, 30, 90];
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Max Past Days to Sync'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options
+              .map((days) => RadioListTile<int>(
+                    title: Text('$days days'),
+                    value: days,
+                    groupValue: account.maxPastDays,
+                    onChanged: (value) => Navigator.of(context).pop(value),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
+
+    if (selected != null) {
+      await _updateAccountSetting('maxPastDays', selected);
+    }
+  }
+
   Future<void> _showSwipeActionDialog(BuildContext context, Account account, bool isStart) async {
     final action = await showDialog<int>(
       context: context,
@@ -257,6 +298,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         isStart ? 'swipeStartAction' : 'swipeEndAction',
         action,
       );
+    }
+  }
+
+  Future<void> _showDefaultScreenDialog(BuildContext context, Account account) async {
+    final screen = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Default Screen'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<int>(
+              title: const Text('Feeds'),
+              value: 0,
+              groupValue: account.defaultScreen,
+              onChanged: (value) => Navigator.of(context).pop(value),
+            ),
+            RadioListTile<int>(
+              title: const Text('Flow'),
+              value: 1,
+              groupValue: account.defaultScreen,
+              onChanged: (value) => Navigator.of(context).pop(value),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (screen != null) {
+      await _updateAccountSetting('defaultScreen', screen);
     }
   }
 

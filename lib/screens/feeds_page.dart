@@ -153,6 +153,8 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
   }
 
   Widget _buildGroupCard(GroupWithFeed groupWithFeed) {
+    final group = groupWithFeed.group;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: ExpansionTile(
@@ -160,7 +162,16 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
           Icons.folder,
           color: Theme.of(context).colorScheme.primary,
         ),
-        title: Text(groupWithFeed.group.name),
+        title: Row(
+          children: [
+            Expanded(child: Text(group.name)),
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              tooltip: 'Delete folder',
+              onPressed: () => _confirmDeleteGroup(group),
+            ),
+          ],
+        ),
         subtitle: Text('${groupWithFeed.feeds.length} feeds'),
         children: groupWithFeed.feeds.map((feed) {
           final feedObj = feed as Feed;
@@ -208,6 +219,47 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
   Future<List<GroupWithFeed>> _loadGroupsWithFeeds(int accountId) async {
     final groupDao = ref.read(groupDaoProvider);
     return await groupDao.getAllWithFeeds(accountId);
+  }
+
+  Future<void> _confirmDeleteGroup(Group group) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete folder?'),
+        content: Text(
+          'This will remove the folder "${group.name}" and all feeds inside it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final groupDao = ref.read(groupDaoProvider);
+        await groupDao.delete(group.id);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Deleted folder "${group.name}"')),
+          );
+          _refresh();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error deleting folder: $e')),
+          );
+        }
+      }
+    }
   }
 }
 

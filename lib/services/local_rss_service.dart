@@ -80,6 +80,7 @@ class LocalRssService {
 
     onProgress?.call('Loading feeds to sync...');
     final preDate = DateTime.now();
+    final minDate = preDate.subtract(Duration(days: account.maxPastDays));
     final List<Feed> feedsToSync;
 
     if (feedId != null) {
@@ -114,7 +115,7 @@ class LocalRssService {
       activeCount++;
       onProgress?.call('Syncing: ${feed.name} (${completedCount + errorCount + 1}/${feedsToSync.length})');
       
-      futures.add(_syncFeed(feed, accountId, preDate, accountFullContent, onProgress).then((_) {
+      futures.add(_syncFeed(feed, accountId, preDate, minDate, accountFullContent, onProgress).then((_) {
         activeCount--;
         completedCount++;
         onProgress?.call('✓ Completed: ${feed.name} ($completedCount/${feedsToSync.length})');
@@ -142,6 +143,7 @@ class LocalRssService {
     Feed feed,
     int accountId,
     DateTime preDate,
+    DateTime minDate,
     bool accountFullContent,
     void Function(String)? onProgress,
   ) async {
@@ -161,10 +163,11 @@ class LocalRssService {
         return;
       }
       
-      onProgress?.call('  → Found ${articles.length} article(s) in ${feed.name}');
+      final recentArticles = articles.where((a) => !a.date.isBefore(minDate)).toList();
+      onProgress?.call('  → Found ${recentArticles.length} article(s) within ${accountFullContent ? 'full-content ' : ''}window for ${feed.name}');
       
       // Filter out archived articles
-      final newArticles = articles.where((a) => !archivedLinks.contains(a.link)).toList();
+      final newArticles = recentArticles.where((a) => !archivedLinks.contains(a.link)).toList();
       onProgress?.call('  → ${newArticles.length} new article(s) to add');
 
       // Insert new articles

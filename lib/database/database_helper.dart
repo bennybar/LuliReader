@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 4,
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -49,7 +49,10 @@ class DatabaseHelper {
         syncBlockList TEXT DEFAULT '',
         isFullContent INTEGER DEFAULT 0,
         swipeStartAction INTEGER DEFAULT 2,
-        swipeEndAction INTEGER DEFAULT 1
+        swipeEndAction INTEGER DEFAULT 1,
+        defaultScreen INTEGER DEFAULT 1,
+        lastFlowFilter TEXT DEFAULT 'all',
+        maxPastDays INTEGER DEFAULT 10
       )
     ''');
 
@@ -113,6 +116,26 @@ class DatabaseHelper {
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 3) {
+      // Add defaultScreen and lastFlowFilter columns to account table
+      try {
+        await db.execute('ALTER TABLE account ADD COLUMN defaultScreen INTEGER DEFAULT 1');
+      } catch (e) {
+        print('Error adding defaultScreen to account: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE account ADD COLUMN lastFlowFilter TEXT DEFAULT \'all\'');
+      } catch (e) {
+        print('Error adding lastFlowFilter to account: $e');
+      }
+    }
+    if (oldVersion < 4) {
+      try {
+        await db.execute('ALTER TABLE account ADD COLUMN maxPastDays INTEGER DEFAULT 10');
+      } catch (e) {
+        print('Error adding maxPastDays to account: $e');
+      }
+    }
     if (oldVersion < 2) {
       // Add isRtl column to feed table
       try {

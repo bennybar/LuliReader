@@ -13,6 +13,9 @@ class Account {
   final bool isFullContent; // Parse full content for all feeds
   final int swipeStartAction; // 0=None, 1=ToggleRead, 2=ToggleStarred
   final int swipeEndAction; // 0=None, 1=ToggleRead, 2=ToggleStarred
+  final int defaultScreen; // 0=Feeds, 1=Flow
+  final String lastFlowFilter; // all, unread, starred
+  final int maxPastDays; // limit how far back to sync articles
 
   Account({
     this.id,
@@ -29,6 +32,9 @@ class Account {
     this.isFullContent = false,
     this.swipeStartAction = 2, // Default: ToggleStarred
     this.swipeEndAction = 1, // Default: ToggleRead
+    this.defaultScreen = 1, // Default: Flow
+    this.lastFlowFilter = 'all', // Default: all
+    this.maxPastDays = 10, // Default: 10 days back
   });
 
   Map<String, dynamic> toMap() {
@@ -47,6 +53,9 @@ class Account {
       'isFullContent': isFullContent ? 1 : 0,
       'swipeStartAction': swipeStartAction,
       'swipeEndAction': swipeEndAction,
+      'defaultScreen': defaultScreen,
+      'lastFlowFilter': lastFlowFilter,
+      'maxPastDays': maxPastDays,
     };
   }
 
@@ -68,6 +77,9 @@ class Account {
       isFullContent: (map['isFullContent'] as int? ?? 0) == 1,
       swipeStartAction: map['swipeStartAction'] as int? ?? 2,
       swipeEndAction: map['swipeEndAction'] as int? ?? 1,
+      defaultScreen: map['defaultScreen'] as int? ?? 1,
+      lastFlowFilter: map['lastFlowFilter'] as String? ?? 'all',
+      maxPastDays: map['maxPastDays'] as int? ?? 10,
     );
   }
 
@@ -86,6 +98,9 @@ class Account {
     bool? isFullContent,
     int? swipeStartAction,
     int? swipeEndAction,
+    int? defaultScreen,
+    String? lastFlowFilter,
+    int? maxPastDays,
   }) {
     return Account(
       id: id ?? this.id,
@@ -102,6 +117,9 @@ class Account {
       isFullContent: isFullContent ?? this.isFullContent,
       swipeStartAction: swipeStartAction ?? this.swipeStartAction,
       swipeEndAction: swipeEndAction ?? this.swipeEndAction,
+      defaultScreen: defaultScreen ?? this.defaultScreen,
+      lastFlowFilter: lastFlowFilter ?? this.lastFlowFilter,
+      maxPastDays: maxPastDays ?? this.maxPastDays,
     );
   }
 }

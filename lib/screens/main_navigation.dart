@@ -20,6 +20,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   final GlobalKey<FeedsPageState> _feedsPageKey = GlobalKey();
   final GlobalKey<FlowPageState> _flowPageKey = GlobalKey();
   Timer? _syncTimer;
+  bool _initialized = false;
 
   Future<void> _syncAll({bool showMessage = true}) async {
     final account = await ref.read(accountServiceProvider).getCurrentAccount();
@@ -65,12 +66,39 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    _loadDefaultScreen();
     // Start periodic sync after a short delay to allow widget tree to build
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
         _startPeriodicSync();
       }
     });
+  }
+
+  Future<void> _loadDefaultScreen() async {
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (account != null && mounted) {
+      setState(() {
+        _selectedIndex = account.defaultScreen;
+        _initialized = true;
+      });
+    } else if (mounted) {
+      setState(() {
+        _initialized = true;
+      });
+    }
+  }
+
+  Future<void> _saveDefaultScreen(int screen) async {
+    try {
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null && account.defaultScreen != screen) {
+        final updatedAccount = account.copyWith(defaultScreen: screen);
+        await ref.read(accountServiceProvider).updateAccount(updatedAccount);
+      }
+    } catch (e) {
+      print('Error saving default screen: $e');
+    }
   }
 
   @override
@@ -88,6 +116,12 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_initialized) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    
     return Scaffold(
       body: IndexedStack(
         index: _selectedIndex,
@@ -102,6 +136,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
           setState(() {
             _selectedIndex = index;
           });
+          // Save default screen preference
+          _saveDefaultScreen(index);
         },
         destinations: const [
           NavigationDestination(
