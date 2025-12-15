@@ -452,7 +452,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     if (element.nodes != null) {
       for (final node in element.nodes!) {
         if (node is html_dom.Text && node.text?.trim().isNotEmpty == true) {
-          final nodeText = node.text!;
+          final nodeText = node.text!
+              .replaceAll(RegExp(r'^[ \t]+', multiLine: true), '');
           final nodeIsRtl = RtlHelper.isRtlContent(nodeText) || isRtl;
           final nodeTextDir = RtlHelper.getTextDirectionFromContent(nodeText, feedRtl: _feed?.isRtl);
           children.add(Text(

@@ -186,7 +186,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
         child: Container(
-          height: 66,
+          height: 62,
           decoration: BoxDecoration(
             color: glassColor,
             borderRadius: BorderRadius.circular(28),
@@ -194,7 +194,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
               color: scheme.onSurface.withOpacity(0.06),
             ),
           ),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -239,7 +239,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
             },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(

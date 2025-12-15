@@ -39,6 +39,14 @@ class FlowPageState extends ConsumerState<FlowPage> {
   @override
   void initState() {
     super.initState();
+    _loadLastFilter();
+  }
+
+  Future<void> _loadLastFilter() async {
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (account != null && account.lastFlowFilter.isNotEmpty) {
+      _filter = account.lastFlowFilter;
+    }
     _loadArticles();
   }
 

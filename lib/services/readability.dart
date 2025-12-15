@@ -297,6 +297,7 @@ class Readability {
             .replaceAll('\r', '\n')
             .replaceAll(RegExp(r'\n{2,}'), '\n\n')
             .replaceAll(RegExp('[ \t]{2,}'), ' ')
+            .replaceAll(RegExp(r'^[ \t]+', multiLine: true), '')
             .trim();
         node.text = normalized;
       } else if (node is Element) {
