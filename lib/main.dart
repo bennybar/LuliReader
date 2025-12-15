@@ -26,6 +26,7 @@ class LuliReaderApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+
       supportedLocales: const [
         Locale('en', ''),
         Locale('he', ''), // Hebrew
