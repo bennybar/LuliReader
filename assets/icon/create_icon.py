@@ -10,7 +10,7 @@ from PIL import Image, ImageDraw, ImageFont
 import os
 
 def create_icon(size=1024, is_dark=False):
-    """Create an app icon with a book and RSS feed symbol."""
+    """Create an RSS feed icon."""
     # Create image with transparent background
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -19,57 +19,50 @@ def create_icon(size=1024, is_dark=False):
     if is_dark:
         # Dark mode: white/light colors
         primary_color = (255, 255, 255, 255)  # White
-        secondary_color = (200, 200, 200, 255)  # Light gray
-        bg_color = (30, 30, 30, 255)  # Dark background for preview
+        secondary_color = (220, 220, 220, 255)  # Light gray
     else:
-        # Light mode: vibrant colors
-        primary_color = (66, 133, 244, 255)  # Material Blue
-        secondary_color = (25, 118, 210, 255)  # Darker blue
-        bg_color = (255, 255, 255, 255)  # White background for preview
+        # Light mode: vibrant orange (classic RSS color)
+        primary_color = (255, 126, 0, 255)  # RSS Orange
+        secondary_color = (255, 165, 0, 255)  # Lighter orange
     
-    # Draw background circle (for preview, will be transparent in final)
-    margin = size // 10
-    draw.ellipse([margin, margin, size - margin, size - margin], 
-                 fill=bg_color if is_dark else None, outline=None)
+    # Center of icon
+    center_x = size // 2
+    center_y = size // 2
     
-    # Draw a book shape (simplified)
-    book_width = size // 2
-    book_height = size // 1.5
-    book_x = (size - book_width) // 2
-    book_y = size // 4
+    # RSS icon consists of:
+    # 1. A radio wave symbol (curved lines)
+    # 2. A dot in the center
     
-    # Book cover
-    draw.rectangle([book_x, book_y, book_x + book_width, book_y + book_height],
-                  fill=primary_color, outline=None)
+    # Draw the RSS radio waves (three concentric arcs)
+    # Outer arc
+    outer_radius = size // 2.5
+    bbox_outer = [center_x - outer_radius, center_y - outer_radius, 
+                   center_x + outer_radius, center_y + outer_radius]
+    draw.arc(bbox_outer, start=45, end=135, fill=primary_color, width=size // 30)
     
-    # Book pages (white/light)
-    page_color = (255, 255, 255, 200) if not is_dark else (50, 50, 50, 200)
-    draw.rectangle([book_x + 5, book_y + 5, book_x + book_width - 5, book_y + book_height - 5],
-                  fill=page_color, outline=None)
+    # Middle arc
+    middle_radius = size // 3.5
+    bbox_middle = [center_x - middle_radius, center_y - middle_radius,
+                   center_x + middle_radius, center_y + middle_radius]
+    draw.arc(bbox_middle, start=45, end=135, fill=primary_color, width=size // 30)
     
-    # Draw lines representing text (simplified)
-    line_color = (100, 100, 100, 150) if not is_dark else (200, 200, 200, 150)
-    for i in range(3, 8):
-        y = book_y + (book_height // 10) * i
-        draw.line([book_x + 15, y, book_x + book_width - 15, y], 
-                 fill=line_color, width=2)
+    # Inner arc
+    inner_radius = size // 5
+    bbox_inner = [center_x - inner_radius, center_y - inner_radius,
+                  center_x + inner_radius, center_y + inner_radius]
+    draw.arc(bbox_inner, start=45, end=135, fill=primary_color, width=size // 30)
     
-    # Draw RSS feed symbol (three curved lines)
-    rss_x = book_x + book_width // 2
-    rss_y = book_y + book_height + size // 8
-    rss_size = size // 6
+    # Draw the dot in the center
+    dot_size = size // 12
+    draw.ellipse([center_x - dot_size, center_y - dot_size,
+                  center_x + dot_size, center_y + dot_size],
+                fill=primary_color)
     
-    # RSS waves
-    for i, radius in enumerate([rss_size * 0.3, rss_size * 0.5, rss_size * 0.7]):
-        # Draw partial arc (RSS symbol)
-        bbox = [rss_x - radius, rss_y - radius, rss_x + radius, rss_y + radius]
-        draw.arc(bbox, start=45, end=135, fill=primary_color, width=size // 50)
-        # Dot in center
-        if i == 0:
-            dot_size = size // 40
-            draw.ellipse([rss_x - dot_size, rss_y - dot_size, 
-                         rss_x + dot_size, rss_y + dot_size],
-                       fill=primary_color)
+    # Add a small circle around the dot for better visibility
+    circle_size = size // 8
+    draw.ellipse([center_x - circle_size, center_y - circle_size,
+                  center_x + circle_size, center_y + circle_size],
+                outline=primary_color, width=size // 60)
     
     return img
 
