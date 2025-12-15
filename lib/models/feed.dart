@@ -1,74 +1,98 @@
 class Feed {
   final String id;
-  final String title;
-  final String? description;
-  final String? websiteUrl;
-  final String? iconUrl;
-  final DateTime? lastSyncDate;
-  final int unreadCount;
-  final DateTime? lastArticleDate;
+  final String name;
+  final String? icon;
+  final String url;
+  final String groupId;
+  final int accountId;
+  final bool isNotification;
+  final bool isFullContent;
+  final bool isBrowser;
+  final bool? isRtl; // null means auto-detect, true/false means force RTL/LTR
+  final int important;
 
   Feed({
     required this.id,
-    required this.title,
-    this.description,
-    this.websiteUrl,
-    this.iconUrl,
-    this.lastSyncDate,
-    this.unreadCount = 0,
-    this.lastArticleDate,
+    required this.name,
+    this.icon,
+    required this.url,
+    required this.groupId,
+    required this.accountId,
+    this.isNotification = false,
+    this.isFullContent = false,
+    this.isBrowser = false,
+    this.isRtl,
+    this.important = 0,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'title': title,
-      'description': description,
-      'websiteUrl': websiteUrl,
-      'iconUrl': iconUrl,
-      'lastSyncDate': lastSyncDate?.toIso8601String(),
-      'unreadCount': unreadCount,
-      'lastArticleDate': lastArticleDate?.toIso8601String(),
+      'name': name,
+      'icon': icon,
+      'url': url,
+      'groupId': groupId,
+      'accountId': accountId,
+      'isNotification': isNotification ? 1 : 0,
+      'isFullContent': isFullContent ? 1 : 0,
+      'isBrowser': isBrowser ? 1 : 0,
+      'isRtl': isRtl == null ? null : (isRtl! ? 1 : 0),
     };
   }
 
   factory Feed.fromMap(Map<String, dynamic> map) {
+    final isRtlValue = map['isRtl'];
     return Feed(
       id: map['id'] as String,
-      title: map['title'] as String,
-      description: map['description'] as String?,
-      websiteUrl: map['websiteUrl'] as String?,
-      iconUrl: map['iconUrl'] as String?,
-      lastSyncDate: map['lastSyncDate'] != null
-          ? DateTime.parse(map['lastSyncDate'] as String)
-          : null,
-      unreadCount: map['unreadCount'] as int? ?? 0,
-      lastArticleDate: map['lastArticleDate'] != null
-          ? DateTime.parse(map['lastArticleDate'] as String)
-          : null,
+      name: map['name'] as String,
+      icon: map['icon'] as String?,
+      url: map['url'] as String,
+      groupId: map['groupId'] as String,
+      accountId: map['accountId'] as int,
+      isNotification: (map['isNotification'] as int? ?? 0) == 1,
+      isFullContent: (map['isFullContent'] as int? ?? 0) == 1,
+      isBrowser: (map['isBrowser'] as int? ?? 0) == 1,
+      isRtl: isRtlValue == null ? null : (isRtlValue as int) == 1,
     );
   }
 
   Feed copyWith({
     String? id,
-    String? title,
-    String? description,
-    String? websiteUrl,
-    String? iconUrl,
-    DateTime? lastSyncDate,
-    int? unreadCount,
-    DateTime? lastArticleDate,
+    String? name,
+    String? icon,
+    String? url,
+    String? groupId,
+    int? accountId,
+    bool? isNotification,
+    bool? isFullContent,
+    bool? isBrowser,
+    bool? isRtl,
+    int? important,
   }) {
     return Feed(
       id: id ?? this.id,
-      title: title ?? this.title,
-      description: description ?? this.description,
-      websiteUrl: websiteUrl ?? this.websiteUrl,
-      iconUrl: iconUrl ?? this.iconUrl,
-      lastSyncDate: lastSyncDate ?? this.lastSyncDate,
-      unreadCount: unreadCount ?? this.unreadCount,
-      lastArticleDate: lastArticleDate ?? this.lastArticleDate,
+      name: name ?? this.name,
+      icon: icon ?? this.icon,
+      url: url ?? this.url,
+      groupId: groupId ?? this.groupId,
+      accountId: accountId ?? this.accountId,
+      isNotification: isNotification ?? this.isNotification,
+      isFullContent: isFullContent ?? this.isFullContent,
+      isBrowser: isBrowser ?? this.isBrowser,
+      isRtl: isRtl ?? this.isRtl,
+      important: important ?? this.important,
     );
   }
+}
+
+// Forward declaration - Article is defined in article.dart
+class FeedWithArticle {
+  final Feed feed;
+  final List<dynamic> articles; // Using dynamic to avoid circular dependency
+
+  FeedWithArticle({
+    required this.feed,
+    required this.articles,
+  });
 }
 

@@ -1,121 +1,125 @@
 class Article {
   final String id;
-  final String feedId;
+  final DateTime date;
   final String title;
-  final String? content;
-  final String? summary;
   final String? author;
-  final DateTime publishedDate;
-  final DateTime? updatedDate;
-  final String? link;
-  final String? imageUrl;
-  final bool isRead;
+  final String rawDescription;
+  final String shortDescription;
+  final String? img;
+  final String link;
+  final String feedId;
+  final int accountId;
+  final bool isUnread;
   final bool isStarred;
-  final DateTime? lastSyncedAt;
-  final DateTime? readAt;
-  final String? offlineCachePath;
-  final DateTime? offlineCachedAt;
+  final bool isReadLater;
+  final DateTime? updateAt;
+  String? fullContent; // Cached full content after download
 
   Article({
     required this.id,
-    required this.feedId,
+    required this.date,
     required this.title,
-    this.content,
-    this.summary,
     this.author,
-    required this.publishedDate,
-    this.updatedDate,
-    this.link,
-    this.imageUrl,
-    this.isRead = false,
+    required this.rawDescription,
+    required this.shortDescription,
+    this.img,
+    required this.link,
+    required this.feedId,
+    required this.accountId,
+    this.isUnread = true,
     this.isStarred = false,
-    this.lastSyncedAt,
-    this.readAt,
-    this.offlineCachePath,
-    this.offlineCachedAt,
+    this.isReadLater = false,
+    this.updateAt,
+    this.fullContent,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'feedId': feedId,
+      'date': date.toIso8601String(),
       'title': title,
-      'content': content,
-      'summary': summary,
       'author': author,
-      'publishedDate': publishedDate.toIso8601String(),
-      'updatedDate': updatedDate?.toIso8601String(),
+      'rawDescription': rawDescription,
+      'shortDescription': shortDescription,
+      'img': img,
       'link': link,
-      'imageUrl': imageUrl,
-      'isRead': isRead ? 1 : 0,
+      'feedId': feedId,
+      'accountId': accountId,
+      'isUnread': isUnread ? 1 : 0,
       'isStarred': isStarred ? 1 : 0,
-      'lastSyncedAt': lastSyncedAt?.toIso8601String(),
-      'readAt': readAt?.toIso8601String(),
-      'offlineCachePath': offlineCachePath,
-      'offlineCachedAt': offlineCachedAt?.toIso8601String(),
+      'isReadLater': isReadLater ? 1 : 0,
+      'updateAt': updateAt?.toIso8601String(),
+      'fullContent': fullContent,
     };
   }
 
   factory Article.fromMap(Map<String, dynamic> map) {
     return Article(
       id: map['id'] as String,
-      feedId: map['feedId'] as String,
+      date: DateTime.parse(map['date'] as String),
       title: map['title'] as String,
-      content: map['content'] as String?,
-      summary: map['summary'] as String?,
       author: map['author'] as String?,
-      publishedDate: DateTime.parse(map['publishedDate'] as String),
-      updatedDate: map['updatedDate'] != null
-          ? DateTime.parse(map['updatedDate'] as String)
+      rawDescription: map['rawDescription'] as String,
+      shortDescription: map['shortDescription'] as String,
+      img: map['img'] as String?,
+      link: map['link'] as String,
+      feedId: map['feedId'] as String,
+      accountId: map['accountId'] as int,
+      isUnread: (map['isUnread'] as int? ?? 1) == 1,
+      isStarred: (map['isStarred'] as int? ?? 0) == 1,
+      isReadLater: (map['isReadLater'] as int? ?? 0) == 1,
+      updateAt: map['updateAt'] != null
+          ? DateTime.parse(map['updateAt'] as String)
           : null,
-      link: map['link'] as String?,
-      imageUrl: map['imageUrl'] as String?,
-      isRead: (map['isRead'] as int) == 1,
-      isStarred: (map['isStarred'] as int) == 1,
-      lastSyncedAt: map['lastSyncedAt'] != null
-          ? DateTime.parse(map['lastSyncedAt'] as String)
-          : null,
-      readAt: map['readAt'] != null ? DateTime.parse(map['readAt'] as String) : null,
-      offlineCachePath: map['offlineCachePath'] as String?,
-      offlineCachedAt: map['offlineCachedAt'] != null
-          ? DateTime.parse(map['offlineCachedAt'] as String)
-          : null,
+      fullContent: map['fullContent'] as String?,
     );
   }
 
   Article copyWith({
     String? id,
-    String? feedId,
+    DateTime? date,
     String? title,
-    String? content,
-    String? summary,
     String? author,
-    DateTime? publishedDate,
-    DateTime? updatedDate,
+    String? rawDescription,
+    String? shortDescription,
+    String? img,
     String? link,
-    String? imageUrl,
-    bool? isRead,
+    String? feedId,
+    int? accountId,
+    bool? isUnread,
     bool? isStarred,
-    DateTime? lastSyncedAt,
+    bool? isReadLater,
+    DateTime? updateAt,
+    String? fullContent,
   }) {
     return Article(
       id: id ?? this.id,
-      feedId: feedId ?? this.feedId,
+      date: date ?? this.date,
       title: title ?? this.title,
-      content: content ?? this.content,
-      summary: summary ?? this.summary,
       author: author ?? this.author,
-      publishedDate: publishedDate ?? this.publishedDate,
-      updatedDate: updatedDate ?? this.updatedDate,
+      rawDescription: rawDescription ?? this.rawDescription,
+      shortDescription: shortDescription ?? this.shortDescription,
+      img: img ?? this.img,
       link: link ?? this.link,
-      imageUrl: imageUrl ?? this.imageUrl,
-      isRead: isRead ?? this.isRead,
+      feedId: feedId ?? this.feedId,
+      accountId: accountId ?? this.accountId,
+      isUnread: isUnread ?? this.isUnread,
       isStarred: isStarred ?? this.isStarred,
-      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
-      readAt: readAt ?? this.readAt,
-      offlineCachePath: offlineCachePath ?? this.offlineCachePath,
-      offlineCachedAt: offlineCachedAt ?? this.offlineCachedAt,
+      isReadLater: isReadLater ?? this.isReadLater,
+      updateAt: updateAt ?? this.updateAt,
+      fullContent: fullContent ?? this.fullContent,
     );
   }
+}
+
+// Forward declaration - Feed is defined in feed.dart
+class ArticleWithFeed {
+  final Article article;
+  final dynamic feed; // Using dynamic to avoid circular dependency
+
+  ArticleWithFeed({
+    required this.article,
+    required this.feed,
+  });
 }
 
