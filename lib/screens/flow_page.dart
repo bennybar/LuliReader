@@ -268,6 +268,7 @@ class FlowPageState extends ConsumerState<FlowPage> {
                       Expanded(
                         child: ListView.builder(
                           key: ValueKey(_refreshKey),
+                          padding: const EdgeInsets.only(bottom: 96),
                           itemCount: _articles.length,
                           itemBuilder: (context, index) {
                             final articleWithFeed = _articles[index];

@@ -142,6 +142,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
         }
 
         return ListView.builder(
+          padding: const EdgeInsets.only(bottom: 96),
           itemCount: groups.length,
           itemBuilder: (context, index) {
             final groupWithFeed = groups[index];
