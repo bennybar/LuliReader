@@ -409,7 +409,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           }
           if (widget.child is SizedBox || widget.child is Align) {
             // Check nested widgets
-            return _isSpacingWidget(widget.child);
+            if (widget.child != null) {
+              return _isSpacingWidget(widget.child!);
+            }
           }
           return true;
         }
