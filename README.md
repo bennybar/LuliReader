@@ -1,82 +1,55 @@
 # Luli Reader
 
-A beautiful RSS reader for Flutter with full article download functionality, inspired by ReadYou.
+Luli Reader is a Flutter rewrite of the excellent [ReadYou](https://github.com/Ashinch/ReadYou), tailored with extra reliability, offline-first behavior, and UI polish for heavy RSS users.
 
-## Features
+## Highlights
 
-- ✅ **Local Account Support** - No cloud sync needed, everything stored locally
-- ✅ **Full Article Download** - Automatically downloads and parses full article content using readability algorithm
-- ✅ **RSS Feed Subscription** - Subscribe to any RSS feed
-- ✅ **Material 3 Design** - Beautiful Material You interface
-- ✅ **Dark Mode** - Full dark mode support
-- ✅ **Article Management** - Mark as read, star articles, read later
-- ✅ **Feed Organization** - Organize feeds into groups
-- ✅ **Offline Reading** - Download articles for offline reading
+- Background sync built on Workmanager with selectable intervals (15/30/60/120 min), Wi‑Fi/charging constraints, and a sync log viewer.
+- Full-article offline mode using a strengthened readability parser (cleaner content, deduped images, trimmed whitespace/extra breaks).
+- RTL-aware UI across lists and reader (direction detection per item, aligned links, trimmed leading spaces).
+- Reader controls: adjustable font scale, content padding, and persistent theme choice (System/Light/Dark).
+- Feed and folder management: add/move feeds between folders, OPML import/export, “resync all” to clear and re-sync.
+- Swipe actions tuned for unread/star filters with safe dismissal behavior.
+- Floating glass-style bottom navigation with padding so content stays visible.
+
+## Tech Stack
+
+- Flutter + Material 3
+- Riverpod for state management
+- sqflite for local storage
+- Workmanager for background jobs (Android)
+- Custom readability pipeline with `html` parsing
 
 ## Getting Started
 
-### Prerequisites
+Prerequisites: Flutter SDK 3.9.2+ and Dart 3.9.2+.
 
-- Flutter SDK 3.9.2 or higher
-- Dart 3.9.2 or higher
+```bash
+flutter pub get
+flutter run
+```
 
-### Installation
-
-1. Clone the repository
-2. Install dependencies:
-   ```bash
-   flutter pub get
-   ```
-3. Run the app:
-   ```bash
-   flutter run
-   ```
-
-## Project Structure
+## Structure
 
 ```
 lib/
-├── models/          # Data models (Article, Feed, Group, Account)
-├── database/        # Database layer (DAOs and helpers)
-├── services/        # Business logic (RSS parsing, readability, sync)
-├── screens/         # UI screens
-├── providers/       # Riverpod providers for state management
-└── theme/           # App theme configuration
+├─ background/   # Workmanager dispatcher, periodic sync
+├─ database/     # DAOs and helper
+├─ models/       # Account, Article, Feed, Group
+├─ providers/    # Riverpod providers (theme, account, data)
+├─ screens/      # UI screens and navigation
+├─ services/     # RSS, readability, sync log, prefs
+└─ theme/        # App themes
 ```
 
-## Key Features Implementation
+## Notable Improvements over ReadYou
 
-### Full Article Download
-
-The app uses a custom readability implementation to extract clean article content from web pages. When you open an article, it automatically downloads the full content from the source URL and parses it to remove ads, navigation, and other clutter.
-
-### RSS Parsing
-
-Uses the `rss` package to parse RSS and Atom feeds. Supports:
-- RSS 2.0
-- Atom feeds
-- Media enclosures
-- Custom namespaces
-
-### Database
-
-Uses SQLite (via sqflite) for local storage:
-- Articles
-- Feeds
-- Groups
-- Accounts
-
-## Dependencies
-
-- `sqflite` - Local SQLite database
-- `http` - HTTP client for fetching feeds and articles
-- `rss` - RSS feed parsing
-- `html` - HTML parsing and manipulation
-- `flutter_riverpod` - State management
-- `cached_network_image` - Image caching
-- `url_launcher` - Opening links in browser
-- And more...
+- More reliable background sync with interval selection and constraint toggles.
+- Full-content fetch with aggressive cleanup (fewer boilerplate blocks, fewer duplicate images).
+- Offline-first: articles cached locally for reading without connectivity.
+- Rich settings: theme mode, reader font scale/padding, resync all, sync interval, sync log.
+- Better RTL handling in both lists and the reader.
 
 ## License
 
-This project is open source and available for use.
+MIT. See `LICENSE` (or project license if added).
