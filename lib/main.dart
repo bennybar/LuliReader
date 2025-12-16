@@ -5,6 +5,7 @@ import 'package:workmanager/workmanager.dart';
 import 'theme/app_theme.dart';
 import 'screens/startup_screen.dart';
 import 'background/background_sync.dart';
+import 'providers/app_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -12,17 +13,18 @@ void main() async {
   runApp(const ProviderScope(child: LuliReaderApp()));
 }
 
-class LuliReaderApp extends StatelessWidget {
+class LuliReaderApp extends ConsumerWidget {
   const LuliReaderApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeNotifierProvider);
     return MaterialApp(
       title: 'Luli Reader',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.lightTheme(null),
       darkTheme: AppTheme.darkTheme(null),
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       home: const StartupScreen(),
       localizationsDelegates: [
         GlobalMaterialLocalizations.delegate,

@@ -7,6 +7,7 @@ class SyncLogEntry {
   final bool success;
   final String? error;
   final int? articlesSynced;
+  final String? note;
 
   SyncLogEntry({
     required this.timestamp,
@@ -14,6 +15,7 @@ class SyncLogEntry {
     required this.success,
     this.error,
     this.articlesSynced,
+    this.note,
   });
 
   Map<String, dynamic> toJson() {
@@ -23,6 +25,7 @@ class SyncLogEntry {
       'success': success,
       'error': error,
       'articlesSynced': articlesSynced,
+      'note': note,
     };
   }
 
@@ -33,6 +36,7 @@ class SyncLogEntry {
       success: json['success'],
       error: json['error'],
       articlesSynced: json['articlesSynced'],
+      note: json['note'],
     );
   }
 }

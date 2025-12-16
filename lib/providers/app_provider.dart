@@ -11,6 +11,7 @@ import '../services/rss_service.dart';
 import '../services/shared_preferences_service.dart';
 import '../services/opml_service.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/material.dart';
 
 // Database
 final databaseHelperProvider = Provider((ref) => DatabaseHelper.instance);
@@ -59,6 +60,44 @@ final opmlServiceProvider = Provider((ref) {
     ref.watch(accountServiceProvider),
     ref.watch(localRssServiceProvider),
   );
+});
+
+class ThemeModeNotifier extends StateNotifier<ThemeMode> {
+  final SharedPreferencesService _prefs;
+  ThemeModeNotifier(this._prefs) : super(ThemeMode.system) {
+    _load();
+  }
+
+  Future<void> _load() async {
+    await _prefs.init();
+    final stored = await _prefs.getString('themeMode');
+    if (stored == null) return;
+    switch (stored) {
+      case 'light':
+        state = ThemeMode.light;
+        break;
+      case 'dark':
+        state = ThemeMode.dark;
+        break;
+      default:
+        state = ThemeMode.system;
+    }
+  }
+
+  Future<void> setThemeMode(ThemeMode mode) async {
+    state = mode;
+    final value = switch (mode) {
+      ThemeMode.light => 'light',
+      ThemeMode.dark => 'dark',
+      _ => 'system',
+    };
+    await _prefs.setString('themeMode', value);
+  }
+}
+
+final themeModeNotifierProvider =
+    StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+  return ThemeModeNotifier(ref.watch(sharedPreferencesProvider));
 });
 
 // Current account

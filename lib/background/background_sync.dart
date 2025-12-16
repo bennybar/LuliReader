@@ -1,5 +1,6 @@
 import 'package:workmanager/workmanager.dart';
 import 'package:http/http.dart' as http;
+import 'package:battery_plus/battery_plus.dart';
 
 import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
@@ -66,6 +67,10 @@ void backgroundSyncDispatcher() {
     }
 
     try {
+      final battery = Battery();
+      final batteryState = await battery.batteryState;
+      final isCharging = batteryState == BatteryState.charging || batteryState == BatteryState.full;
+
       // Initialize singletons/services
       final prefs = SharedPreferencesService();
       await prefs.init();
@@ -90,7 +95,7 @@ void backgroundSyncDispatcher() {
         return false;
       }
 
-      print('[BACKGROUND_SYNC] Starting sync for account: ${account.name}');
+      print('[BACKGROUND_SYNC] Starting sync for account: ${account.name} (requiresChargingSetting=${account.syncOnlyWhenCharging}, batteryState=$batteryState, isCharging=$isCharging)');
       final rssHelper = RssHelper(http.Client());
       final rssService = RssService(http.Client());
       final localRssService = LocalRssService(
@@ -121,6 +126,7 @@ void backgroundSyncDispatcher() {
         type: 'background',
         success: true,
         articlesSynced: articlesSynced,
+        note: 'batteryState=$batteryState, isCharging=$isCharging, requiresChargingSetting=${account.syncOnlyWhenCharging}',
       ));
       
       return true;

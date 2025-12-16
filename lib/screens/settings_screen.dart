@@ -21,6 +21,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isResyncing = false;
   double _articleFontScale = 1.0;
   double _articlePadding = 16.0;
+  String _themeLabel = 'System';
 
   @override
   void initState() {
@@ -33,10 +34,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     await prefs.init();
     final font = await prefs.getDouble('articleFontScale') ?? 1.0;
     final pad = await prefs.getDouble('articlePadding') ?? 16.0;
+    final theme = await prefs.getString('themeMode');
     if (mounted) {
       setState(() {
         _articleFontScale = font;
         _articlePadding = pad;
+        _themeLabel = _labelFromTheme(theme);
       });
     }
   }
@@ -45,6 +48,71 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final prefs = SharedPreferencesService();
     await prefs.init();
     await prefs.setDouble(key, value);
+  }
+
+  String _labelFromTheme(String? stored) {
+    switch (stored) {
+      case 'light':
+        return 'Light';
+      case 'dark':
+        return 'Dark';
+      default:
+        return 'System';
+    }
+  }
+
+  String _themeSubtitle(WidgetRef ref) {
+    final mode = ref.watch(themeModeNotifierProvider);
+    switch (mode) {
+      case ThemeMode.light:
+        return 'Light';
+      case ThemeMode.dark:
+        return 'Dark';
+      default:
+        return 'System';
+    }
+  }
+
+  Future<void> _showThemeDialog(BuildContext context) async {
+    final mode = ref.read(themeModeNotifierProvider);
+    final selected = await showDialog<ThemeMode>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Theme'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<ThemeMode>(
+              title: const Text('System'),
+              value: ThemeMode.system,
+              groupValue: mode,
+              onChanged: (v) => Navigator.of(context).pop(v),
+            ),
+            RadioListTile<ThemeMode>(
+              title: const Text('Light'),
+              value: ThemeMode.light,
+              groupValue: mode,
+              onChanged: (v) => Navigator.of(context).pop(v),
+            ),
+            RadioListTile<ThemeMode>(
+              title: const Text('Dark'),
+              value: ThemeMode.dark,
+              groupValue: mode,
+              onChanged: (v) => Navigator.of(context).pop(v),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selected != null) {
+      await ref.read(themeModeNotifierProvider.notifier).setThemeMode(selected);
+      if (mounted) {
+        setState(() {
+          _themeLabel = _themeSubtitle(ref);
+        });
+      }
+    }
   }
 
   Future<void> _updateAccountSetting(String field, dynamic value) async {
@@ -154,6 +222,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _showDefaultScreenDialog(context, account),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.brightness_6),
+                  title: const Text('Theme'),
+                  subtitle: Text(_themeSubtitle(ref)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showThemeDialog(context),
                 ),
               ),
               const SizedBox(height: 24),
@@ -652,9 +730,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                 ),
                                 subtitle: Text(
                                   entry.success
-                                      ? '${entry.articlesSynced ?? 0} articles synced'
-                                      : 'Error: ${entry.error ?? "Unknown"}',
-                                  style: const TextStyle(fontSize: 10),
+                                      ? '${entry.articlesSynced ?? 0} articles synced${entry.note != null ? '\n${entry.note}' : ''}'
+                                      : 'Error: ${entry.error ?? "Unknown"}${entry.note != null ? '\n${entry.note}' : ''}',
+                                  style: const TextStyle(fontSize: 10, height: 1.25),
                                 ),
                               );
                             },
