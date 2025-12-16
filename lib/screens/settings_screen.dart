@@ -556,65 +556,139 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showSyncLog(BuildContext context) async {
-    final syncLog = SyncLogService();
-    final entries = await syncLog.getLogEntries();
-    
     if (!context.mounted) return;
     
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sync Log'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: entries.isEmpty
-              ? const Text('No sync history yet')
-              : ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: entries.length,
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    final timeAgo = _formatTimeAgo(entry.timestamp);
-                    return ListTile(
-                      dense: true,
-                      leading: Icon(
-                        entry.success ? Icons.check_circle : Icons.error,
-                        color: entry.success ? Colors.green : Colors.red,
-                        size: 20,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) {
+          return Dialog(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 600),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Sync Log',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.refresh, size: 20),
+                          onPressed: () async {
+                            setState(() {});
+                          },
+                          tooltip: 'Refresh',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Flexible(
+                      child: FutureBuilder<List<SyncLogEntry>>(
+                        future: SyncLogService().getLogEntries(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(16),
+                                child: CircularProgressIndicator(),
+                              ),
+                            );
+                          }
+                          
+                          final entries = snapshot.data ?? [];
+                          
+                          if (entries.isEmpty) {
+                            return const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Text(
+                                'No sync history yet',
+                                style: TextStyle(fontSize: 12),
+                                textAlign: TextAlign.center,
+                              ),
+                            );
+                          }
+                          
+                          return ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: entries.length,
+                            itemBuilder: (context, index) {
+                              final entry = entries[index];
+                              final timeAgo = _formatTimeAgo(entry.timestamp);
+                              return ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                leading: Icon(
+                                  entry.success ? Icons.check_circle : Icons.error,
+                                  color: entry.success ? Colors.green : Colors.red,
+                                  size: 18,
+                                ),
+                                title: Text(
+                                  '${entry.type.toUpperCase()} - $timeAgo',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                subtitle: Text(
+                                  entry.success
+                                      ? '${entry.articlesSynced ?? 0} articles synced'
+                                      : 'Error: ${entry.error ?? "Unknown"}',
+                                  style: const TextStyle(fontSize: 10),
+                                ),
+                              );
+                            },
+                          );
+                        },
                       ),
-                      title: Text(
-                        '${entry.type.toUpperCase()} - $timeAgo',
-                        style: const TextStyle(fontSize: 14),
-                      ),
-                      subtitle: Text(
-                        entry.success
-                            ? '${entry.articlesSynced ?? 0} articles synced'
-                            : 'Error: ${entry.error ?? "Unknown"}',
-                        style: const TextStyle(fontSize: 12),
-                      ),
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        FutureBuilder<List<SyncLogEntry>>(
+                          future: SyncLogService().getLogEntries(),
+                          builder: (context, snapshot) {
+                            final entries = snapshot.data ?? [];
+                            if (entries.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return TextButton(
+                              onPressed: () async {
+                                await SyncLogService().clearLogs();
+                                if (context.mounted) {
+                                  setState(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('Sync log cleared')),
+                                  );
+                                }
+                              },
+                              child: const Text('Clear Log', style: TextStyle(fontSize: 12)),
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Close', style: TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-        ),
-        actions: [
-          if (entries.isNotEmpty)
-            TextButton(
-              onPressed: () async {
-                await syncLog.clearLogs();
-                if (context.mounted) {
-                  Navigator.of(context).pop();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Sync log cleared')),
-                  );
-                }
-              },
-              child: const Text('Clear Log'),
+              ),
             ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Close'),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
