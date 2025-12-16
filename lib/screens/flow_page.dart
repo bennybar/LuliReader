@@ -29,6 +29,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   String _filter = 'all'; // all, unread, starred
   int _refreshKey = 0;
   Timer? _accountRefreshTimer;
+  bool _accountListenerSet = false;
 
   void refresh() {
     setState(() {
@@ -188,6 +189,13 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
 
   @override
   Widget build(BuildContext context) {
+    if (!_accountListenerSet) {
+      _accountListenerSet = true;
+      ref.listen(currentAccountProvider, (_, __) {
+        _loadArticles();
+      });
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -324,6 +332,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     final textDirection =
         RtlHelper.getTextDirectionFromContent(contentText, feedRtl: feed.isRtl);
     final isRtl = textDirection == TextDirection.rtl;
+    final alignRight = isRtl || Directionality.of(context) == TextDirection.rtl || (feed.isRtl ?? false);
 
     return FutureBuilder(
       future: ref.read(accountServiceProvider).getCurrentAccount(),
@@ -390,7 +399,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment:
-                                isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                                alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                             children: [
                               Row(
                                 children: [
@@ -404,7 +413,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                       ),
                                       maxLines: 2,
                                       overflow: TextOverflow.ellipsis,
-                                      textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                                      textAlign: alignRight ? TextAlign.right : TextAlign.left,
                                     ),
                                   ),
                                   if (article.isStarred)
@@ -429,7 +438,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                     ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                                textAlign: alignRight ? TextAlign.right : TextAlign.left,
                               ),
                               const SizedBox(height: 8),
                               Row(
