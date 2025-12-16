@@ -394,16 +394,6 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     ],
                   ),
                 ),
-                const PopupMenuItem(
-                  value: 'sync',
-                  child: Row(
-                    children: [
-                      Icon(Icons.sync, size: 20),
-                      SizedBox(width: 8),
-                      Text('Sync All Feeds'),
-                    ],
-                  ),
-                ),
               ],
               onSelected: (value) {
                 switch (value) {
@@ -429,11 +419,13 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                       ),
                     );
                     break;
-                  case 'sync':
-                    (widget.onSync ?? _syncAll)();
-                    break;
                 }
               },
+            ),
+            IconButton(
+              icon: const Icon(Icons.sync),
+              tooltip: 'Sync All Feeds',
+              onPressed: widget.onSync ?? _syncAll,
             ),
           ] else ...[
             // On larger screens, show all actions as icon buttons
