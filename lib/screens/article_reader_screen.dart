@@ -232,6 +232,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   }
 
   bool _isRtl() {
+    // Feed RTL setting takes precedence
+    if (_feed?.isRtl == true) {
+      return true;
+    }
     // Analyze article content to determine RTL
     // Check title first, then description, then full content
     final title = widget.article.title;
@@ -330,20 +334,26 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                       ),
                       const SizedBox(height: 16),
                     ],
-                    Text(
-                      widget.article.title,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                      textAlign: finalIsRtl ? TextAlign.right : TextAlign.left,
+                    Directionality(
                       textDirection: finalTextDir,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: Text(
+                          widget.article.title,
+                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                          textAlign: TextAlign.start,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      alignment: finalIsRtl ? WrapAlignment.end : WrapAlignment.start,
-                      children: [
+                    Center(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        alignment: WrapAlignment.center,
+                        children: [
                         if (widget.article.author != null) ...[
                           Text(
                             widget.article.author!,
@@ -389,6 +399,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                           },
                         ),
                       ],
+                      ),
                     ),
                     const Divider(height: 32),
                     if (_useFullContent)
@@ -520,10 +531,12 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               .replaceAll(RegExp(r'^[ \t]+', multiLine: true), '');
           final nodeIsRtl = RtlHelper.isRtlContent(nodeText) || isRtl;
           final nodeTextDir = RtlHelper.getTextDirectionFromContent(nodeText, feedRtl: _feed?.isRtl);
-          children.add(Text(
-            nodeText,
+          children.add(Directionality(
             textDirection: nodeTextDir,
-            textAlign: nodeIsRtl ? TextAlign.right : TextAlign.left,
+            child: Text(
+              nodeText,
+              textAlign: TextAlign.start,
+            ),
           ));
         } else if (node is html_dom.Element) {
           children.add(_buildHtmlElement(node));
@@ -544,23 +557,34 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         if (children.isNotEmpty) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: Align(
-              alignment: isRtl ? Alignment.centerRight : Alignment.centerLeft,
-              child: Wrap(
-                alignment: isRtl ? WrapAlignment.end : WrapAlignment.start,
-                textDirection: textDir,
-                children: children,
+            child: Directionality(
+              textDirection: textDir,
+              child: SizedBox(
+                width: double.infinity,
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: Wrap(
+                    alignment: WrapAlignment.start,
+                    crossAxisAlignment: WrapCrossAlignment.start,
+                    children: children,
+                  ),
+                ),
               ),
             ),
           );
         }
         return Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: Text(
-            text,
-            style: Theme.of(context).textTheme.bodyLarge,
-            textAlign: isRtl ? TextAlign.right : TextAlign.left,
+          child: Directionality(
             textDirection: textDir,
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                text,
+                style: Theme.of(context).textTheme.bodyLarge,
+                textAlign: TextAlign.start,
+              ),
+            ),
           ),
         );
       case 'h1':
@@ -570,13 +594,18 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         return Padding(
           padding: const EdgeInsets.only(top: 24, bottom: 8),
-          child: Text(
-            text,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-            textAlign: isRtl ? TextAlign.right : TextAlign.left,
+          child: Directionality(
             textDirection: textDir,
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                text,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                textAlign: TextAlign.start,
+              ),
+            ),
           ),
         );
       case 'h3':
@@ -586,13 +615,18 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         return Padding(
           padding: const EdgeInsets.only(top: 16, bottom: 8),
-          child: Text(
-            text,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-            textAlign: isRtl ? TextAlign.right : TextAlign.left,
+          child: Directionality(
             textDirection: textDir,
+            child: SizedBox(
+              width: double.infinity,
+              child: Text(
+                text,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                textAlign: TextAlign.start,
+              ),
+            ),
           ),
         );
       case 'img':
@@ -632,15 +666,19 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         // If link has children (like formatted text), use them; otherwise use plain text
         final linkWidget = children.isNotEmpty
-            ? Wrap(
-                alignment: isRtl ? WrapAlignment.end : WrapAlignment.start,
+            ? Directionality(
                 textDirection: textDir,
-                children: children,
+                child: Wrap(
+                  alignment: WrapAlignment.start,
+                  children: children,
+                ),
               )
-            : Text(
-                text,
-                textAlign: isRtl ? TextAlign.right : TextAlign.left,
+            : Directionality(
                 textDirection: textDir,
+                child: Text(
+                  text,
+                  textAlign: TextAlign.start,
+                ),
               );
         return InkWell(
           onTap: () async {
@@ -722,11 +760,16 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          widget.article.shortDescription,
-          style: Theme.of(context).textTheme.bodyLarge,
-          textAlign: isRtl ? TextAlign.right : TextAlign.left,
+        Directionality(
           textDirection: textDir,
+          child: SizedBox(
+            width: double.infinity,
+            child: Text(
+              widget.article.shortDescription,
+              style: Theme.of(context).textTheme.bodyLarge,
+              textAlign: TextAlign.start,
+            ),
+          ),
         ),
         const SizedBox(height: 16),
         Align(
