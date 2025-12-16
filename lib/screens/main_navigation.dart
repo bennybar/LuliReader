@@ -19,7 +19,7 @@ class MainNavigation extends ConsumerStatefulWidget {
   ConsumerState<MainNavigation> createState() => _MainNavigationState();
 }
 
-class _MainNavigationState extends ConsumerState<MainNavigation> {
+class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   final GlobalKey<FeedsPageState> _feedsPageKey = GlobalKey();
   final GlobalKey<FlowPageState> _flowPageKey = GlobalKey();
@@ -108,6 +108,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadDefaultScreen();
     _maybeSyncOnStart();
     // Start periodic sync after a short delay to allow widget tree to build
@@ -165,8 +166,19 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _syncTimer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _syncTimer?.cancel(); // Stop foreground sync when backgrounded
+    } else if (state == AppLifecycleState.resumed) {
+      _startPeriodicSync(); // Restart when resumed
+    }
+    super.didChangeAppLifecycleState(state);
   }
 
   @override

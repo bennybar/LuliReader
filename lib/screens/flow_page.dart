@@ -89,14 +89,20 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     if (state == AppLifecycleState.resumed) {
       ref.invalidate(currentAccountProvider);
       _loadArticles();
+      _startAccountRefreshTimer(); // Restart timer when resumed
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _accountRefreshTimer?.cancel(); // Stop timer when paused/inactive
     }
     super.didChangeAppLifecycleState(state);
   }
 
   void _startAccountRefreshTimer() {
     _accountRefreshTimer?.cancel();
-    _accountRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
-      ref.invalidate(currentAccountProvider);
+    // Only refresh when app is in foreground - changed to 3 minutes
+    _accountRefreshTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+      if (mounted) {
+        ref.invalidate(currentAccountProvider);
+      }
     });
   }
 
