@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -519,6 +520,73 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     return false;
   }
 
+  List<InlineSpan> _buildTextSpansFromNodes(List<html_dom.Node> nodes, TextStyle? baseStyle) {
+    final spans = <InlineSpan>[];
+    for (final node in nodes) {
+      if (node is html_dom.Text && node.text?.trim().isNotEmpty == true) {
+        final nodeText = node.text!.replaceAll(RegExp(r'^[ \t]+', multiLine: true), '');
+        if (nodeText.isNotEmpty) {
+          spans.add(TextSpan(
+            text: nodeText,
+            style: baseStyle,
+          ));
+        }
+      } else if (node is html_dom.Element) {
+        if (node.localName == 'a') {
+          final linkText = node.text ?? '';
+          final href = node.attributes['href']?.toString();
+          final linkSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle?.copyWith(
+            color: Theme.of(context).colorScheme.primary,
+            decoration: TextDecoration.underline,
+          ));
+          if (linkSpans.isEmpty && linkText.isNotEmpty) {
+            linkSpans.add(TextSpan(text: linkText));
+          }
+          spans.add(TextSpan(
+            children: linkSpans,
+            recognizer: href != null && href.isNotEmpty
+                ? (TapGestureRecognizer()
+                  ..onTap = () async {
+                    final uri = Uri.parse(href);
+                    if (await canLaunchUrl(uri)) {
+                      try {
+                        final mode = _openLinksExternally 
+                            ? LaunchMode.externalApplication 
+                            : LaunchMode.inAppWebView;
+                        await launchUrl(uri, mode: mode);
+                      } catch (e) {
+                        if (!_openLinksExternally) {
+                          try {
+                            await launchUrl(uri, mode: LaunchMode.externalApplication);
+                          } catch (e2) {
+                            // Silently fail
+                          }
+                        }
+                      }
+                    }
+                  })
+                : null,
+          ));
+        } else if (node.localName == 'strong' || node.localName == 'b') {
+          final strongSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle?.copyWith(
+            fontWeight: FontWeight.bold,
+          ));
+          spans.addAll(strongSpans);
+        } else if (node.localName == 'em' || node.localName == 'i') {
+          final emSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle?.copyWith(
+            fontStyle: FontStyle.italic,
+          ));
+          spans.addAll(emSpans);
+        } else {
+          // For other inline elements, just process their text content
+          final otherSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle);
+          spans.addAll(otherSpans);
+        }
+      }
+    }
+    return spans;
+  }
+
   Widget _buildHtmlElement(dynamic element) {
     final children = <Widget>[];
     final isRtl = _isRtl();
@@ -539,7 +607,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             ),
           ));
         } else if (node is html_dom.Element) {
-          children.add(_buildHtmlElement(node));
+          final childWidget = _buildHtmlElement(node);
+          children.add(childWidget);
         }
       }
     }
@@ -553,20 +622,25 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         if (text.trim().isEmpty && children.isEmpty) {
           return const SizedBox.shrink();
         }
-        // If paragraph has children (like links), build them; otherwise use text
-        if (children.isNotEmpty) {
+        // If paragraph has children (like links), build them using RichText; otherwise use text
+        if (children.isNotEmpty || (element.nodes != null && element.nodes!.any((n) => n is html_dom.Element && n.localName == 'a'))) {
+          // Build TextSpan list from nodes for RichText
+          final spans = _buildTextSpansFromNodes(
+            element.nodes ?? [],
+            Theme.of(context).textTheme.bodyLarge,
+          );
+          
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: Directionality(
               textDirection: textDir,
               child: SizedBox(
                 width: double.infinity,
-                child: Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: Wrap(
-                    alignment: WrapAlignment.start,
-                    crossAxisAlignment: WrapCrossAlignment.start,
-                    children: children,
+                child: RichText(
+                  textAlign: TextAlign.start,
+                  text: TextSpan(
+                    children: spans,
+                    style: Theme.of(context).textTheme.bodyLarge,
                   ),
                 ),
               ),
