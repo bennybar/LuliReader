@@ -11,6 +11,7 @@ import '../database/group_dao.dart';
 import '../database/account_dao.dart';
 import 'rss_helper.dart';
 import 'rss_service.dart';
+import 'shared_preferences_service.dart';
 
 class LocalRssService {
   final ArticleDao _articleDao;
@@ -136,6 +137,21 @@ class LocalRssService {
     // Update account sync time
     onProgress?.call('Updating sync timestamp...');
     await _accountDao.update(account.copyWith(updateAt: preDate));
+    
+    // Clean up old read articles
+    try {
+      onProgress?.call('Cleaning up old read articles...');
+      final prefs = SharedPreferencesService();
+      await prefs.init();
+      final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
+      final deletedCount = await _articleDao.deleteOldReadArticles(accountId, keepReadItemsDays);
+      if (deletedCount > 0) {
+        onProgress?.call('Cleaned up $deletedCount old read article(s)');
+      }
+    } catch (e) {
+      print('Error cleaning up old read articles: $e');
+      // Don't fail the sync if cleanup fails
+    }
     
     onProgress?.call('Sync complete! $completedCount succeeded, $errorCount failed');
   }

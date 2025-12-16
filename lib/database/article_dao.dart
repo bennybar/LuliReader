@@ -133,7 +133,10 @@ class ArticleDao {
     final db = await _dbHelper.database;
     return await db.update(
       'article',
-      {'isUnread': 0},
+      {
+        'isUnread': 0,
+        'updateAt': DateTime.now().toIso8601String(),
+      },
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -210,6 +213,22 @@ class ArticleDao {
       'article',
       where: 'accountId = ? AND date < ? AND isUnread = 0 AND isStarred = 0',
       whereArgs: [accountId, beforeDate.toIso8601String()],
+    );
+  }
+
+  /// Deletes read articles that were marked as read more than [keepReadItemsDays] days ago
+  /// Only deletes articles that are not starred
+  Future<int> deleteOldReadArticles(int accountId, int keepReadItemsDays) async {
+    final db = await _dbHelper.database;
+    final cutoffDate = DateTime.now().subtract(Duration(days: keepReadItemsDays));
+    final cutoffDateStr = cutoffDate.toIso8601String();
+    
+    // Delete read articles (isUnread = 0) that are not starred and were marked as read before cutoff date
+    // Only delete if updateAt is set (when it was marked as read) and is older than cutoff
+    return await db.delete(
+      'article',
+      where: 'accountId = ? AND isUnread = 0 AND isStarred = 0 AND updateAt IS NOT NULL AND updateAt < ?',
+      whereArgs: [accountId, cutoffDateStr],
     );
   }
 

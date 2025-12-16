@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/app_provider.dart';
 import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
@@ -23,6 +24,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _articlePadding = 16.0;
   String _themeLabel = 'System';
   bool _openLinksExternally = false;
+  int _keepReadItemsDays = 3;
 
   @override
   void initState() {
@@ -37,12 +39,14 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final pad = await prefs.getDouble('articlePadding') ?? 16.0;
     final theme = await prefs.getString('themeMode');
     final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
+    final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
     if (mounted) {
       setState(() {
         _articleFontScale = font;
         _articlePadding = pad;
         _themeLabel = _labelFromTheme(theme);
         _openLinksExternally = openLinksExternally;
+        _keepReadItemsDays = keepReadItemsDays;
       });
     }
   }
@@ -57,6 +61,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final prefs = SharedPreferencesService();
     await prefs.init();
     await prefs.setBool(key, value);
+  }
+
+  Future<void> _saveIntPref(String key, int value) async {
+    final prefs = SharedPreferencesService();
+    await prefs.init();
+    await prefs.setInt(key, value);
   }
 
   String _labelFromTheme(String? stored) {
@@ -156,6 +166,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         setState(() {
           _openLinksExternally = selected;
+        });
+      }
+    }
+  }
+
+  Future<void> _showKeepReadItemsDialog(BuildContext context) async {
+    const options = [1, 3, 5, 7, 10, 30];
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Keep Read Items'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options
+              .map((days) => RadioListTile<int>(
+                    title: Text('$days ${days == 1 ? 'day' : 'days'}'),
+                    value: days,
+                    groupValue: _keepReadItemsDays,
+                    onChanged: (value) => Navigator.of(context).pop(value),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
+
+    if (selected != null) {
+      await _saveIntPref('keepReadItemsDays', selected);
+      if (mounted) {
+        setState(() {
+          _keepReadItemsDays = selected;
         });
       }
     }
@@ -363,6 +403,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onTap: () => _showOpenLinksDialog(context),
                 ),
               ),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.history),
+                  title: const Text('Keep Read Items'),
+                  subtitle: Text('$_keepReadItemsDays ${_keepReadItemsDays == 1 ? 'day' : 'days'} • Read articles older than this will be deleted'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showKeepReadItemsDialog(context),
+                ),
+              ),
               const SizedBox(height: 24),
               
               // Gesture Settings
@@ -501,9 +551,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const Divider(),
               ListTile(
+                leading: const Icon(Icons.help_outline),
+                title: const Text('Help & Support'),
+                subtitle: const Text('Report issues or get help'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final uri = Uri.parse('https://github.com/bennybar/LuliReader/issues');
+                  if (await canLaunchUrl(uri)) {
+                    try {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Could not open help page: $e')),
+                        );
+                      }
+                    }
+                  }
+                },
+              ),
+              ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.0.0'),
+                subtitle: const Text('Luli Reader v1.1.25'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],

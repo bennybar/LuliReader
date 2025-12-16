@@ -306,6 +306,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             return Directionality(
               textDirection: finalTextDir,
               child: SingleChildScrollView(
+                physics: const ClampingScrollPhysics(),
                 padding: EdgeInsets.all(_contentPadding),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
