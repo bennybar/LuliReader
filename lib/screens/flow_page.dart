@@ -57,6 +57,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.invalidate(currentAccountProvider);
+      _loadArticles();
     }
     super.didChangeAppLifecycleState(state);
   }

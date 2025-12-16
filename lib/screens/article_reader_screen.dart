@@ -183,10 +183,37 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   Future<void> _openInBrowser() async {
     final uri = Uri.parse(widget.article.link);
     if (await canLaunchUrl(uri)) {
-      final mode = _openLinksExternally 
-          ? LaunchMode.externalApplication 
-          : LaunchMode.inAppWebView;
-      await launchUrl(uri, mode: mode);
+      try {
+        final mode = _openLinksExternally 
+            ? LaunchMode.externalApplication 
+            : LaunchMode.inAppWebView;
+        await launchUrl(uri, mode: mode);
+      } catch (e) {
+        // Fallback to external if in-app fails
+        if (!_openLinksExternally) {
+          try {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          } catch (e2) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Could not open link: $e2')),
+              );
+            }
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Could not open link: $e')),
+            );
+          }
+        }
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot open this link')),
+        );
+      }
     }
   }
 
@@ -590,10 +617,21 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             if (href != null && href.isNotEmpty) {
               final uri = Uri.parse(href);
               if (await canLaunchUrl(uri)) {
-                final mode = _openLinksExternally 
-                    ? LaunchMode.externalApplication 
-                    : LaunchMode.inAppWebView;
-                await launchUrl(uri, mode: mode);
+                try {
+                  final mode = _openLinksExternally 
+                      ? LaunchMode.externalApplication 
+                      : LaunchMode.inAppWebView;
+                  await launchUrl(uri, mode: mode);
+                } catch (e) {
+                  // Fallback to external if in-app fails
+                  if (!_openLinksExternally) {
+                    try {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } catch (e2) {
+                      // Silently fail for inline links
+                    }
+                  }
+                }
               }
             }
           },
