@@ -502,7 +502,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     if (selected != null && selected != account.syncInterval) {
       await _updateAccountSetting('syncInterval', selected);
-      await registerBackgroundSync(selected);
+      await registerBackgroundSync(
+        selected,
+        requiresCharging: account.syncOnlyWhenCharging,
+      );
     }
   }
 

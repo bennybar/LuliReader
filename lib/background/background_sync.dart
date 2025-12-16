@@ -17,8 +17,8 @@ const String kBackgroundSyncTask = 'background_sync_task';
 
 /// Registers periodic background sync. Interval is in minutes.
 /// Note: Android minimum interval is 15 minutes.
-Future<void> registerBackgroundSync(int minutes) async {
-  print('[BACKGROUND_SYNC] Registering periodic sync with interval: $minutes minutes');
+Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false}) async {
+  print('[BACKGROUND_SYNC] Registering periodic sync with interval: $minutes minutes (requiresCharging=$requiresCharging)');
   await Workmanager().cancelByUniqueName(kBackgroundSyncTask);
   if (minutes <= 0) {
     print('[BACKGROUND_SYNC] Sync interval is 0 or negative, cancelling');
@@ -38,7 +38,7 @@ Future<void> registerBackgroundSync(int minutes) async {
       constraints: Constraints(
         networkType: NetworkType.connected,
         requiresBatteryNotLow: false,
-        requiresCharging: false,
+        requiresCharging: requiresCharging,
         requiresDeviceIdle: false,
         requiresStorageNotLow: false,
       ),

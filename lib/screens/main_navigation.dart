@@ -95,7 +95,10 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
           Duration(minutes: account.syncInterval),
           (_) => _syncAll(showMessage: false),
         );
-        await registerBackgroundSync(account.syncInterval);
+        await registerBackgroundSync(
+          account.syncInterval,
+          requiresCharging: account.syncOnlyWhenCharging,
+        );
       } else {
         await cancelBackgroundSync();
       }
