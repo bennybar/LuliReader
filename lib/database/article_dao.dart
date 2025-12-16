@@ -216,6 +216,21 @@ class ArticleDao {
     );
   }
 
+  /// Sets updateAt to current date for all read articles that have NULL updateAt
+  /// This helps with backward compatibility for articles marked as read before this feature
+  Future<int> setUpdateAtForNullReadArticles(int accountId) async {
+    final db = await _dbHelper.database;
+    final now = DateTime.now().toIso8601String();
+    
+    // Update all read articles (isUnread = 0) that have NULL updateAt to set it to now
+    return await db.update(
+      'article',
+      {'updateAt': now},
+      where: 'accountId = ? AND isUnread = 0 AND updateAt IS NULL',
+      whereArgs: [accountId],
+    );
+  }
+
   /// Deletes read articles that were marked as read more than [keepReadItemsDays] days ago
   /// Only deletes articles that are not starred
   Future<int> deleteOldReadArticles(int accountId, int keepReadItemsDays) async {

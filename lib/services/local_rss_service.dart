@@ -138,6 +138,18 @@ class LocalRssService {
     onProgress?.call('Updating sync timestamp...');
     await _accountDao.update(account.copyWith(updateAt: preDate));
     
+    // Set updateAt for read articles with NULL timestamps (backward compatibility)
+    try {
+      onProgress?.call('Updating read article timestamps...');
+      final updatedCount = await _articleDao.setUpdateAtForNullReadArticles(accountId);
+      if (updatedCount > 0) {
+        onProgress?.call('Updated $updatedCount read article timestamp(s)');
+      }
+    } catch (e) {
+      print('Error updating read article timestamps: $e');
+      // Don't fail the sync if update fails
+    }
+
     // Clean up old read articles
     try {
       onProgress?.call('Cleaning up old read articles...');
