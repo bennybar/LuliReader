@@ -37,6 +37,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   Set<String> _seenContentImages = {};
   double _fontScale = 1.0;
   double _contentPadding = 16.0;
+  bool _openLinksExternally = false; // false = in-app browser (default), true = external browser
 
   @override
   void initState() {
@@ -53,10 +54,12 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     await prefs.init();
     final font = await prefs.getDouble('articleFontScale') ?? 1.0;
     final pad = await prefs.getDouble('articlePadding') ?? 16.0;
+    final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
     if (mounted) {
       setState(() {
         _fontScale = font;
         _contentPadding = pad;
+        _openLinksExternally = openLinksExternally;
       });
     }
   }
@@ -180,7 +183,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   Future<void> _openInBrowser() async {
     final uri = Uri.parse(widget.article.link);
     if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final mode = _openLinksExternally 
+          ? LaunchMode.externalApplication 
+          : LaunchMode.inAppWebView;
+      await launchUrl(uri, mode: mode);
     }
   }
 
@@ -584,7 +590,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             if (href != null && href.isNotEmpty) {
               final uri = Uri.parse(href);
               if (await canLaunchUrl(uri)) {
-                await launchUrl(uri);
+                final mode = _openLinksExternally 
+                    ? LaunchMode.externalApplication 
+                    : LaunchMode.inAppWebView;
+                await launchUrl(uri, mode: mode);
               }
             }
           },

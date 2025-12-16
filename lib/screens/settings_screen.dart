@@ -22,6 +22,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _articleFontScale = 1.0;
   double _articlePadding = 16.0;
   String _themeLabel = 'System';
+  bool _openLinksExternally = false;
 
   @override
   void initState() {
@@ -35,11 +36,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final font = await prefs.getDouble('articleFontScale') ?? 1.0;
     final pad = await prefs.getDouble('articlePadding') ?? 16.0;
     final theme = await prefs.getString('themeMode');
+    final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
     if (mounted) {
       setState(() {
         _articleFontScale = font;
         _articlePadding = pad;
         _themeLabel = _labelFromTheme(theme);
+        _openLinksExternally = openLinksExternally;
       });
     }
   }
@@ -48,6 +51,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final prefs = SharedPreferencesService();
     await prefs.init();
     await prefs.setDouble(key, value);
+  }
+
+  Future<void> _saveBoolPref(String key, bool value) async {
+    final prefs = SharedPreferencesService();
+    await prefs.init();
+    await prefs.setBool(key, value);
   }
 
   String _labelFromTheme(String? stored) {
@@ -110,6 +119,43 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         setState(() {
           _themeLabel = _themeSubtitle(ref);
+        });
+      }
+    }
+  }
+
+  Future<void> _showOpenLinksDialog(BuildContext context) async {
+    final selected = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Open Links In'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<bool>(
+              title: const Text('In-app Browser'),
+              subtitle: const Text('Open links within the app'),
+              value: false,
+              groupValue: _openLinksExternally,
+              onChanged: (v) => Navigator.of(context).pop(v),
+            ),
+            RadioListTile<bool>(
+              title: const Text('External Browser'),
+              subtitle: const Text('Open links in your default browser'),
+              value: true,
+              groupValue: _openLinksExternally,
+              onChanged: (v) => Navigator.of(context).pop(v),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selected != null) {
+      await _saveBoolPref('openLinksExternally', selected);
+      if (mounted) {
+        setState(() {
+          _openLinksExternally = selected;
         });
       }
     }
@@ -305,6 +351,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                   value: account.isFullContent,
                   onChanged: (value) => _updateAccountSetting('isFullContent', value),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.open_in_browser),
+                  title: const Text('Open Links In'),
+                  subtitle: Text(_openLinksExternally ? 'External Browser' : 'In-app Browser'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showOpenLinksDialog(context),
                 ),
               ),
               const SizedBox(height: 24),
