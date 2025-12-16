@@ -5,13 +5,17 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
+import '../models/article_sort.dart';
 import '../database/article_dao.dart';
 import '../providers/app_provider.dart';
 import '../services/local_rss_service.dart';
 import '../services/account_service.dart';
 import '../utils/rtl_helper.dart';
+import '../utils/reading_time.dart';
+import '../services/shared_preferences_service.dart';
 import 'article_reader_screen.dart';
 import 'settings_screen.dart';
+import 'search_screen.dart';
 import 'package:swipe_to_action/swipe_to_action.dart';
 
 class FlowPage extends ConsumerStatefulWidget {
@@ -30,6 +34,10 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   int _refreshKey = 0;
   Timer? _accountRefreshTimer;
   bool _accountListenerSet = false;
+  ArticleSortOption _sortOption = ArticleSortOption.dateDesc;
+  bool _isBatchMode = false;
+  Set<String> _selectedArticleIds = {};
+  final SharedPreferencesService _prefs = SharedPreferencesService();
 
   void refresh() {
     setState(() {
@@ -43,7 +51,30 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadLastFilter();
+    _loadSortPreference();
     _startAccountRefreshTimer();
+  }
+
+  Future<void> _loadSortPreference() async {
+    await _prefs.init();
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (account != null) {
+      final sortIndex = await _prefs.getInt('sort_option_${account.id}');
+      if (sortIndex != null && sortIndex >= 0 && sortIndex < ArticleSortOption.values.length) {
+        setState(() {
+          _sortOption = ArticleSortOption.values[sortIndex];
+        });
+      }
+    }
+    _loadArticles();
+  }
+
+  Future<void> _saveSortPreference() async {
+    await _prefs.init();
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (account != null) {
+      await _prefs.setInt('sort_option_${account.id}', _sortOption.index);
+    }
   }
 
   @override
@@ -90,14 +121,15 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       final feedDao = ref.read(feedDaoProvider);
 
       List<Article> articles;
-      if (_filter == 'unread') {
-        articles = await articleDao.getUnread(account.id!, limit: 500);
-      } else if (_filter == 'starred') {
-        articles = await articleDao.getStarred(account.id!, limit: 500);
-      } else {
-        // Get all articles from all feeds (optimized query)
-        articles = await articleDao.getAllArticles(account.id!, limit: 500);
-      }
+      
+      // Use new sorting method
+      articles = await articleDao.getArticlesWithSort(
+        accountId: account.id!,
+        sortOption: _sortOption,
+        unread: _filter == 'unread' ? true : (_filter == 'starred' ? null : null),
+        starred: _filter == 'starred' ? true : null,
+        limit: 500,
+      );
 
       // Get feeds for each article
       final articlesWithFeed = <ArticleWithFeed>[];
@@ -109,12 +141,24 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
             feed: feed as dynamic,
           ));
         }
+      }
 
+      // If sorting by feed, we need to sort the combined list
+      if (_sortOption == ArticleSortOption.feedAsc || _sortOption == ArticleSortOption.feedDesc) {
+        articlesWithFeed.sort((a, b) {
+          final feedA = a.feed as Feed;
+          final feedB = b.feed as Feed;
+          final comparison = feedA.name.compareTo(feedB.name);
+          return _sortOption == ArticleSortOption.feedAsc ? comparison : -comparison;
+        });
       }
 
       setState(() {
         _articles = articlesWithFeed;
         _isLoading = false;
+        if (_isBatchMode) {
+          _selectedArticleIds.clear();
+        }
       });
     } catch (e) {
       setState(() => _isLoading = false);
@@ -197,9 +241,13 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       });
     }
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isSmallScreen = screenWidth < 600;
+
     return Scaffold(
       appBar: AppBar(
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             // Filter icons in app bar
             IconButton(
@@ -250,78 +298,261 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                 _loadArticles();
               },
             ),
-            const SizedBox(width: 8),
-            const Text('Articles'),
+            if (!isSmallScreen) ...[
+              const SizedBox(width: 8),
+              const Text('Articles'),
+            ],
           ],
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.done_all),
-            tooltip: 'Mark All as Read',
-            onPressed: _markAllAsRead,
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            tooltip: 'Settings',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const SettingsScreen(),
+          if (_isBatchMode) ...[
+            IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Cancel Selection',
+              onPressed: () {
+                setState(() {
+                  _isBatchMode = false;
+                  _selectedArticleIds.clear();
+                });
+              },
+            ),
+          ] else if (isSmallScreen) ...[
+            // On small screens, put most actions in a menu
+            PopupMenuButton<ArticleSortOption>(
+              icon: const Icon(Icons.sort),
+              tooltip: 'Sort',
+              onSelected: (option) {
+                setState(() {
+                  _sortOption = option;
+                });
+                _saveSortPreference();
+                _loadArticles();
+              },
+              itemBuilder: (context) => ArticleSortOption.values.map((option) {
+                return PopupMenuItem(
+                  value: option,
+                  child: Row(
+                    children: [
+                      if (_sortOption == option)
+                        const Icon(Icons.check, size: 20)
+                      else
+                        const SizedBox(width: 20),
+                      const SizedBox(width: 8),
+                      Text(option.displayName),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'More',
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'search',
+                  child: Row(
+                    children: [
+                      Icon(Icons.search, size: 20),
+                      SizedBox(width: 8),
+                      Text('Search'),
+                    ],
+                  ),
                 ),
-              );
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.sync),
-            tooltip: 'Sync All Feeds',
-            onPressed: widget.onSync ?? _syncAll,
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                _buildSyncInfo(),
-                Expanded(
-                  child: _articles.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.article,
-                                size: 64,
-                                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'No articles',
-                                style: Theme.of(context).textTheme.titleLarge,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Sync feeds to load articles',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ],
-                          ),
-                        )
-                      : RefreshIndicator(
-                          onRefresh: _loadArticles,
-                          child: ListView.builder(
-                            key: ValueKey(_refreshKey),
-                            padding: const EdgeInsets.only(bottom: 96),
-                            itemCount: _articles.length,
-                            itemBuilder: (context, index) {
-                              final articleWithFeed = _articles[index];
-                              return _buildArticleCard(articleWithFeed);
-                            },
-                          ),
-                        ),
+                const PopupMenuItem(
+                  value: 'select_all',
+                  child: Row(
+                    children: [
+                      Icon(Icons.select_all, size: 20),
+                      SizedBox(width: 8),
+                      Text('Select Articles'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'mark_all_read',
+                  child: Row(
+                    children: [
+                      Icon(Icons.done_all, size: 20),
+                      SizedBox(width: 8),
+                      Text('Mark All as Read'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'settings',
+                  child: Row(
+                    children: [
+                      Icon(Icons.settings, size: 20),
+                      SizedBox(width: 8),
+                      Text('Settings'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'sync',
+                  child: Row(
+                    children: [
+                      Icon(Icons.sync, size: 20),
+                      SizedBox(width: 8),
+                      Text('Sync All Feeds'),
+                    ],
+                  ),
                 ),
               ],
+              onSelected: (value) {
+                switch (value) {
+                  case 'search':
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SearchScreen(),
+                      ),
+                    );
+                    break;
+                  case 'select_all':
+                    setState(() {
+                      _isBatchMode = true;
+                    });
+                    break;
+                  case 'mark_all_read':
+                    _markAllAsRead();
+                    break;
+                  case 'settings':
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const SettingsScreen(),
+                      ),
+                    );
+                    break;
+                  case 'sync':
+                    (widget.onSync ?? _syncAll)();
+                    break;
+                }
+              },
             ),
+          ] else ...[
+            // On larger screens, show all actions as icon buttons
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Search',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SearchScreen(),
+                  ),
+                );
+              },
+            ),
+            PopupMenuButton<ArticleSortOption>(
+              icon: const Icon(Icons.sort),
+              tooltip: 'Sort',
+              onSelected: (option) {
+                setState(() {
+                  _sortOption = option;
+                });
+                _saveSortPreference();
+                _loadArticles();
+              },
+              itemBuilder: (context) => ArticleSortOption.values.map((option) {
+                return PopupMenuItem(
+                  value: option,
+                  child: Row(
+                    children: [
+                      if (_sortOption == option)
+                        const Icon(Icons.check, size: 20)
+                      else
+                        const SizedBox(width: 20),
+                      const SizedBox(width: 8),
+                      Text(option.displayName),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.select_all),
+              tooltip: 'Select Articles',
+              onPressed: () {
+                setState(() {
+                  _isBatchMode = true;
+                });
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.done_all),
+              tooltip: 'Mark All as Read',
+              onPressed: _markAllAsRead,
+            ),
+            IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: 'Settings',
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SettingsScreen(),
+                  ),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.sync),
+              tooltip: 'Sync All Feeds',
+              onPressed: widget.onSync ?? _syncAll,
+            ),
+          ],
+        ],
+      ),
+      body: Stack(
+        children: [
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    _buildSyncInfo(),
+                    Expanded(
+                      child: _articles.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.article,
+                                    size: 64,
+                                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No articles',
+                                    style: Theme.of(context).textTheme.titleLarge,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Sync feeds to load articles',
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                  ),
+                                ],
+                              ),
+                            )
+                          : RefreshIndicator(
+                              onRefresh: _loadArticles,
+                              child: ListView.builder(
+                                key: ValueKey(_refreshKey),
+                                padding: EdgeInsets.only(
+                                  bottom: _isBatchMode && _selectedArticleIds.isNotEmpty ? 120 : 96,
+                                ),
+                                itemCount: _articles.length,
+                                itemBuilder: (context, index) {
+                                  final articleWithFeed = _articles[index];
+                                  return _buildArticleCard(articleWithFeed);
+                                },
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+          if (_isBatchMode && _selectedArticleIds.isNotEmpty)
+            _buildBatchActionBar(),
+        ],
+      ),
     );
   }
 
@@ -334,6 +565,10 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         RtlHelper.getTextDirectionFromContent(contentText, feedRtl: feed.isRtl);
     final isRtl = textDirection == TextDirection.rtl;
     final alignRight = isRtl || Directionality.of(context) == TextDirection.rtl || (feed.isRtl ?? false);
+    final isSelected = _selectedArticleIds.contains(article.id);
+    final readingTime = ReadingTime.calculateAndFormat(
+      article.fullContent ?? article.rawDescription,
+    );
 
     return FutureBuilder(
       future: ref.read(accountServiceProvider).getCurrentAccount(),
@@ -371,20 +606,37 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
+                side: isSelected
+                    ? BorderSide(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 2,
+                      )
+                    : BorderSide.none,
               ),
               child: InkWell(
                 borderRadius: BorderRadius.circular(16),
                 onTap: () {
-                  Navigator.of(context)
-                      .push(
-                        MaterialPageRoute(
-                          builder: (_) => ArticleReaderScreen(article: article),
-                        ),
-                      )
-                      .then((_) => _loadArticles());
+                  if (_isBatchMode) {
+                    _toggleArticleSelection(article.id);
+                  } else {
+                    Navigator.of(context)
+                        .push(
+                          MaterialPageRoute(
+                            builder: (_) => ArticleReaderScreen(article: article),
+                          ),
+                        )
+                        .then((_) => _loadArticles());
+                  }
                 },
                 onLongPress: () {
-                  _showLongPressMenu(context, article);
+                  if (!_isBatchMode) {
+                    setState(() {
+                      _isBatchMode = true;
+                      _selectedArticleIds.add(article.id);
+                    });
+                  } else {
+                    _showLongPressMenu(context, article);
+                  }
                 },
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -392,6 +644,13 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (_isBatchMode) ...[
+                          Checkbox(
+                            value: isSelected,
+                            onChanged: (_) => _toggleArticleSelection(article.id),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         if (!isRtl) ...[
                           _buildArticleImage(article),
                           const SizedBox(width: 12),
@@ -442,43 +701,75 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                 textAlign: alignRight ? TextAlign.right : TextAlign.left,
                               ),
                               const SizedBox(height: 8),
-                              Row(
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 4,
+                                alignment: alignRight ? WrapAlignment.end : WrapAlignment.start,
                                 children: [
-                                  Expanded(
-                                    child: Text(
-                                      feed.name,
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurface
-                                                .withOpacity(0.5),
-                                            fontSize: 11,
-                                          ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+                                  Text(
+                                    feed.name,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.5),
+                                          fontSize: 11,
+                                        ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Icon(
-                                    Icons.access_time,
-                                    size: 11,
-                                    color:
-                                        Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Flexible(
-                                    child: Text(
-                                      _formatDate(article.date),
-                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                            fontSize: 11,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .onSurface
-                                                .withOpacity(0.5),
-                                          ),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 1,
+                                  if (readingTime.isNotEmpty)
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.timer_outlined,
+                                          size: 11,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.5),
+                                        ),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          readingTime,
+                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                fontSize: 11,
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurface
+                                                    .withOpacity(0.5),
+                                              ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.access_time,
+                                        size: 11,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withOpacity(0.5),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      Text(
+                                        _formatDate(article.date),
+                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                              fontSize: 11,
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .onSurface
+                                                  .withOpacity(0.5),
+                                            ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -719,6 +1010,160 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     }
   }
 
+  Future<void> _batchMarkAsRead() async {
+    if (_selectedArticleIds.isEmpty) return;
+    final count = _selectedArticleIds.length;
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      await articleDao.batchMarkAsRead(_selectedArticleIds.toList());
+      setState(() {
+        _selectedArticleIds.clear();
+        _isBatchMode = false;
+      });
+      _loadArticles();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Marked $count articles as read')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _batchMarkAsUnread() async {
+    if (_selectedArticleIds.isEmpty) return;
+    final count = _selectedArticleIds.length;
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      await articleDao.batchMarkAsUnread(_selectedArticleIds.toList());
+      setState(() {
+        _selectedArticleIds.clear();
+        _isBatchMode = false;
+      });
+      _loadArticles();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Marked $count articles as unread')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _batchStar() async {
+    if (_selectedArticleIds.isEmpty) return;
+    final count = _selectedArticleIds.length;
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      await articleDao.batchStar(_selectedArticleIds.toList());
+      setState(() {
+        _selectedArticleIds.clear();
+        _isBatchMode = false;
+      });
+      _loadArticles();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Starred $count articles')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _batchUnstar() async {
+    if (_selectedArticleIds.isEmpty) return;
+    final count = _selectedArticleIds.length;
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      await articleDao.batchUnstar(_selectedArticleIds.toList());
+      setState(() {
+        _selectedArticleIds.clear();
+        _isBatchMode = false;
+      });
+      _loadArticles();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unstarred $count articles')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _batchDelete() async {
+    if (_selectedArticleIds.isEmpty) return;
+    final count = _selectedArticleIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Articles'),
+        content: Text('Are you sure you want to delete $count articles?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      await articleDao.batchDelete(_selectedArticleIds.toList());
+      setState(() {
+        _selectedArticleIds.clear();
+        _isBatchMode = false;
+      });
+      _loadArticles();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Deleted $count articles')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  void _toggleArticleSelection(String articleId) {
+    setState(() {
+      if (_selectedArticleIds.contains(articleId)) {
+        _selectedArticleIds.remove(articleId);
+      } else {
+        _selectedArticleIds.add(articleId);
+      }
+    });
+  }
+
   Future<void> _markBelowAsRead(Article article) async {
     try {
       final articleDao = ref.read(articleDaoProvider);
@@ -812,6 +1257,106 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       },
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildBatchActionBar() {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 90, // Position above bottom nav bar (12 + 62 + 16 padding)
+      child: SafeArea(
+        top: false,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildBatchActionButton(
+                  icon: Icons.star,
+                  label: 'Star',
+                  onPressed: _batchStar,
+                  color: Colors.orange,
+                ),
+                _buildBatchActionButton(
+                  icon: Icons.star_border,
+                  label: 'Unstar',
+                  onPressed: _batchUnstar,
+                  color: Colors.orange,
+                ),
+                _buildBatchActionButton(
+                  icon: Icons.done_all,
+                  label: 'Read',
+                  onPressed: _batchMarkAsRead,
+                  color: Colors.blue,
+                ),
+                _buildBatchActionButton(
+                  icon: Icons.mark_email_unread,
+                  label: 'Unread',
+                  onPressed: _batchMarkAsUnread,
+                  color: Colors.blue,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBatchActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: onPressed,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icon,
+                    color: color,
+                    size: 24,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: color,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

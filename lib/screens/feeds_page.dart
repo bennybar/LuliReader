@@ -242,6 +242,8 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
 
   Future<void> _createNewFolder(BuildContext context) async {
     final nameController = TextEditingController();
+    String? folderName;
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -254,7 +256,10 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
             border: OutlineInputBorder(),
           ),
           autofocus: true,
-          onSubmitted: (_) => Navigator.of(context).pop(true),
+          onSubmitted: (value) {
+            folderName = value;
+            Navigator.of(context).pop(true);
+          },
         ),
         actions: [
           TextButton(
@@ -262,15 +267,28 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () {
+              folderName = nameController.text;
+              Navigator.of(context).pop(true);
+            },
             child: const Text('Create'),
           ),
         ],
       ),
     );
 
-    if (confirmed != true || nameController.text.trim().isEmpty) {
+    // Dispose controller after dialog is fully closed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       nameController.dispose();
+    });
+
+    if (confirmed != true) {
+      return;
+    }
+
+    // Get the folder name before controller might be disposed
+    final trimmedName = folderName?.trim() ?? '';
+    if (trimmedName.isEmpty) {
       return;
     }
 
@@ -282,7 +300,6 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
             const SnackBar(content: Text('No account found')),
           );
         }
-        nameController.dispose();
         return;
       }
 
@@ -290,12 +307,11 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
       final groupId = '${account.id}\$${DateTime.now().millisecondsSinceEpoch}';
       final group = Group(
         id: groupId,
-        name: nameController.text.trim(),
+        name: trimmedName,
         accountId: account.id!,
       );
       
       await groupDao.insert(group);
-      nameController.dispose();
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -304,7 +320,6 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
         _refresh();
       }
     } catch (e) {
-      nameController.dispose();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error creating folder: $e')),

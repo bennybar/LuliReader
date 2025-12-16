@@ -15,6 +15,7 @@ import '../providers/app_provider.dart';
 import '../services/local_rss_service.dart';
 import '../services/account_service.dart';
 import '../utils/rtl_helper.dart';
+import '../utils/reading_time.dart';
 import '../services/shared_preferences_service.dart';
 
 class ArticleReaderScreen extends ConsumerStatefulWidget {
@@ -338,25 +339,54 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                       textDirection: finalTextDir,
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: finalIsRtl ? MainAxisAlignment.end : MainAxisAlignment.start,
-                      textDirection: finalTextDir,
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      alignment: finalIsRtl ? WrapAlignment.end : WrapAlignment.start,
                       children: [
                         if (widget.article.author != null) ...[
                           Text(
                             widget.article.author!,
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
-                          const SizedBox(width: 8),
                           Text(
                             '•',
                             style: Theme.of(context).textTheme.bodyMedium,
                           ),
-                          const SizedBox(width: 8),
                         ],
                         Text(
                           _formatDate(widget.article.date),
                           style: Theme.of(context).textTheme.bodyMedium,
+                        ),
+                        Builder(
+                          builder: (context) {
+                            final readingTime = ReadingTime.calculateAndFormat(
+                              _fullContent ?? widget.article.fullContent ?? widget.article.rawDescription,
+                            );
+                            if (readingTime.isNotEmpty) {
+                              return Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    '•',
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 16,
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    readingTime,
+                                    style: Theme.of(context).textTheme.bodyMedium,
+                                  ),
+                                ],
+                              );
+                            }
+                            return const SizedBox.shrink();
+                          },
                         ),
                       ],
                     ),

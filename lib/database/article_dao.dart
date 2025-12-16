@@ -1,5 +1,6 @@
 import '../database/database_helper.dart';
 import '../models/article.dart';
+import '../models/article_sort.dart';
 import '../models/feed.dart';
 
 class ArticleDao {
@@ -348,6 +349,214 @@ class ArticleDao {
     if (feedMaps.isEmpty) return null;
     final feed = Feed.fromMap(feedMaps.first);
     return ArticleWithFeed(article: article, feed: feed as dynamic);
+  }
+
+  /// Search articles with full-text search across title, content, and author
+  /// Supports filters: feedId, date range, starred, unread
+  Future<List<Article>> search({
+    required int accountId,
+    required String query,
+    String? feedId,
+    DateTime? startDate,
+    DateTime? endDate,
+    bool? starred,
+    bool? unread,
+    int limit = 500,
+  }) async {
+    final db = await _dbHelper.database;
+    
+    // Build WHERE clause
+    final whereParts = <String>['accountId = ?'];
+    final whereArgs = <dynamic>[accountId];
+    
+    // Add search query
+    if (query.isNotEmpty) {
+      whereParts.add('(title LIKE ? OR shortDescription LIKE ? OR rawDescription LIKE ? OR author LIKE ? OR fullContent LIKE ?)');
+      final searchPattern = '%$query%';
+      whereArgs.addAll([searchPattern, searchPattern, searchPattern, searchPattern, searchPattern]);
+    }
+    
+    // Add feed filter
+    if (feedId != null && feedId.isNotEmpty) {
+      whereParts.add('feedId = ?');
+      whereArgs.add(feedId);
+    }
+    
+    // Add date range filter
+    if (startDate != null) {
+      whereParts.add('date >= ?');
+      whereArgs.add(startDate.toIso8601String());
+    }
+    if (endDate != null) {
+      whereParts.add('date <= ?');
+      whereArgs.add(endDate.toIso8601String());
+    }
+    
+    // Add starred filter
+    if (starred != null) {
+      whereParts.add('isStarred = ?');
+      whereArgs.add(starred ? 1 : 0);
+    }
+    
+    // Add unread filter
+    if (unread != null) {
+      whereParts.add('isUnread = ?');
+      whereArgs.add(unread ? 1 : 0);
+    }
+    
+    final whereClause = whereParts.join(' AND ');
+    
+    final maps = await db.query(
+      'article',
+      where: whereClause,
+      whereArgs: whereArgs,
+      orderBy: 'date DESC',
+      limit: limit,
+    );
+    
+    return maps.map((map) => Article.fromMap(map)).toList();
+  }
+
+  /// Batch mark articles as read
+  Future<int> batchMarkAsRead(List<String> articleIds) async {
+    if (articleIds.isEmpty) return 0;
+    final db = await _dbHelper.database;
+    final now = DateTime.now().toIso8601String();
+    final placeholders = articleIds.map((_) => '?').join(',');
+    return await db.rawUpdate(
+      'UPDATE article SET isUnread = 0, updateAt = ? WHERE id IN ($placeholders)',
+      [now, ...articleIds],
+    );
+  }
+
+  /// Batch mark articles as unread
+  Future<int> batchMarkAsUnread(List<String> articleIds) async {
+    if (articleIds.isEmpty) return 0;
+    final db = await _dbHelper.database;
+    final placeholders = articleIds.map((_) => '?').join(',');
+    return await db.rawUpdate(
+      'UPDATE article SET isUnread = 1 WHERE id IN ($placeholders)',
+      articleIds,
+    );
+  }
+
+  /// Batch star articles
+  Future<int> batchStar(List<String> articleIds) async {
+    if (articleIds.isEmpty) return 0;
+    final db = await _dbHelper.database;
+    final placeholders = articleIds.map((_) => '?').join(',');
+    return await db.rawUpdate(
+      'UPDATE article SET isStarred = 1 WHERE id IN ($placeholders)',
+      articleIds,
+    );
+  }
+
+  /// Batch unstar articles
+  Future<int> batchUnstar(List<String> articleIds) async {
+    if (articleIds.isEmpty) return 0;
+    final db = await _dbHelper.database;
+    final placeholders = articleIds.map((_) => '?').join(',');
+    return await db.rawUpdate(
+      'UPDATE article SET isStarred = 0 WHERE id IN ($placeholders)',
+      articleIds,
+    );
+  }
+
+  /// Batch delete articles
+  Future<int> batchDelete(List<String> articleIds) async {
+    if (articleIds.isEmpty) return 0;
+    final db = await _dbHelper.database;
+    final placeholders = articleIds.map((_) => '?').join(',');
+    return await db.rawDelete(
+      'DELETE FROM article WHERE id IN ($placeholders)',
+      articleIds,
+    );
+  }
+
+  /// Get articles with sorting
+  Future<List<Article>> getArticlesWithSort({
+    required int accountId,
+    required ArticleSortOption sortOption,
+    String? feedId,
+    bool? unread,
+    bool? starred,
+    int limit = 500,
+  }) async {
+    final db = await _dbHelper.database;
+    
+    final whereParts = <String>['accountId = ?'];
+    final whereArgs = <dynamic>[accountId];
+    
+    if (feedId != null && feedId.isNotEmpty) {
+      whereParts.add('feedId = ?');
+      whereArgs.add(feedId);
+    }
+    
+    if (unread != null) {
+      whereParts.add('isUnread = ?');
+      whereArgs.add(unread ? 1 : 0);
+    }
+    
+    if (starred != null) {
+      whereParts.add('isStarred = ?');
+      whereArgs.add(starred ? 1 : 0);
+    }
+    
+    final whereClause = whereParts.join(' AND ');
+    
+    // Build ORDER BY clause
+    String orderBy;
+    switch (sortOption) {
+      case ArticleSortOption.dateDesc:
+        orderBy = 'date DESC';
+        break;
+      case ArticleSortOption.dateAsc:
+        orderBy = 'date ASC';
+        break;
+      case ArticleSortOption.titleAsc:
+        orderBy = 'title ASC';
+        break;
+      case ArticleSortOption.titleDesc:
+        orderBy = 'title DESC';
+        break;
+      case ArticleSortOption.authorAsc:
+        orderBy = 'author ASC, date DESC';
+        break;
+      case ArticleSortOption.authorDesc:
+        orderBy = 'author DESC, date DESC';
+        break;
+      case ArticleSortOption.feedAsc:
+      case ArticleSortOption.feedDesc:
+        // For feed sorting, we need to join with feed table
+        // This is handled separately with a raw query
+        orderBy = 'date DESC';
+        break;
+    }
+    
+    List<Map<String, dynamic>> maps;
+    
+    if (sortOption == ArticleSortOption.feedAsc || sortOption == ArticleSortOption.feedDesc) {
+      // Use raw query with JOIN for feed sorting
+      final feedOrder = sortOption == ArticleSortOption.feedAsc ? 'ASC' : 'DESC';
+      final query = '''
+        SELECT a.* FROM article a
+        INNER JOIN feed f ON a.feedId = f.id
+        WHERE ${whereClause.replaceAll('accountId = ?', 'a.accountId = ?')}
+        ORDER BY f.name $feedOrder, a.date DESC
+        LIMIT ?
+      ''';
+      maps = await db.rawQuery(query, [...whereArgs, limit]);
+    } else {
+      maps = await db.query(
+        'article',
+        where: whereClause,
+        whereArgs: whereArgs,
+        orderBy: orderBy,
+        limit: limit,
+      );
+    }
+    
+    return maps.map((map) => Article.fromMap(map)).toList();
   }
 }
 
