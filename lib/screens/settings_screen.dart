@@ -57,9 +57,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       switch (field) {
         case 'syncOnlyOnWiFi':
           updatedAccount = account.copyWith(syncOnlyOnWiFi: value as bool);
+          await registerBackgroundSync(
+            account.syncInterval,
+            requiresCharging: account.syncOnlyWhenCharging,
+          );
           break;
         case 'syncOnlyWhenCharging':
           updatedAccount = account.copyWith(syncOnlyWhenCharging: value as bool);
+          await registerBackgroundSync(
+            account.syncInterval,
+            requiresCharging: value as bool,
+          );
           break;
         case 'isFullContent':
           updatedAccount = account.copyWith(isFullContent: value as bool);

@@ -22,6 +22,7 @@ class FeedsPage extends ConsumerStatefulWidget {
 
 class FeedsPageState extends ConsumerState<FeedsPage> {
   int _refreshKey = 0;
+  bool _accountListenerSet = false;
 
   void refresh() {
     setState(() {
@@ -35,6 +36,12 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_accountListenerSet) {
+      _accountListenerSet = true;
+      ref.listen(currentAccountProvider, (_, __) {
+        _refresh();
+      });
+    }
     final accountAsync = ref.watch(currentAccountProvider);
 
     return Scaffold(
@@ -196,7 +203,12 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                     child: Text(feedObj.name[0].toUpperCase()),
                     radius: 16,
                   ),
-            title: Text(feedObj.name),
+            title: Text(
+              feedObj.name,
+              textAlign: Directionality.of(context) == TextDirection.rtl
+                  ? TextAlign.right
+                  : TextAlign.left,
+            ),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(
