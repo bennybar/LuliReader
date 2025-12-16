@@ -11,6 +11,7 @@ import '../database/article_dao.dart';
 import '../database/feed_dao.dart';
 import '../services/rss_helper.dart';
 import '../services/rss_service.dart';
+import '../services/sync_log_service.dart';
 
 const String kBackgroundSyncTask = 'background_sync_task';
 
@@ -69,10 +70,35 @@ void backgroundSyncDispatcher() {
         http.Client(),
       );
 
+      final articleDaoBefore = ArticleDao();
+      final countBefore = await articleDaoBefore.countByAccountId(account.id!);
+      
       await localRssService.sync(account.id!);
       await accountService.updateAccount(account.copyWith(updateAt: DateTime.now()));
+      
+      final articleDaoAfter = ArticleDao();
+      final countAfter = await articleDaoAfter.countByAccountId(account.id!);
+      final articlesSynced = countAfter - countBefore;
+      
+      final syncLog = SyncLogService();
+      await syncLog.addLogEntry(SyncLogEntry(
+        timestamp: DateTime.now(),
+        type: 'background',
+        success: true,
+        articlesSynced: articlesSynced,
+      ));
+      
       return true;
-    } catch (_) {
+    } catch (e) {
+      try {
+        final syncLog = SyncLogService();
+        await syncLog.addLogEntry(SyncLogEntry(
+          timestamp: DateTime.now(),
+          type: 'background',
+          success: false,
+          error: e.toString(),
+        ));
+      } catch (_) {}
       return false;
     }
   });

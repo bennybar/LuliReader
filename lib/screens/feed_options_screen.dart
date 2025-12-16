@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/feed.dart';
+import '../models/group.dart';
 import '../providers/app_provider.dart';
 import '../database/feed_dao.dart';
 import '../database/article_dao.dart';
+import '../database/group_dao.dart';
 
 class FeedOptionsScreen extends ConsumerStatefulWidget {
   final Feed feed;
@@ -217,6 +219,108 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
     }
   }
 
+  Future<void> _changeFolder() async {
+    try {
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No account found')),
+          );
+        }
+        return;
+      }
+
+      final groupDao = ref.read(groupDaoProvider);
+      final groups = await groupDao.getAll(account.id!);
+      
+      if (groups.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No folders available')),
+          );
+        }
+        return;
+      }
+
+      final selectedGroup = await showDialog<Group>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Select Folder'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: groups.length,
+              itemBuilder: (context, index) {
+                final group = groups[index];
+                final isCurrent = group.id == widget.feed.groupId;
+                return ListTile(
+                  leading: Icon(
+                    Icons.folder,
+                    color: isCurrent 
+                        ? Theme.of(context).colorScheme.primary 
+                        : null,
+                  ),
+                  title: Text(
+                    group.name,
+                    style: TextStyle(
+                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                  trailing: isCurrent 
+                      ? Icon(
+                          Icons.check,
+                          color: Theme.of(context).colorScheme.primary,
+                        )
+                      : null,
+                  onTap: () => Navigator.of(context).pop(group),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+          ],
+        ),
+      );
+
+      if (selectedGroup != null && selectedGroup.id != widget.feed.groupId) {
+        setState(() => _isLoading = true);
+        try {
+          final feedDao = ref.read(feedDaoProvider);
+          await feedDao.update(widget.feed.copyWith(groupId: selectedGroup.id));
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Moved to folder "${selectedGroup.name}"')),
+            );
+            Navigator.of(context).pop(true);
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Error changing folder: $e')),
+            );
+          }
+        } finally {
+          if (mounted) {
+            setState(() => _isLoading = false);
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
   void _startBackgroundFullContentDownload() {
     // Start downloading full content for existing articles in background
     // This runs asynchronously and doesn't block the UI
@@ -396,6 +500,15 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                     title: const Text('Clear Articles'),
                     subtitle: const Text('Remove all articles from this feed'),
                     onTap: _clearFeed,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.folder),
+                    title: const Text('Change Folder'),
+                    subtitle: const Text('Move this feed to a different folder'),
+                    onTap: _changeFolder,
                   ),
                 ),
                 const SizedBox(height: 8),

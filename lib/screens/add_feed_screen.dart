@@ -4,6 +4,7 @@ import '../providers/app_provider.dart';
 import '../database/feed_dao.dart';
 import '../database/group_dao.dart';
 import '../models/feed.dart';
+import '../models/group.dart';
 import '../services/rss_helper.dart';
 import 'package:uuid/uuid.dart';
 
@@ -20,6 +21,7 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
   final _formKey = GlobalKey<FormState>();
   final _urlController = TextEditingController();
   bool _isLoading = false;
+  String? _selectedGroupId;
 
   Future<void> _addFeed() async {
     if (!_formKey.currentState!.validate()) return;
@@ -48,11 +50,27 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
       // Fetch feed to get name
       final syndFeed = await rssHelper.searchFeed(_urlController.text.trim());
       
-      // Get default group
-      final defaultGroupId = groupDao.getDefaultGroupId(account.id!);
-      final defaultGroup = await groupDao.getById(defaultGroupId);
-      if (defaultGroup == null) {
-        throw Exception('Default group not found');
+      // Get selected group or default group
+      String targetGroupId;
+      if (_selectedGroupId != null) {
+        final selectedGroup = await groupDao.getById(_selectedGroupId!);
+        if (selectedGroup != null) {
+          targetGroupId = selectedGroup.id;
+        } else {
+          final defaultGroupId = groupDao.getDefaultGroupId(account.id!);
+          final defaultGroup = await groupDao.getById(defaultGroupId);
+          if (defaultGroup == null) {
+            throw Exception('Default group not found');
+          }
+          targetGroupId = defaultGroup.id;
+        }
+      } else {
+        final defaultGroupId = groupDao.getDefaultGroupId(account.id!);
+        final defaultGroup = await groupDao.getById(defaultGroupId);
+        if (defaultGroup == null) {
+          throw Exception('Default group not found');
+        }
+        targetGroupId = defaultGroup.id;
       }
 
       // Create feed
@@ -61,7 +79,7 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
         id: feedId,
         name: syndFeed.title ?? 'Untitled Feed',
         url: _urlController.text.trim(),
-        groupId: defaultGroup.id,
+        groupId: targetGroupId,
         accountId: account.id!,
       );
 
@@ -88,6 +106,24 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<List<Group>> _loadGroupsForDropdown() async {
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (account == null) return [];
+    final groupDao = ref.read(groupDaoProvider);
+    final groups = await groupDao.getAll(account.id!);
+    // Set default selected group if not set
+    if (_selectedGroupId == null && groups.isNotEmpty && mounted) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _selectedGroupId = groups.first.id;
+          });
+        }
+      });
+    }
+    return groups;
   }
 
   @override
@@ -125,6 +161,37 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
                     return 'Please enter a valid URL';
                   }
                   return null;
+                },
+              ),
+              const SizedBox(height: 24),
+              FutureBuilder<List<Group>>(
+                future: _loadGroupsForDropdown(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const CircularProgressIndicator();
+                  }
+                  final groups = snapshot.data ?? [];
+                  if (groups.isEmpty) {
+                    return const Text('No folders available');
+                  }
+                  return DropdownButtonFormField<String>(
+                    value: _selectedGroupId,
+                    decoration: const InputDecoration(
+                      labelText: 'Folder',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: groups.map((group) {
+                      return DropdownMenuItem<String>(
+                        value: group.id,
+                        child: Text(group.name),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedGroupId = value;
+                      });
+                    },
+                  );
                 },
               ),
               const SizedBox(height: 24),

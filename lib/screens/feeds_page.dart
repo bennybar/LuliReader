@@ -67,7 +67,13 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
             },
           ),
           IconButton(
+            icon: const Icon(Icons.create_new_folder),
+            tooltip: 'New Folder',
+            onPressed: () => _createNewFolder(context),
+          ),
+          IconButton(
             icon: const Icon(Icons.add),
+            tooltip: 'Add Feed',
             onPressed: () {
               Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const AddFeedScreen()),
@@ -220,6 +226,79 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
   Future<List<GroupWithFeed>> _loadGroupsWithFeeds(int accountId) async {
     final groupDao = ref.read(groupDaoProvider);
     return await groupDao.getAllWithFeeds(accountId);
+  }
+
+  Future<void> _createNewFolder(BuildContext context) async {
+    final nameController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New Folder'),
+        content: TextField(
+          controller: nameController,
+          decoration: const InputDecoration(
+            labelText: 'Folder Name',
+            hintText: 'Enter folder name',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+          onSubmitted: (_) => Navigator.of(context).pop(true),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || nameController.text.trim().isEmpty) {
+      nameController.dispose();
+      return;
+    }
+
+    try {
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No account found')),
+          );
+        }
+        nameController.dispose();
+        return;
+      }
+
+      final groupDao = ref.read(groupDaoProvider);
+      final groupId = '${account.id}\$${DateTime.now().millisecondsSinceEpoch}';
+      final group = Group(
+        id: groupId,
+        name: nameController.text.trim(),
+        accountId: account.id!,
+      );
+      
+      await groupDao.insert(group);
+      nameController.dispose();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Created folder "${group.name}"')),
+        );
+        _refresh();
+      }
+    } catch (e) {
+      nameController.dispose();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error creating folder: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _confirmDeleteGroup(Group group) async {

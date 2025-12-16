@@ -271,48 +271,48 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _articles.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.article,
-                        size: 64,
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No articles',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Sync feeds to load articles',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadArticles,
-                  child: Column(
-                    children: [
-                      _buildSyncInfo(),
-                      Expanded(
-                        child: ListView.builder(
-                          key: ValueKey(_refreshKey),
-                          padding: const EdgeInsets.only(bottom: 96),
-                          itemCount: _articles.length,
-                          itemBuilder: (context, index) {
-                            final articleWithFeed = _articles[index];
-                            return _buildArticleCard(articleWithFeed);
-                          },
+          : Column(
+              children: [
+                _buildSyncInfo(),
+                Expanded(
+                  child: _articles.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.article,
+                                size: 64,
+                                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No articles',
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Sync feeds to load articles',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ],
+                          ),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: _loadArticles,
+                          child: ListView.builder(
+                            key: ValueKey(_refreshKey),
+                            padding: const EdgeInsets.only(bottom: 96),
+                            itemCount: _articles.length,
+                            itemBuilder: (context, index) {
+                              final articleWithFeed = _articles[index];
+                              return _buildArticleCard(articleWithFeed);
+                            },
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
                 ),
+              ],
+            ),
     );
   }
 

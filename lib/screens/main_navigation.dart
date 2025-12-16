@@ -6,6 +6,8 @@ import '../providers/app_provider.dart';
 import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
 import '../background/background_sync.dart';
+import '../services/sync_log_service.dart';
+import '../database/article_dao.dart';
 import 'feeds_page.dart';
 import 'flow_page.dart';
 import 'settings_screen.dart';
@@ -29,13 +31,30 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
     final account = await ref.read(accountServiceProvider).getCurrentAccount();
     if (account != null) {
       try {
+        final articleDao = ref.read(articleDaoProvider);
+        final countBefore = await articleDao.countByAccountId(account.id!);
+        
         final rssService = ref.read(localRssServiceProvider);
         await rssService.sync(account.id!);
+        
+        final countAfter = await articleDao.countByAccountId(account.id!);
+        final articlesSynced = countAfter - countBefore;
+        
         // Update last sync time
         await ref.read(accountServiceProvider).updateAccount(
               account.copyWith(updateAt: DateTime.now()),
             );
         ref.invalidate(currentAccountProvider);
+        
+        // Log sync
+        final syncLog = SyncLogService();
+        await syncLog.addLogEntry(SyncLogEntry(
+          timestamp: DateTime.now(),
+          type: showMessage ? 'manual' : 'startup',
+          success: true,
+          articlesSynced: articlesSynced,
+        ));
+        
         if (mounted && showMessage) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Sync completed')),
@@ -49,6 +68,15 @@ class _MainNavigationState extends ConsumerState<MainNavigation> {
           _flowPageKey.currentState?.refresh();
         }
       } catch (e) {
+        // Log failed sync
+        final syncLog = SyncLogService();
+        await syncLog.addLogEntry(SyncLogEntry(
+          timestamp: DateTime.now(),
+          type: showMessage ? 'manual' : 'startup',
+          success: false,
+          error: e.toString(),
+        ));
+        
         if (mounted && showMessage) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Sync error: $e')),

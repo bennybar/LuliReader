@@ -170,6 +170,15 @@ class ArticleDao {
     );
   }
 
+  Future<int> countByAccountId(int accountId) async {
+    final db = await _dbHelper.database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM article WHERE accountId = ?',
+      [accountId],
+    );
+    return result.first['count'] as int;
+  }
+
   Future<int> countByFeedId(String feedId) async {
     final db = await _dbHelper.database;
     final result = await db.rawQuery(

@@ -7,6 +7,7 @@ import '../database/database_helper.dart';
 import '../background/background_sync.dart';
 import '../services/shared_preferences_service.dart';
 import '../models/account.dart';
+import '../services/sync_log_service.dart';
 import 'opml_import_export_screen.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -328,6 +329,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   onTap: _isResyncing ? null : () => _confirmResync(context, account),
                 ),
               ),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.history),
+                  title: const Text('Sync Log'),
+                  subtitle: const Text('View background sync history'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showSyncLog(context),
+                ),
+              ),
               const SizedBox(height: 24),
               ListTile(
                 leading: const Icon(Icons.import_export),
@@ -541,6 +552,85 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         setState(() => _isResyncing = false);
       }
+    }
+  }
+
+  Future<void> _showSyncLog(BuildContext context) async {
+    final syncLog = SyncLogService();
+    final entries = await syncLog.getLogEntries();
+    
+    if (!context.mounted) return;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sync Log'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: entries.isEmpty
+              ? const Text('No sync history yet')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    final entry = entries[index];
+                    final timeAgo = _formatTimeAgo(entry.timestamp);
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        entry.success ? Icons.check_circle : Icons.error,
+                        color: entry.success ? Colors.green : Colors.red,
+                        size: 20,
+                      ),
+                      title: Text(
+                        '${entry.type.toUpperCase()} - $timeAgo',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                      subtitle: Text(
+                        entry.success
+                            ? '${entry.articlesSynced ?? 0} articles synced'
+                            : 'Error: ${entry.error ?? "Unknown"}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          if (entries.isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                await syncLog.clearLogs();
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Sync log cleared')),
+                  );
+                }
+              },
+              child: const Text('Clear Log'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatTimeAgo(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inDays > 0) {
+      return '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} hour${difference.inHours > 1 ? 's' : ''} ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''} ago';
+    } else {
+      return 'Just now';
     }
   }
 }
