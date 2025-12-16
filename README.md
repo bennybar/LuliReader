@@ -29,18 +29,6 @@ flutter pub get
 flutter run
 ```
 
-## Structure
-
-```
-lib/
-├─ background/   # Workmanager dispatcher, periodic sync
-├─ database/     # DAOs and helper
-├─ models/       # Account, Article, Feed, Group
-├─ providers/    # Riverpod providers (theme, account, data)
-├─ screens/      # UI screens and navigation
-├─ services/     # RSS, readability, sync log, prefs
-└─ theme/        # App themes
-```
 
 ## Notable Improvements over ReadYou
 
@@ -52,4 +40,4 @@ lib/
 
 ## License
 
-MIT. See `LICENSE` (or project license if added).
+MIT.
