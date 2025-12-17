@@ -1,6 +1,7 @@
 import 'package:workmanager/workmanager.dart';
 import 'package:http/http.dart' as http;
 import 'package:battery_plus/battery_plus.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
@@ -71,11 +72,7 @@ void backgroundSyncDispatcher() {
     }
 
     try {
-      final battery = Battery();
-      final batteryState = await battery.batteryState;
-      final isCharging = batteryState == BatteryState.charging || batteryState == BatteryState.full;
-
-      // Initialize singletons/services
+      // Initialize singletons/services first to get account settings
       final prefs = SharedPreferencesService();
       await prefs.init();
       final accountId = await prefs.getInt('currentAccountId');
@@ -90,8 +87,6 @@ void backgroundSyncDispatcher() {
 
       final accountDao = AccountDao();
       final groupDao = GroupDao();
-      final articleDao = ArticleDao();
-      final feedDao = FeedDao();
       final accountService = AccountService(accountDao, groupDao, prefs);
       final account = await accountService.getById(accountId);
       if (account == null) {
@@ -99,7 +94,39 @@ void backgroundSyncDispatcher() {
         return false;
       }
 
-      print('[BACKGROUND_SYNC] Starting sync for account: ${account.name} (requiresChargingSetting=${account.syncOnlyWhenCharging}, batteryState=$batteryState, isCharging=$isCharging)');
+      // Check WiFi requirement BEFORE attempting sync
+      if (account.syncOnlyOnWiFi) {
+        print('[BACKGROUND_SYNC] Checking WiFi connection (WiFi-only mode enabled)...');
+        final connectivity = Connectivity();
+        final connectivityResult = await connectivity.checkConnectivity();
+        final isWifi = connectivityResult.contains(ConnectivityResult.wifi);
+        if (!isWifi) {
+          print('[BACKGROUND_SYNC] Sync skipped: WiFi-only mode enabled but not on WiFi (connection: $connectivityResult)');
+          return false; // Return false to indicate task should not retry immediately
+        }
+        print('[BACKGROUND_SYNC] WiFi connection confirmed');
+      }
+
+      // Check charging requirement BEFORE attempting sync
+      if (account.syncOnlyWhenCharging) {
+        print('[BACKGROUND_SYNC] Checking charging status (charging-only mode enabled)...');
+        final battery = Battery();
+        final batteryState = await battery.batteryState;
+        final isCharging = batteryState == BatteryState.charging || batteryState == BatteryState.full;
+        if (!isCharging) {
+          print('[BACKGROUND_SYNC] Sync skipped: Charging-only mode enabled but device is not charging (batteryState: $batteryState)');
+          return false; // Return false to indicate task should not retry immediately
+        }
+        print('[BACKGROUND_SYNC] Device is charging');
+      }
+
+      final battery = Battery();
+      final batteryState = await battery.batteryState;
+      final isCharging = batteryState == BatteryState.charging || batteryState == BatteryState.full;
+      print('[BACKGROUND_SYNC] Starting sync for account: ${account.name} (requiresChargingSetting=${account.syncOnlyWhenCharging}, requiresWiFiSetting=${account.syncOnlyOnWiFi}, batteryState=$batteryState, isCharging=$isCharging)');
+
+      final articleDao = ArticleDao();
+      final feedDao = FeedDao();
       final rssHelper = RssHelper(http.Client());
       final rssService = RssService(http.Client());
       final localRssService = LocalRssService(
