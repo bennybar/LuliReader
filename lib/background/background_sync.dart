@@ -1,4 +1,5 @@
 import 'package:workmanager/workmanager.dart';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 
 import '../services/account_service.dart';
@@ -52,9 +53,8 @@ Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false,
       kBackgroundSyncTask,
       kBackgroundSyncTask,
       frequency: Duration(minutes: actualMinutes),
-      // Set initial delay to sync interval for more predictable timing
-      // This ensures the first sync happens after the full interval, not immediately
-      initialDelay: Duration(minutes: actualMinutes),
+      // Let WorkManager run ASAP; it will still respect min interval for subsequent runs
+      // (no initialDelay keeps first execution from being deferred a full period)
       constraints: Constraints(
         networkType: networkType,
         requiresBatteryNotLow: false,
@@ -84,6 +84,8 @@ Future<void> cancelBackgroundSync() async {
 @pragma('vm:entry-point')
 void backgroundSyncDispatcher() {
   Workmanager().executeTask((task, inputData) async {
+    // Ensure Flutter bindings are ready so plugins (prefs/db/http) work on background isolate
+    WidgetsFlutterBinding.ensureInitialized();
     print('[BACKGROUND_SYNC] Task triggered: $task');
     if (task != kBackgroundSyncTask) {
       print('[BACKGROUND_SYNC] Task name mismatch, expected: $kBackgroundSyncTask');
