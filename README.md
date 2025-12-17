@@ -11,6 +11,7 @@ Luli Reader is a Flutter rewrite of the excellent [ReadYou](https://github.com/A
 - Feed and folder management: add/move feeds between folders, OPML import/export, “resync all” to clear and re-sync.
 - Swipe actions tuned for unread/star filters with safe dismissal behavior.
 - Floating glass-style bottom navigation with padding so content stays visible.
+- Supports FreshRSS servers.
 
 ## Tech Stack
 
