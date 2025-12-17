@@ -98,6 +98,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBin
         await registerBackgroundSync(
           account.syncInterval,
           requiresCharging: account.syncOnlyWhenCharging,
+          requiresWiFi: account.syncOnlyOnWiFi,
         );
       } else {
         await cancelBackgroundSync();

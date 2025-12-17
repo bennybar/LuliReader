@@ -18,8 +18,8 @@ const String kBackgroundSyncTask = 'background_sync_task';
 
 /// Registers periodic background sync. Interval is in minutes.
 /// Note: Android minimum interval is 15 minutes.
-Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false}) async {
-  print('[BACKGROUND_SYNC] Registering periodic sync with interval: $minutes minutes (requiresCharging=$requiresCharging)');
+Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false, bool requiresWiFi = false}) async {
+  print('[BACKGROUND_SYNC] Registering periodic sync with interval: $minutes minutes (requiresCharging=$requiresCharging, requiresWiFi=$requiresWiFi)');
   await Workmanager().cancelByUniqueName(kBackgroundSyncTask);
   if (minutes <= 0) {
     print('[BACKGROUND_SYNC] Sync interval is 0 or negative, cancelling');
@@ -30,6 +30,10 @@ Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false}
   final actualMinutes = minutes < 15 ? 15 : minutes;
   print('[BACKGROUND_SYNC] Using interval: $actualMinutes minutes (Android minimum: 15)');
   
+  // Use NetworkType.unmetered (WiFi) if WiFi is required, otherwise allow any connection
+  final networkType = requiresWiFi ? NetworkType.unmetered : NetworkType.connected;
+  print('[BACKGROUND_SYNC] Network type: ${requiresWiFi ? "WiFi only (unmetered)" : "Any connection"}');
+  
   try {
     await Workmanager().registerPeriodicTask(
       kBackgroundSyncTask,
@@ -37,7 +41,7 @@ Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false}
       frequency: Duration(minutes: actualMinutes),
       initialDelay: Duration(minutes: 1), // Start checking after 1 minute
       constraints: Constraints(
-        networkType: NetworkType.connected,
+        networkType: networkType,
         requiresBatteryNotLow: false,
         requiresCharging: requiresCharging,
         requiresDeviceIdle: false,

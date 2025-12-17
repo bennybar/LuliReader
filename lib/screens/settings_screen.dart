@@ -214,6 +214,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           await registerBackgroundSync(
             account.syncInterval,
             requiresCharging: account.syncOnlyWhenCharging,
+            requiresWiFi: value as bool,
           );
           break;
         case 'syncOnlyWhenCharging':
@@ -221,6 +222,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           await registerBackgroundSync(
             account.syncInterval,
             requiresCharging: value as bool,
+            requiresWiFi: account.syncOnlyOnWiFi,
           );
           break;
         case 'isFullContent':
@@ -717,6 +719,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       await registerBackgroundSync(
         selected,
         requiresCharging: account.syncOnlyWhenCharging,
+        requiresWiFi: account.syncOnlyOnWiFi,
       );
     }
   }

@@ -522,9 +522,11 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   List<InlineSpan> _buildTextSpansFromNodes(List<html_dom.Node> nodes, TextStyle? baseStyle) {
     final spans = <InlineSpan>[];
-    for (final node in nodes) {
-      if (node is html_dom.Text && node.text?.trim().isNotEmpty == true) {
-        final nodeText = node.text!.replaceAll(RegExp(r'^[ \t]+', multiLine: true), '');
+    for (int i = 0; i < nodes.length; i++) {
+      final node = nodes[i];
+      if (node is html_dom.Text) {
+        // Preserve all text including whitespace
+        final nodeText = node.text ?? '';
         if (nodeText.isNotEmpty) {
           spans.add(TextSpan(
             text: nodeText,
@@ -532,6 +534,26 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           ));
         }
       } else if (node is html_dom.Element) {
+        // Check if we need to add space before this element
+        bool needsSpaceBefore = false;
+        if (i > 0) {
+          if (nodes[i - 1] is html_dom.Text) {
+            final prevText = (nodes[i - 1] as html_dom.Text).text ?? '';
+            // Add space if previous text doesn't end with whitespace
+            needsSpaceBefore = prevText.isNotEmpty && 
+                !prevText.endsWith(' ') && 
+                !prevText.endsWith('\n') && 
+                !prevText.endsWith('\t');
+          } else if (nodes[i - 1] is html_dom.Element) {
+            // Add space between consecutive elements (like </strong><a>)
+            needsSpaceBefore = true;
+          }
+        }
+        
+        if (needsSpaceBefore) {
+          spans.add(const TextSpan(text: ' '));
+        }
+        
         if (node.localName == 'a') {
           final linkText = node.text ?? '';
           final href = node.attributes['href']?.toString();
@@ -581,6 +603,26 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           // For other inline elements, just process their text content
           final otherSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle);
           spans.addAll(otherSpans);
+        }
+        
+        // Check if we need to add space after this element
+        bool needsSpaceAfter = false;
+        if (i < nodes.length - 1) {
+          if (nodes[i + 1] is html_dom.Text) {
+            final nextText = (nodes[i + 1] as html_dom.Text).text ?? '';
+            // Add space if next text doesn't start with whitespace
+            needsSpaceAfter = nextText.isNotEmpty && 
+                !nextText.startsWith(' ') && 
+                !nextText.startsWith('\n') && 
+                !nextText.startsWith('\t');
+          } else if (nodes[i + 1] is html_dom.Element) {
+            // Add space between consecutive elements (like </a><strong>)
+            needsSpaceAfter = true;
+          }
+        }
+        
+        if (needsSpaceAfter) {
+          spans.add(const TextSpan(text: ' '));
         }
       }
     }
