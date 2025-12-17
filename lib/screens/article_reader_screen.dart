@@ -520,6 +520,24 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     return false;
   }
 
+  Widget _buildListItemWithMixedContent(dynamic element, TextDirection textDir) {
+    final spans = _buildTextSpansFromNodes(
+      element.nodes ?? [],
+      Theme.of(context).textTheme.bodyLarge,
+    );
+    
+    return SizedBox(
+      width: double.infinity,
+      child: RichText(
+        textAlign: TextAlign.start,
+        text: TextSpan(
+          children: spans,
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+      ),
+    );
+  }
+
   List<InlineSpan> _buildTextSpansFromNodes(List<html_dom.Node> nodes, TextStyle? baseStyle) {
     final spans = <InlineSpan>[];
     for (int i = 0; i < nodes.length; i++) {
@@ -830,35 +848,60 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         );
       case 'ul':
       case 'ol':
-        final isRtl = _isRtl();
+        final text = element.text ?? '';
+        final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
+        final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         return Padding(
-          padding: EdgeInsets.only(
-            left: isRtl ? 0 : 16,
-            right: isRtl ? 16 : 0,
+          padding: EdgeInsetsDirectional.only(
+            start: 16,
             bottom: 16,
           ),
-          child: Column(
-            crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-            children: children,
+          child: Directionality(
+            textDirection: textDir,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
           ),
         );
       case 'li':
-        final isRtl = _isRtl();
-        final textDir = _getTextDirection();
+        final text = element.text ?? '';
+        final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
+        final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
+        
+        // Check if list item has mixed content (text + links/bold)
+        final hasMixedContent = element.nodes != null && 
+            element.nodes!.any((n) => n is html_dom.Element && (n.localName == 'a' || n.localName == 'strong' || n.localName == 'b'));
+        
+        // Build the content widget
+        final contentWidget = hasMixedContent
+            ? _buildListItemWithMixedContent(element, textDir)
+            : Directionality(
+                textDirection: textDir,
+                child: SizedBox(
+                  width: double.infinity,
+                  child: Text(
+                    text,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                    textAlign: TextAlign.start,
+                  ),
+                ),
+              );
+        
         return Padding(
           padding: const EdgeInsets.only(bottom: 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Directionality(
             textDirection: textDir,
-            children: [
-              Text(isRtl ? ' •' : '• '),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                  children: children,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              textDirection: textDir,
+              children: [
+                const Text('• '),
+                Expanded(
+                  child: contentWidget,
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       default:
