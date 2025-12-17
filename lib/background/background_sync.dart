@@ -1,7 +1,5 @@
 import 'package:workmanager/workmanager.dart';
 import 'package:http/http.dart' as http;
-import 'package:battery_plus/battery_plus.dart';
-import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
@@ -22,11 +20,17 @@ const String kBackgroundSyncTask = 'background_sync_task';
 
 /// Registers periodic background sync. Interval is in minutes.
 /// Note: Android minimum interval is 15 minutes.
+/// 
+/// This uses WorkManager's built-in constraints which are checked BEFORE the task runs,
+/// making it more efficient than manual checks. The task will only run when:
+/// - Network is available (WiFi if requiresWiFi=true, any connection otherwise)
+/// - Device is charging (if requiresCharging=true)
 Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false, bool requiresWiFi = false}) async {
   print('[BACKGROUND_SYNC] Registering periodic sync with interval: $minutes minutes (requiresCharging=$requiresCharging, requiresWiFi=$requiresWiFi)');
-  await Workmanager().cancelByUniqueName(kBackgroundSyncTask);
+  
   if (minutes <= 0) {
     print('[BACKGROUND_SYNC] Sync interval is 0 or negative, cancelling');
+    await Workmanager().cancelByUniqueName(kBackgroundSyncTask);
     return;
   }
   
@@ -39,20 +43,27 @@ Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false,
   print('[BACKGROUND_SYNC] Network type: ${requiresWiFi ? "WiFi only (unmetered)" : "Any connection"}');
   
   try {
+    // Check if work is already registered to avoid unnecessary cancellations
+    // Note: workmanager package may not support getWorkInfosByUniqueName, so we'll
+    // use a simpler approach: always cancel and re-register for consistency
+    await Workmanager().cancelByUniqueName(kBackgroundSyncTask);
+    
     await Workmanager().registerPeriodicTask(
       kBackgroundSyncTask,
       kBackgroundSyncTask,
       frequency: Duration(minutes: actualMinutes),
-      initialDelay: Duration(minutes: 1), // Start checking after 1 minute
+      // Set initial delay to sync interval for more predictable timing
+      // This ensures the first sync happens after the full interval, not immediately
+      initialDelay: Duration(minutes: actualMinutes),
       constraints: Constraints(
         networkType: networkType,
         requiresBatteryNotLow: false,
-        requiresCharging: requiresCharging,
+        requiresCharging: requiresCharging, // WorkManager checks this BEFORE running
         requiresDeviceIdle: false,
         requiresStorageNotLow: false,
       ),
     );
-    print('[BACKGROUND_SYNC] Periodic task registered successfully');
+    print('[BACKGROUND_SYNC] Periodic task registered successfully with constraints (charging=$requiresCharging, WiFi=$requiresWiFi)');
   } catch (e, stackTrace) {
     // Log error but don't throw - background sync is best effort
     print('[BACKGROUND_SYNC] Error registering periodic task: $e');
@@ -65,13 +76,18 @@ Future<void> cancelBackgroundSync() async {
 }
 
 /// Background entrypoint used by Workmanager.
+/// 
+/// NOTE: By the time this function runs, WorkManager has already verified that:
+/// - Network is available (and WiFi if required)
+/// - Device is charging (if required)
+/// So we don't need to check these constraints again here.
 @pragma('vm:entry-point')
 void backgroundSyncDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     print('[BACKGROUND_SYNC] Task triggered: $task');
     if (task != kBackgroundSyncTask) {
       print('[BACKGROUND_SYNC] Task name mismatch, expected: $kBackgroundSyncTask');
-      return false;
+      return Future.value(false);
     }
 
     try {
@@ -82,7 +98,7 @@ void backgroundSyncDispatcher() {
       print('[BACKGROUND_SYNC] Account ID from prefs: $accountId');
       if (accountId == null) {
         print('[BACKGROUND_SYNC] No account ID found, aborting');
-        return false;
+        return Future.value(false);
       }
 
       final databaseHelper = DatabaseHelper.instance;
@@ -94,39 +110,14 @@ void backgroundSyncDispatcher() {
       final account = await accountService.getById(accountId);
       if (account == null) {
         print('[BACKGROUND_SYNC] Account not found for ID: $accountId');
-        return false;
+        return Future.value(false);
       }
 
-      // Check WiFi requirement BEFORE attempting sync
-      if (account.syncOnlyOnWiFi) {
-        print('[BACKGROUND_SYNC] Checking WiFi connection (WiFi-only mode enabled)...');
-        final connectivity = Connectivity();
-        final connectivityResult = await connectivity.checkConnectivity();
-        final isWifi = connectivityResult.contains(ConnectivityResult.wifi);
-        if (!isWifi) {
-          print('[BACKGROUND_SYNC] Sync skipped: WiFi-only mode enabled but not on WiFi (connection: $connectivityResult)');
-          return false; // Return false to indicate task should not retry immediately
-        }
-        print('[BACKGROUND_SYNC] WiFi connection confirmed');
-      }
-
-      // Check charging requirement BEFORE attempting sync
-      if (account.syncOnlyWhenCharging) {
-        print('[BACKGROUND_SYNC] Checking charging status (charging-only mode enabled)...');
-        final battery = Battery();
-        final batteryState = await battery.batteryState;
-        final isCharging = batteryState == BatteryState.charging || batteryState == BatteryState.full;
-        if (!isCharging) {
-          print('[BACKGROUND_SYNC] Sync skipped: Charging-only mode enabled but device is not charging (batteryState: $batteryState)');
-          return false; // Return false to indicate task should not retry immediately
-        }
-        print('[BACKGROUND_SYNC] Device is charging');
-      }
-
-      final battery = Battery();
-      final batteryState = await battery.batteryState;
-      final isCharging = batteryState == BatteryState.charging || batteryState == BatteryState.full;
-      print('[BACKGROUND_SYNC] Starting sync for account: ${account.name} (requiresChargingSetting=${account.syncOnlyWhenCharging}, requiresWiFiSetting=${account.syncOnlyOnWiFi}, batteryState=$batteryState, isCharging=$isCharging)');
+      // WorkManager constraints have already been checked, so we can proceed directly
+      // If we reach here, it means:
+      // - Network is available (and WiFi if account.syncOnlyOnWiFi is true)
+      // - Device is charging (if account.syncOnlyWhenCharging is true)
+      print('[BACKGROUND_SYNC] Starting sync for account: ${account.name} (constraints already verified by WorkManager)');
 
       final articleDao = ArticleDao();
       final feedDao = FeedDao();
@@ -174,10 +165,10 @@ void backgroundSyncDispatcher() {
         type: 'background',
         success: true,
         articlesSynced: articlesSynced,
-        note: 'batteryState=$batteryState, isCharging=$isCharging, requiresChargingSetting=${account.syncOnlyWhenCharging}',
+        note: 'Background sync completed',
       ));
       
-      return true;
+      return Future.value(true);
     } catch (e, stackTrace) {
       print('[BACKGROUND_SYNC] Error during sync: $e');
       print('[BACKGROUND_SYNC] Stack trace: $stackTrace');
@@ -190,7 +181,7 @@ void backgroundSyncDispatcher() {
           error: e.toString(),
         ));
       } catch (_) {}
-      return false;
+      return Future.value(false);
     }
   });
 }
