@@ -57,7 +57,7 @@ Future<void> registerBackgroundSync(int minutes, {bool requiresCharging = false,
       // (no initialDelay keeps first execution from being deferred a full period)
       constraints: Constraints(
         networkType: networkType,
-        requiresBatteryNotLow: false,
+        requiresBatteryNotLow: true, // Don't sync when battery is low to save battery
         requiresCharging: requiresCharging, // WorkManager checks this BEFORE running
         requiresDeviceIdle: false,
         requiresStorageNotLow: false,

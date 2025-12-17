@@ -15,3 +15,4 @@ storeFile=../path/to/your/keystore.jks
 # 3. Edit key.properties with your actual values
 # 4. Make sure key.properties is in .gitignore
 
+

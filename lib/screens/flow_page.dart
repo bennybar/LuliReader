@@ -99,8 +99,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
 
   void _startAccountRefreshTimer() {
     _accountRefreshTimer?.cancel();
-    // Only refresh when app is in foreground - changed to 3 minutes
-    _accountRefreshTimer = Timer.periodic(const Duration(minutes: 3), (_) {
+    // Only refresh when app is in foreground - increased to 10 minutes to reduce battery usage
+    // The account provider will still update on user actions (sync, account changes, etc.)
+    _accountRefreshTimer = Timer.periodic(const Duration(minutes: 10), (_) {
       if (mounted) {
         ref.invalidate(currentAccountProvider);
       }
@@ -556,32 +557,40 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   children: [
                     _buildSyncInfo(),
                     Expanded(
-                      child: _articles.isEmpty
-                          ? Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                      child: RefreshIndicator(
+                        onRefresh: _syncAll,
+                        child: _articles.isEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
                                 children: [
-                                  Icon(
-                                    Icons.article,
-                                    size: 64,
-                                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Text(
-                                    'No articles',
-                                    style: Theme.of(context).textTheme.titleLarge,
-                                  ),
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Sync feeds to load articles',
-                                    style: Theme.of(context).textTheme.bodyMedium,
+                                  SizedBox(
+                                    height: MediaQuery.of(context).size.height * 0.6,
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            Icons.article,
+                                            size: 64,
+                                            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            'No articles',
+                                            style: Theme.of(context).textTheme.titleLarge,
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Sync feeds to load articles',
+                                            style: Theme.of(context).textTheme.bodyMedium,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ],
-                              ),
-                            )
-                          : RefreshIndicator(
-                              onRefresh: _syncAll,
-                              child: ListView.builder(
+                              )
+                            : ListView.builder(
                                 key: ValueKey(_refreshKey),
                                 padding: EdgeInsets.only(
                                   bottom: _isBatchMode && _selectedArticleIds.isNotEmpty ? 120 : 96,
@@ -592,7 +601,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                   return _buildArticleCard(articleWithFeed);
                                 },
                               ),
-                            ),
+                      ),
                     ),
                   ],
                 ),

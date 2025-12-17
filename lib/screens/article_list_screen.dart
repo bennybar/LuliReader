@@ -410,41 +410,49 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _articles.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.article,
-                        size: 64,
-                        color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No articles yet',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Pull to refresh to sync',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    await _syncFeed();
-                  },
-                  child: ListView.builder(
-                    itemCount: _articles.length,
-                    itemBuilder: (context, index) {
-                      final article = _articles[index];
-                      return _buildArticleCard(article);
-                    },
-                  ),
-                ),
+          : RefreshIndicator(
+              onRefresh: () async {
+                await _syncFeed();
+              },
+              child: _articles.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [
+                        SizedBox(
+                          height: MediaQuery.of(context).size.height * 0.6,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.article,
+                                  size: 64,
+                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No articles yet',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Pull to refresh to sync',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    )
+                  : ListView.builder(
+                      itemCount: _articles.length,
+                      itemBuilder: (context, index) {
+                        final article = _articles[index];
+                        return _buildArticleCard(article);
+                      },
+                    ),
+            ),
     );
   }
 
