@@ -534,7 +534,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                               ),
                             )
                           : RefreshIndicator(
-                              onRefresh: _loadArticles,
+                              onRefresh: () async {
+                                await _syncAll();
+                              },
                               child: ListView.builder(
                                 key: ValueKey(_refreshKey),
                                 padding: EdgeInsets.only(

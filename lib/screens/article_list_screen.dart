@@ -439,7 +439,9 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   ),
                 )
               : RefreshIndicator(
-                  onRefresh: _loadArticles,
+                  onRefresh: () async {
+                    await _syncFeed();
+                  },
                   child: ListView.builder(
                     itemCount: _articles.length,
                     itemBuilder: (context, index) {
