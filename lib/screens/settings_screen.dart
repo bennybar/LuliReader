@@ -10,6 +10,8 @@ import '../services/shared_preferences_service.dart';
 import '../models/account.dart';
 import '../services/sync_log_service.dart';
 import 'opml_import_export_screen.dart';
+import 'startup_screen.dart';
+import '../database/database_helper.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -286,6 +288,35 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   title: const Text('Account'),
                   subtitle: Text(account.name),
                   trailing: const Icon(Icons.chevron_right),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.15),
+                child: ListTile(
+                  leading: Icon(
+                    Icons.delete_forever,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
+                    'Delete Account',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  subtitle: const Text('Removes this account and all its data on this device'),
+                  onTap: () => _confirmDeleteAccount(account),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.1),
+                child: ListTile(
+                  leading: const Icon(Icons.delete_sweep),
+                  title: const Text('Clear Downloaded Articles'),
+                  subtitle: const Text('Delete all stored articles and reset sync markers'),
+                  onTap: _confirmClearArticles,
                 ),
               ),
               const SizedBox(height: 16),
@@ -575,7 +606,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.32'),
+                subtitle: const Text('Luli Reader v1.1.33'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
@@ -622,6 +653,89 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     if (selected != null) {
       await _updateAccountSetting('maxPastDays', selected);
+    }
+  }
+
+  Future<void> _confirmDeleteAccount(Account account) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete account?'),
+        content: Text(
+          'This will remove "${account.name}" and all its feeds and articles from this device.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final accountService = ref.read(accountServiceProvider);
+      await accountService.delete(account.id!);
+      await cancelBackgroundSync();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const StartupScreen()),
+        (route) => false,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error deleting account: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmClearArticles() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear all downloaded articles?'),
+        content: const Text(
+          'This deletes every stored article and resets sync markers for all accounts. '
+          'Feeds and accounts remain. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await DatabaseHelper.instance.clearArticlesAndSyncState();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('All articles cleared; next sync will re-download.')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error clearing articles: $e')),
+        );
+      }
     }
   }
 

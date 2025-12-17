@@ -122,8 +122,11 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     if (_selectedArticleIds.isEmpty) return;
     final count = _selectedArticleIds.length;
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.batchMarkAsRead(_selectedArticleIds.toList());
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchMarkAsRead(_selectedArticleIds.toList(), account.id!);
+      }
       setState(() {
         _selectedArticleIds.clear();
         _isBatchMode = false;
@@ -147,8 +150,11 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     if (_selectedArticleIds.isEmpty) return;
     final count = _selectedArticleIds.length;
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.batchMarkAsUnread(_selectedArticleIds.toList());
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchMarkAsUnread(_selectedArticleIds.toList(), account.id!);
+      }
       setState(() {
         _selectedArticleIds.clear();
         _isBatchMode = false;
@@ -172,8 +178,11 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     if (_selectedArticleIds.isEmpty) return;
     final count = _selectedArticleIds.length;
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.batchStar(_selectedArticleIds.toList());
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchStar(_selectedArticleIds.toList(), account.id!);
+      }
       setState(() {
         _selectedArticleIds.clear();
         _isBatchMode = false;
@@ -197,8 +206,11 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     if (_selectedArticleIds.isEmpty) return;
     final count = _selectedArticleIds.length;
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.batchUnstar(_selectedArticleIds.toList());
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchUnstar(_selectedArticleIds.toList(), account.id!);
+      }
       setState(() {
         _selectedArticleIds.clear();
         _isBatchMode = false;
@@ -264,10 +276,12 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
 
   Future<void> _markAllAsRead() async {
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      for (final article in _articles) {
-        if (article.isUnread) {
-          await articleDao.markAsRead(article.id);
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        final ids = _articles.where((a) => a.isUnread).map((a) => a.id).toList();
+        if (ids.isNotEmpty) {
+          await actions.batchMarkAsRead(ids, account.id!);
         }
       }
       _loadArticles();

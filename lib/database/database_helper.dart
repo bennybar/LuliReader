@@ -26,7 +26,11 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
+      onConfigure: (db) async {
+        // Enable foreign key cascade (e.g., deleting a feed removes its articles).
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
@@ -41,6 +45,10 @@ class DatabaseHelper {
         type INTEGER NOT NULL,
         updateAt TEXT,
         lastArticleId TEXT,
+        apiEndpoint TEXT,
+        username TEXT,
+        password TEXT,
+        authToken TEXT,
         syncInterval INTEGER DEFAULT 30,
         syncOnStart INTEGER DEFAULT 0,
         syncOnlyOnWiFi INTEGER DEFAULT 0,
@@ -134,6 +142,28 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE account ADD COLUMN maxPastDays INTEGER DEFAULT 10');
       } catch (e) {
         print('Error adding maxPastDays to account: $e');
+      }
+    }
+    if (oldVersion < 5) {
+      try {
+        await db.execute('ALTER TABLE account ADD COLUMN apiEndpoint TEXT');
+      } catch (e) {
+        print('Error adding apiEndpoint to account: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE account ADD COLUMN username TEXT');
+      } catch (e) {
+        print('Error adding username to account: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE account ADD COLUMN password TEXT');
+      } catch (e) {
+        print('Error adding password to account: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE account ADD COLUMN authToken TEXT');
+      } catch (e) {
+        print('Error adding authToken to account: $e');
       }
     }
     if (oldVersion < 2) {

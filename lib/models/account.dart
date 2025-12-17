@@ -4,6 +4,10 @@ class Account {
   final AccountType type;
   final DateTime? updateAt;
   final String? lastArticleId;
+  final String? apiEndpoint; // Remote API base (e.g. FreshRSS greader endpoint)
+  final String? username; // Remote account username
+  final String? password; // Stored to allow re-auth when token expires
+  final String? authToken; // Cached remote auth token
   final int syncInterval; // minutes
   final bool syncOnStart;
   final bool syncOnlyOnWiFi;
@@ -23,6 +27,10 @@ class Account {
     required this.type,
     this.updateAt,
     this.lastArticleId,
+    this.apiEndpoint,
+    this.username,
+    this.password,
+    this.authToken,
     this.syncInterval = 30,
     this.syncOnStart = false,
     this.syncOnlyOnWiFi = false,
@@ -44,6 +52,10 @@ class Account {
       'type': type.id,
       'updateAt': updateAt?.toIso8601String(),
       'lastArticleId': lastArticleId,
+      'apiEndpoint': apiEndpoint,
+      'username': username,
+      'password': password,
+      'authToken': authToken,
       'syncInterval': syncInterval,
       'syncOnStart': syncOnStart ? 1 : 0,
       'syncOnlyOnWiFi': syncOnlyOnWiFi ? 1 : 0,
@@ -68,6 +80,10 @@ class Account {
           ? DateTime.parse(map['updateAt'] as String)
           : null,
       lastArticleId: map['lastArticleId'] as String?,
+      apiEndpoint: map['apiEndpoint'] as String?,
+      username: map['username'] as String?,
+      password: map['password'] as String?,
+      authToken: map['authToken'] as String?,
       syncInterval: map['syncInterval'] as int? ?? 30,
       syncOnStart: (map['syncOnStart'] as int? ?? 0) == 1,
       syncOnlyOnWiFi: (map['syncOnlyOnWiFi'] as int? ?? 0) == 1,
@@ -89,6 +105,10 @@ class Account {
     AccountType? type,
     DateTime? updateAt,
     String? lastArticleId,
+    String? apiEndpoint,
+    String? username,
+    String? password,
+    String? authToken,
     int? syncInterval,
     bool? syncOnStart,
     bool? syncOnlyOnWiFi,
@@ -108,6 +128,10 @@ class Account {
       type: type ?? this.type,
       updateAt: updateAt ?? this.updateAt,
       lastArticleId: lastArticleId ?? this.lastArticleId,
+      apiEndpoint: apiEndpoint ?? this.apiEndpoint,
+      username: username ?? this.username,
+      password: password ?? this.password,
+      authToken: authToken ?? this.authToken,
       syncInterval: syncInterval ?? this.syncInterval,
       syncOnStart: syncOnStart ?? this.syncOnStart,
       syncOnlyOnWiFi: syncOnlyOnWiFi ?? this.syncOnlyOnWiFi,
@@ -125,7 +149,9 @@ class Account {
 }
 
 enum AccountType {
-  local(0);
+  local(0),
+  freshrss(1),
+  miniflux(2);
 
   final int id;
   const AccountType(this.id);

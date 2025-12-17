@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
+import 'add_freshrss_account_screen.dart';
 import 'main_navigation.dart';
 
 class AddAccountScreen extends ConsumerStatefulWidget {
@@ -91,6 +92,22 @@ class _AddAccountScreenState extends ConsumerState<AddAccountScreen> {
               FilledButton(
                 onPressed: _createAccount,
                 child: const Text('Create Account'),
+              ),
+              TextButton.icon(
+                onPressed: () async {
+                  final created = await Navigator.of(context).push<bool>(
+                    MaterialPageRoute(
+                      builder: (_) => const AddFreshRssAccountScreen(),
+                    ),
+                  );
+                  if (created == true && mounted) {
+                    Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(builder: (_) => const MainNavigation()),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.cloud),
+                label: const Text('Add Cloud Account (FreshRSS)'),
               ),
             ],
           ),

@@ -11,9 +11,12 @@ import '../database/account_dao.dart';
 import '../database/group_dao.dart';
 import '../database/article_dao.dart';
 import '../database/feed_dao.dart';
+import '../services/freshrss_service.dart';
+import '../services/freshrss_sync_service.dart';
 import '../services/rss_helper.dart';
 import '../services/rss_service.dart';
 import '../services/sync_log_service.dart';
+import '../services/sync_coordinator.dart';
 
 const String kBackgroundSyncTask = 'background_sync_task';
 
@@ -138,12 +141,26 @@ void backgroundSyncDispatcher() {
         rssService,
         http.Client(),
       );
+      final freshRssService = FreshRssService(http.Client());
+      final freshRssSyncService = FreshRssSyncService(
+        freshRssService,
+        articleDao,
+        feedDao,
+        groupDao,
+        accountDao,
+        rssService,
+      );
+      final syncCoordinator = SyncCoordinator(
+        accountDao,
+        localRssService,
+        freshRssSyncService,
+      );
 
       final articleDaoBefore = ArticleDao();
       final countBefore = await articleDaoBefore.countByAccountId(account.id!);
       print('[BACKGROUND_SYNC] Articles before sync: $countBefore');
       
-      await localRssService.sync(account.id!);
+      await syncCoordinator.syncAccount(account.id!);
       await accountService.updateAccount(account.copyWith(updateAt: DateTime.now()));
       
       final articleDaoAfter = ArticleDao();

@@ -6,6 +6,8 @@ import '../database/group_dao.dart';
 import '../models/group.dart';
 import '../models/feed.dart';
 import '../utils/rtl_helper.dart';
+import '../services/sync_coordinator.dart';
+import 'add_freshrss_account_screen.dart';
 import 'article_list_screen.dart';
 import 'add_feed_screen.dart';
 import 'feed_options_screen.dart';
@@ -55,13 +57,14 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
               final account = await ref.read(accountServiceProvider).getCurrentAccount();
               if (account != null) {
                 try {
-                  final rssService = ref.read(localRssServiceProvider);
-                  await rssService.sync(account.id!);
+                  final syncCoordinator = ref.read(syncCoordinatorProvider);
+                  await syncCoordinator.syncAccount(account.id!);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Sync completed')),
                     );
                     _refresh();
+                    ref.invalidate(currentAccountProvider); // Notify listeners to reload articles
                   }
                 } catch (e) {
                   if (mounted) {
@@ -77,6 +80,11 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
             icon: const Icon(Icons.create_new_folder),
             tooltip: 'New Folder',
             onPressed: () => _createNewFolder(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.cloud),
+            tooltip: 'Add Cloud Account',
+            onPressed: _showCloudAccountPicker,
           ),
           IconButton(
             icon: const Icon(Icons.add),
@@ -112,6 +120,51 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _showCloudAccountPicker() async {
+    final selection = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.cloud),
+              title: const Text('FreshRSS'),
+              subtitle: const Text('Google Reader compatible'),
+              onTap: () => Navigator.pop(context, 'freshrss'),
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.cloud_queue,
+                color: Theme.of(context).disabledColor,
+              ),
+              title: Text(
+                'Miniflux (coming soon)',
+                style: TextStyle(color: Theme.of(context).disabledColor),
+              ),
+              subtitle: Text(
+                'Not available yet',
+                style: TextStyle(color: Theme.of(context).disabledColor),
+              ),
+              enabled: false,
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selection == 'freshrss') {
+      final result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => const AddFreshRssAccountScreen(),
+        ),
+      );
+      if (result == true) {
+        _refresh();
+      }
+    }
   }
 
   Widget _buildFeedsList(int accountId) {

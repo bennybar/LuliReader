@@ -85,7 +85,7 @@ class FreshRssService {
     String? streamId,
     int? n = 100,
     String? continuation,
-    String? xt = 'user/-/state/com.google/read', // Exclude read articles
+    String? xt, // If null, fetch all items (both read and unread)
   }) async {
     final queryParams = <String, String>{
       'output': 'json',
@@ -120,6 +120,65 @@ class FreshRssService {
     return json.decode(response.body) as Map<String, dynamic>;
   }
 
+  /// Get item IDs from a stream (lighter than full contents)
+  /// Returns a map with 'ids' (Set of timestampUsec strings) and 'continuation' (String?)
+  Future<Map<String, dynamic>> getStreamItemIds(
+    String apiEndpoint,
+    String authToken, {
+    String? streamId,
+    String? xt,
+    int? n = 1000,
+    String? continuation,
+  }) async {
+    final queryParams = <String, String>{
+      'output': 'json',
+      'n': n.toString(),
+    };
+    
+    if (streamId != null) {
+      queryParams['s'] = streamId;
+    }
+    if (xt != null) {
+      queryParams['xt'] = xt;
+    }
+    if (continuation != null) {
+      queryParams['c'] = continuation;
+    }
+
+    final uri = Uri.parse('$apiEndpoint/reader/api/0/stream/items/ids').replace(
+      queryParameters: queryParams,
+    );
+
+    final response = await _client.get(
+      uri,
+      headers: {
+        'Authorization': 'GoogleLogin auth=$authToken',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Failed to get stream item IDs: ${response.statusCode}');
+    }
+
+    final data = json.decode(response.body) as Map<String, dynamic>;
+    final itemRefs = data['itemRefs'] as List<dynamic>? ?? [];
+    final ids = <String>{};
+    
+    for (final ref in itemRefs) {
+      final refMap = ref as Map<String, dynamic>;
+      final timestampUsec = refMap['id'] as String?;
+      if (timestampUsec != null) {
+        // The items/ids endpoint returns timestampUsec values
+        ids.add(timestampUsec);
+      }
+    }
+    
+    return {
+      'ids': ids,
+      'continuation': data['continuation'] as String?,
+    };
+  }
+
   /// Mark articles as read
   Future<void> markAsRead(String apiEndpoint, String authToken, List<String> articleIds) async {
     if (articleIds.isEmpty) return;
@@ -134,7 +193,7 @@ class FreshRssService {
     }
     bodyParts.add('a=user/-/state/com.google/read');
     
-    await _client.post(
+    final response = await _client.post(
       uri,
       headers: {
         'Authorization': 'GoogleLogin auth=$authToken',
@@ -142,6 +201,7 @@ class FreshRssService {
       },
       body: bodyParts.join('&'),
     );
+    _ensureSuccess(response, 'mark as read');
   }
 
   /// Mark articles as unread
@@ -157,7 +217,7 @@ class FreshRssService {
     }
     bodyParts.add('r=user/-/state/com.google/read'); // Remove read tag
     
-    await _client.post(
+    final response = await _client.post(
       uri,
       headers: {
         'Authorization': 'GoogleLogin auth=$authToken',
@@ -165,6 +225,7 @@ class FreshRssService {
       },
       body: bodyParts.join('&'),
     );
+    _ensureSuccess(response, 'mark as unread');
   }
 
   /// Star/unstar articles
@@ -181,7 +242,7 @@ class FreshRssService {
     final action = star ? 'a=user/-/state/com.google/starred' : 'r=user/-/state/com.google/starred';
     bodyParts.add(action);
     
-    await _client.post(
+    final response = await _client.post(
       uri,
       headers: {
         'Authorization': 'GoogleLogin auth=$authToken',
@@ -189,6 +250,7 @@ class FreshRssService {
       },
       body: bodyParts.join('&'),
     );
+    _ensureSuccess(response, star ? 'star' : 'unstar');
   }
 
   /// Subscribe to a feed via FreshRSS API
@@ -304,15 +366,19 @@ class FreshRssService {
   }
 
   /// Convert FreshRSS articles to Article models
-  List<Article> parseArticles(Map<String, dynamic> streamContents, int accountId) {
+  /// Returns a map with articles and a map of article ID to timestampUsec for matching
+  Map<String, dynamic> parseArticlesWithMetadata(Map<String, dynamic> streamContents, int accountId) {
     final articles = <Article>[];
+    final timestampMap = <String, String>{}; // article ID -> timestampUsec
     final items = streamContents['items'] as List<dynamic>?;
     
-    if (items == null) return articles;
+    if (items == null) return {'articles': articles, 'timestampMap': timestampMap};
 
     for (final item in items) {
       final itemMap = item as Map<String, dynamic>;
-      final id = itemMap['id'] as String?;
+      final rawId = itemMap['id'] as String?;
+      final id = rawId != null ? _normalizeItemId(rawId) : null;
+      final timestampUsec = itemMap['timestampUsec'] as String?;
       final title = itemMap['title'] as String? ?? '';
       final published = itemMap['published'] as int?;
       final updated = itemMap['updated'] as int?;
@@ -324,6 +390,11 @@ class FreshRssService {
       final categories = itemMap['categories'] as List<dynamic>? ?? [];
 
       if (id == null) continue;
+      
+      // Store timestampUsec for matching with items/ids endpoint
+      if (timestampUsec != null) {
+        timestampMap[id] = timestampUsec;
+      }
 
       // Extract content
       final contentText = content?['content'] as String? ?? summary?['content'] as String? ?? '';
@@ -349,10 +420,22 @@ class FreshRssService {
         publishedDate = DateTime.now();
       }
 
-      // Check if read
-      final isRead = categories.any((cat) => cat.toString().contains('com.google/read'));
-      // Check if starred
-      final isStarred = categories.any((cat) => cat.toString().contains('com.google/starred'));
+      // Check states from server categories
+      // Read status: article is READ if "user/-/state/com.google/read" is in categories
+      final isRead = categories.any((cat) {
+        final catStr = cat.toString();
+        return catStr == 'user/-/state/com.google/read' || catStr.contains('/state/com.google/read');
+      });
+      // Unread status: article is UNREAD if "user/-/state/com.google/unread" is in categories
+      final isUnreadTag = categories.any((cat) {
+        final catStr = cat.toString();
+        return catStr == 'user/-/state/com.google/unread' || catStr.contains('/state/com.google/unread');
+      });
+      // Starred status: article is STARRED if "user/-/state/com.google/starred" is in categories
+      final isStarred = categories.any((cat) {
+        final catStr = cat.toString();
+        return catStr == 'user/-/state/com.google/starred' || catStr.contains('/state/com.google/starred');
+      });
 
       // Extract image from content (simple regex)
       String? imageUrl;
@@ -392,6 +475,8 @@ class FreshRssService {
         link: link.isNotEmpty ? link : id,
         feedId: feedId.isNotEmpty ? feedId : 'unknown',
         accountId: accountId,
+        // Article is unread if it doesn't have the read tag
+        // FreshRSS doesn't use explicit unread tags, just absence of read tag means unread
         isUnread: !isRead,
         isStarred: isStarred,
       );
@@ -399,7 +484,13 @@ class FreshRssService {
       articles.add(article);
     }
 
-    return articles;
+    return {'articles': articles, 'timestampMap': timestampMap};
+  }
+
+  /// Convert FreshRSS articles to Article models (backward compatibility)
+  List<Article> parseArticles(Map<String, dynamic> streamContents, int accountId) {
+    final result = parseArticlesWithMetadata(streamContents, accountId);
+    return result['articles'] as List<Article>;
   }
 
   String _stripHtml(String html) {
@@ -411,6 +502,21 @@ class FreshRssService {
         .replaceAll('&gt;', '>')
         .replaceAll('&quot;', '"')
         .trim();
+  }
+
+  void _ensureSuccess(http.Response response, String action) {
+    if (response.statusCode != 200) {
+      throw Exception('Failed to $action: ${response.statusCode} - ${response.body}');
+    }
+  }
+
+  /// Normalize item IDs to the short form used by edit-tag endpoints.
+  String _normalizeItemId(String id) {
+    final idx = id.lastIndexOf('item/');
+    if (idx != -1) {
+      return id.substring(idx + 5);
+    }
+    return id;
   }
 }
 

@@ -72,12 +72,18 @@ class FeedDao {
     );
   }
 
-  Future<bool> isFeedExist(String url) async {
+  Future<bool> isFeedExist(String url, {int? accountId}) async {
     final db = await _dbHelper.database;
+    final whereParts = <String>['url = ?'];
+    final args = <dynamic>[url];
+    if (accountId != null) {
+      whereParts.add('accountId = ?');
+      args.add(accountId);
+    }
     final maps = await db.query(
       'feed',
-      where: 'url = ?',
-      whereArgs: [url],
+      where: whereParts.join(' AND '),
+      whereArgs: args,
       limit: 1,
     );
     return maps.isNotEmpty;

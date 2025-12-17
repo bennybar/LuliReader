@@ -128,8 +128,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     if (widget.article.isUnread && !_isMarkedAsRead) {
       _isMarkedAsRead = true;
       try {
-        final articleDao = ref.read(articleDaoProvider);
-        await articleDao.markAsRead(widget.article.id);
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.markAsRead(widget.article);
         setState(() {
           _isUnread = false;
         });
@@ -141,11 +141,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   Future<void> _toggleRead() async {
     try {
-      final articleDao = ref.read(articleDaoProvider);
       if (_isUnread) {
-        await articleDao.markAsRead(widget.article.id);
+        await ref.read(articleActionServiceProvider).markAsRead(widget.article);
       } else {
-        await articleDao.markAsUnread(widget.article.id);
+        await ref.read(articleActionServiceProvider).markAsUnread(widget.article);
       }
       setState(() {
         _isUnread = !_isUnread;
@@ -161,8 +160,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   Future<void> _toggleStarred() async {
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.toggleStarred(widget.article.id);
+      await ref.read(articleActionServiceProvider).toggleStar(widget.article);
       setState(() {
         _isStarred = !_isStarred;
       });

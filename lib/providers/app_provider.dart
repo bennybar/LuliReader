@@ -5,10 +5,15 @@ import '../database/article_dao.dart';
 import '../database/feed_dao.dart';
 import '../database/group_dao.dart';
 import '../services/account_service.dart';
+import '../services/article_action_service.dart';
+import '../services/freshrss_account_service.dart';
+import '../services/freshrss_service.dart';
+import '../services/freshrss_sync_service.dart';
 import '../services/local_rss_service.dart';
 import '../services/rss_helper.dart';
 import '../services/rss_service.dart';
 import '../services/shared_preferences_service.dart';
+import '../services/sync_coordinator.dart';
 import '../services/opml_service.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
@@ -33,11 +38,24 @@ final rssServiceProvider = Provider((ref) {
   return RssService(ref.watch(httpClientProvider));
 });
 
+final freshRssServiceProvider = Provider((ref) {
+  return FreshRssService(ref.watch(httpClientProvider));
+});
+
 final accountServiceProvider = Provider((ref) {
   return AccountService(
     ref.watch(accountDaoProvider),
     ref.watch(groupDaoProvider),
     ref.watch(sharedPreferencesProvider),
+  );
+});
+
+final freshRssAccountServiceProvider = Provider((ref) {
+  return FreshRssAccountService(
+    ref.watch(accountDaoProvider),
+    ref.watch(groupDaoProvider),
+    ref.watch(sharedPreferencesProvider),
+    ref.watch(freshRssServiceProvider),
   );
 });
 
@@ -50,6 +68,33 @@ final localRssServiceProvider = Provider((ref) {
     ref.watch(rssHelperProvider),
     ref.watch(rssServiceProvider),
     ref.watch(httpClientProvider),
+  );
+});
+
+final freshRssSyncServiceProvider = Provider((ref) {
+  return FreshRssSyncService(
+    ref.watch(freshRssServiceProvider),
+    ref.watch(articleDaoProvider),
+    ref.watch(feedDaoProvider),
+    ref.watch(groupDaoProvider),
+    ref.watch(accountDaoProvider),
+    ref.watch(rssServiceProvider),
+  );
+});
+
+final syncCoordinatorProvider = Provider((ref) {
+  return SyncCoordinator(
+    ref.watch(accountDaoProvider),
+    ref.watch(localRssServiceProvider),
+    ref.watch(freshRssSyncServiceProvider),
+  );
+});
+
+final articleActionServiceProvider = Provider((ref) {
+  return ArticleActionService(
+    ref.watch(articleDaoProvider),
+    ref.watch(accountDaoProvider),
+    ref.watch(freshRssServiceProvider),
   );
 });
 

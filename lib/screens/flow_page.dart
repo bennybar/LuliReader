@@ -8,8 +8,8 @@ import '../models/feed.dart';
 import '../models/article_sort.dart';
 import '../database/article_dao.dart';
 import '../providers/app_provider.dart';
-import '../services/local_rss_service.dart';
 import '../services/account_service.dart';
+import '../services/sync_coordinator.dart';
 import '../utils/rtl_helper.dart';
 import '../utils/reading_time.dart';
 import '../services/shared_preferences_service.dart';
@@ -180,8 +180,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     try {
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
       if (account != null) {
-        final rssService = ref.read(localRssServiceProvider);
-        await rssService.sync(account.id!);
+        final syncCoordinator = ref.read(syncCoordinatorProvider);
+        await syncCoordinator.syncAccount(account.id!);
         await ref.read(accountServiceProvider).updateAccount(
               account.copyWith(updateAt: DateTime.now()),
             );
@@ -204,11 +204,14 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
 
   Future<void> _markAllAsRead() async {
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      for (final articleWithFeed in _articles) {
-        if (articleWithFeed.article.isUnread) {
-          await articleDao.markAsRead(articleWithFeed.article.id);
-        }
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      final ids = _articles
+          .where((a) => a.article.isUnread)
+          .map((a) => a.article.id)
+          .toList();
+      if (account != null && ids.isNotEmpty) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchMarkAsRead(ids, account.id!);
       }
       if (_filter == 'unread') {
         setState(() {
@@ -828,17 +831,17 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     // Update database in background
     Future.microtask(() async {
       try {
-        final articleDao = ref.read(articleDaoProvider);
+        final actions = ref.read(articleActionServiceProvider);
         switch (action) {
           case 1: // Toggle Read
             if (article.isUnread) {
-              await articleDao.markAsRead(article.id);
+              await actions.markAsRead(article);
             } else {
-              await articleDao.markAsUnread(article.id);
+              await actions.markAsUnread(article);
             }
             break;
           case 2: // Toggle Starred
-            await articleDao.toggleStarred(article.id);
+            await actions.toggleStar(article);
             break;
         }
       } catch (e) {
@@ -1012,8 +1015,11 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     if (_selectedArticleIds.isEmpty) return;
     final count = _selectedArticleIds.length;
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.batchMarkAsRead(_selectedArticleIds.toList());
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchMarkAsRead(_selectedArticleIds.toList(), account.id!);
+      }
       setState(() {
         _selectedArticleIds.clear();
         _isBatchMode = false;
@@ -1037,8 +1043,11 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     if (_selectedArticleIds.isEmpty) return;
     final count = _selectedArticleIds.length;
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.batchMarkAsUnread(_selectedArticleIds.toList());
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchMarkAsUnread(_selectedArticleIds.toList(), account.id!);
+      }
       setState(() {
         _selectedArticleIds.clear();
         _isBatchMode = false;
@@ -1062,8 +1071,11 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     if (_selectedArticleIds.isEmpty) return;
     final count = _selectedArticleIds.length;
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.batchStar(_selectedArticleIds.toList());
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchStar(_selectedArticleIds.toList(), account.id!);
+      }
       setState(() {
         _selectedArticleIds.clear();
         _isBatchMode = false;
@@ -1087,8 +1099,11 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     if (_selectedArticleIds.isEmpty) return;
     final count = _selectedArticleIds.length;
     try {
-      final articleDao = ref.read(articleDaoProvider);
-      await articleDao.batchUnstar(_selectedArticleIds.toList());
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account != null) {
+        final actions = ref.read(articleActionServiceProvider);
+        await actions.batchUnstar(_selectedArticleIds.toList(), account.id!);
+      }
       setState(() {
         _selectedArticleIds.clear();
         _isBatchMode = false;
@@ -1164,21 +1179,26 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
 
   Future<void> _markBelowAsRead(Article article) async {
     try {
-      final articleDao = ref.read(articleDaoProvider);
+      final actions = ref.read(articleActionServiceProvider);
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
       final currentIndex = _articles.indexWhere((a) => a.article.id == article.id);
       
       if (currentIndex != -1) {
         // Mark all articles below this one as read
         int markedCount = 0;
         final indicesToRemove = <int>[];
+        final idsToMark = <String>[];
         for (int i = currentIndex + 1; i < _articles.length; i++) {
           if (_articles[i].article.isUnread) {
-            await articleDao.markAsRead(_articles[i].article.id);
+            idsToMark.add(_articles[i].article.id);
             markedCount++;
             if (_filter == 'unread') {
               indicesToRemove.add(i);
             }
           }
+        }
+        if (account != null && idsToMark.isNotEmpty) {
+          await actions.batchMarkAsRead(idsToMark, account.id!);
         }
         
         // Update UI

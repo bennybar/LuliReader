@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
 import '../services/account_service.dart';
-import '../services/local_rss_service.dart';
+import '../services/sync_coordinator.dart';
 import '../background/background_sync.dart';
 import '../services/sync_log_service.dart';
 import '../database/article_dao.dart';
@@ -34,8 +34,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBin
         final articleDao = ref.read(articleDaoProvider);
         final countBefore = await articleDao.countByAccountId(account.id!);
         
-        final rssService = ref.read(localRssServiceProvider);
-        await rssService.sync(account.id!);
+        final syncCoordinator = ref.read(syncCoordinatorProvider);
+        await syncCoordinator.syncAccount(account.id!);
         
         final countAfter = await articleDao.countByAccountId(account.id!);
         final articlesSynced = countAfter - countBefore;

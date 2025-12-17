@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
 import '../database/feed_dao.dart';
 import '../database/group_dao.dart';
+import '../models/account.dart';
 import '../models/feed.dart';
 import '../models/group.dart';
 import '../services/rss_helper.dart';
+import '../services/freshrss_service.dart';
+import '../services/sync_coordinator.dart';
 import 'package:uuid/uuid.dart';
 
 final _uuid = Uuid();
@@ -37,9 +40,11 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
       final rssHelper = ref.read(rssHelperProvider);
       final feedDao = ref.read(feedDaoProvider);
       final groupDao = ref.read(groupDaoProvider);
+      final freshRssService = ref.read(freshRssServiceProvider);
+      final syncCoordinator = ref.read(syncCoordinatorProvider);
 
       // Check if feed already exists
-      if (await feedDao.isFeedExist(_urlController.text.trim())) {
+      if (await feedDao.isFeedExist(_urlController.text.trim(), accountId: account.id)) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Feed already exists')),
@@ -73,22 +78,38 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
         targetGroupId = defaultGroup.id;
       }
 
-      // Create feed
-      final feedId = '${account.id}\$${const Uuid().v4()}';
-      final feed = Feed(
-        id: feedId,
-        name: syndFeed.title ?? 'Untitled Feed',
-        url: _urlController.text.trim(),
-        groupId: targetGroupId,
-        accountId: account.id!,
-      );
+      if (account.type == AccountType.freshrss) {
+        final endpoint = FreshRssService.normalizeApiEndpoint(
+          account.apiEndpoint ?? _urlController.text.trim(),
+        );
+        final token = await _ensureFreshRssAuthToken(account, endpoint);
+        final groupName = (await groupDao.getById(targetGroupId))?.name;
+        await freshRssService.subscribeToFeed(
+          endpoint,
+          token,
+          _urlController.text.trim(),
+          title: syndFeed.title,
+          categoryLabel: groupName,
+        );
+        await syncCoordinator.syncAccount(account.id!);
+      } else {
+        // Create local feed
+        final feedId = '${account.id}\$${const Uuid().v4()}';
+        final feed = Feed(
+          id: feedId,
+          name: syndFeed.title ?? 'Untitled Feed',
+          url: _urlController.text.trim(),
+          groupId: targetGroupId,
+          accountId: account.id!,
+        );
 
-      await feedDao.insert(feed);
+        await feedDao.insert(feed);
 
-      // Try to get icon
-      final iconLink = await rssHelper.queryRssIconLink(feed.url);
-      if (iconLink != null) {
-        await feedDao.update(feed.copyWith(icon: iconLink));
+        // Try to get icon
+        final iconLink = await rssHelper.queryRssIconLink(feed.url);
+        if (iconLink != null) {
+          await feedDao.update(feed.copyWith(icon: iconLink));
+        }
       }
 
       if (!mounted) return;
@@ -106,6 +127,29 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<String> _ensureFreshRssAuthToken(Account account, String endpoint) async {
+    if (account.authToken != null && account.authToken!.isNotEmpty) {
+      return account.authToken!;
+    }
+    if (account.username == null ||
+        account.username!.isEmpty ||
+        account.password == null ||
+        account.password!.isEmpty) {
+      throw Exception('FreshRSS credentials missing');
+    }
+    final token = await ref.read(freshRssServiceProvider).authenticate(
+          endpoint,
+          account.username!,
+          account.password!,
+        );
+    final updatedAccount = account.copyWith(
+      authToken: token,
+      apiEndpoint: endpoint,
+    );
+    await ref.read(accountServiceProvider).updateAccount(updatedAccount);
+    return token;
   }
 
   Future<List<Group>> _loadGroupsForDropdown() async {
