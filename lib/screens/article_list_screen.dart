@@ -93,11 +93,6 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
         final rssService = ref.read(localRssServiceProvider);
         await rssService.sync(account.id!, feedId: widget.feed.id);
         _loadArticles();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Feed synced successfully')),
-          );
-        }
       }
     } catch (e) {
       if (mounted) {

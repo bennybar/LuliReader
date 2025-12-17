@@ -55,15 +55,8 @@ class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBin
           articlesSynced: articlesSynced,
         ));
         
-        if (mounted && showMessage) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sync completed')),
-          );
+        if (mounted) {
           // Refresh both pages
-          _feedsPageKey.currentState?.refresh();
-          _flowPageKey.currentState?.refresh();
-        } else if (mounted) {
-          // Silent refresh for periodic sync
           _feedsPageKey.currentState?.refresh();
           _flowPageKey.currentState?.refresh();
         }

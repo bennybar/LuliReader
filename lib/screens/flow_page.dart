@@ -19,7 +19,7 @@ import 'search_screen.dart';
 import 'package:swipe_to_action/swipe_to_action.dart';
 
 class FlowPage extends ConsumerStatefulWidget {
-  final VoidCallback? onSync;
+  final Future<void> Function()? onSync;
   
   const FlowPage({super.key, this.onSync});
 
@@ -30,6 +30,7 @@ class FlowPage extends ConsumerStatefulWidget {
 class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver {
   List<ArticleWithFeed> _articles = [];
   bool _isLoading = true;
+  bool _isSyncing = false;
   String _filter = 'all'; // all, unread, starred
   int _refreshKey = 0;
   Timer? _accountRefreshTimer;
@@ -177,6 +178,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   }
 
   Future<void> _syncAll() async {
+    if (_isSyncing) return;
+    setState(() => _isSyncing = true);
     try {
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
       if (account != null) {
@@ -187,17 +190,16 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
             );
         ref.invalidate(currentAccountProvider);
         _loadArticles();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sync completed')),
-          );
-        }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error syncing: $e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSyncing = false);
       }
     }
   }
@@ -426,9 +428,31 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               },
             ),
             IconButton(
-              icon: const Icon(Icons.sync),
+              icon: _isSyncing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync),
               tooltip: 'Sync All Feeds',
-              onPressed: widget.onSync ?? _syncAll,
+              onPressed: _isSyncing
+                  ? null
+                  : () async {
+                      if (widget.onSync != null) {
+                        setState(() => _isSyncing = true);
+                        try {
+                          await widget.onSync!();
+                          _loadArticles();
+                        } finally {
+                          if (mounted) {
+                            setState(() => _isSyncing = false);
+                          }
+                        }
+                      } else {
+                        await _syncAll();
+                      }
+                    },
             ),
           ] else ...[
             // On larger screens, show all actions as icon buttons
@@ -495,9 +519,31 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               },
             ),
             IconButton(
-              icon: const Icon(Icons.sync),
+              icon: _isSyncing
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.sync),
               tooltip: 'Sync All Feeds',
-              onPressed: widget.onSync ?? _syncAll,
+              onPressed: _isSyncing
+                  ? null
+                  : () async {
+                      if (widget.onSync != null) {
+                        setState(() => _isSyncing = true);
+                        try {
+                          await widget.onSync!();
+                          _loadArticles();
+                        } finally {
+                          if (mounted) {
+                            setState(() => _isSyncing = false);
+                          }
+                        }
+                      } else {
+                        await _syncAll();
+                      }
+                    },
             ),
           ],
         ],
@@ -534,9 +580,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                               ),
                             )
                           : RefreshIndicator(
-                              onRefresh: () async {
-                                await _syncAll();
-                              },
+                              onRefresh: _syncAll,
                               child: ListView.builder(
                                 key: ValueKey(_refreshKey),
                                 padding: EdgeInsets.only(

@@ -14,7 +14,7 @@ import 'feed_options_screen.dart';
 import 'settings_screen.dart';
 
 class FeedsPage extends ConsumerStatefulWidget {
-  final VoidCallback? onSync;
+  final Future<void> Function()? onSync;
   
   const FeedsPage({super.key, this.onSync});
 
@@ -25,6 +25,7 @@ class FeedsPage extends ConsumerStatefulWidget {
 class FeedsPageState extends ConsumerState<FeedsPage> {
   int _refreshKey = 0;
   bool _accountListenerSet = false;
+  bool _isSyncing = false;
 
   void refresh() {
     setState(() {
@@ -51,30 +52,49 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
         title: const Text('Feeds'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.sync),
+            icon: _isSyncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync),
             tooltip: 'Sync All Feeds',
-            onPressed: widget.onSync ?? () async {
-              final account = await ref.read(accountServiceProvider).getCurrentAccount();
-              if (account != null) {
-                try {
-                  final syncCoordinator = ref.read(syncCoordinatorProvider);
-                  await syncCoordinator.syncAccount(account.id!);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Sync completed')),
-                    );
-                    _refresh();
-                    ref.invalidate(currentAccountProvider); // Notify listeners to reload articles
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Sync error: $e')),
-                    );
-                  }
-                }
-              }
-            },
+            onPressed: _isSyncing
+                ? null
+                : () async {
+                    if (_isSyncing) return;
+                    setState(() => _isSyncing = true);
+                    try {
+                      if (widget.onSync != null) {
+                        await widget.onSync!();
+                        if (mounted) {
+                          _refresh();
+                          ref.invalidate(currentAccountProvider);
+                        }
+                      } else {
+                        final account = await ref.read(accountServiceProvider).getCurrentAccount();
+                        if (account != null) {
+                          final syncCoordinator = ref.read(syncCoordinatorProvider);
+                          await syncCoordinator.syncAccount(account.id!);
+                          if (mounted) {
+                            _refresh();
+                            ref.invalidate(currentAccountProvider); // Notify listeners to reload articles
+                          }
+                        }
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Sync error: $e')),
+                        );
+                      }
+                    } finally {
+                      if (mounted) {
+                        setState(() => _isSyncing = false);
+                      }
+                    }
+                  },
           ),
           IconButton(
             icon: const Icon(Icons.create_new_folder),
