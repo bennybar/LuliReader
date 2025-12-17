@@ -1,4 +1,4 @@
-package com.example.luli_reader2
+package com.bennybar.luli_reader2
 
 import io.flutter.embedding.android.FlutterActivity
 

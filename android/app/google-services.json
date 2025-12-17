@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:557773674236:android:90df70bc1503fb994a6979",
+        "mobilesdk_app_id": "1:557773674236:android:ee81e162ff31ed184a6979",
         "android_client_info": {
-          "package_name": "com.example.luli_reader2"
+          "package_name": "com.bennybar.luli_reader2"
         }
       },
       "oauth_client": [],
