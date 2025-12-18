@@ -37,7 +37,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   late bool _isStarred;
   late bool _isUnread;
   Set<String> _seenContentImages = {};
-  bool _heroImageFoundInContent = false;
   double _fontScale = 1.0;
   double _contentPadding = 16.0;
   bool _openLinksExternally = false; // false = in-app browser (default), true = external browser
@@ -384,27 +383,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                       ),
                     ),
                     const Divider(height: 32),
-                    // Show hero image below divider if it doesn't appear in article content
-                    if (widget.article.img != null && 
-                        widget.article.img!.isNotEmpty && 
-                        !_heroImageFoundInContent) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: CachedNetworkImage(
-                          imageUrl: widget.article.img!,
-                          width: double.infinity,
-                          height: 200,
-                          fit: BoxFit.cover,
-                          errorWidget: (context, url, error) => const SizedBox.shrink(),
-                          placeholder: (context, url) => Container(
-                            height: 200,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            child: const Center(child: CircularProgressIndicator()),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
                     if (_useFullContent)
                       if (_isLoadingFullContent)
                         const Center(
@@ -414,7 +392,38 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                           ),
                         )
                       else if (_fullContent != null)
-                        _buildHtmlContent(_fullContent!)
+                        Builder(
+                          builder: (context) {
+                            // First, check if hero image is in the content
+                            final heroInContent = _checkIfHeroImageInContent(_fullContent!);
+                            return Column(
+                              children: [
+                                // Show hero image below divider if it doesn't appear in article content
+                                if (widget.article.img != null && 
+                                    widget.article.img!.isNotEmpty && 
+                                    !heroInContent) ...[
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: CachedNetworkImage(
+                                      imageUrl: widget.article.img!,
+                                      width: double.infinity,
+                                      height: 200,
+                                      fit: BoxFit.cover,
+                                      errorWidget: (context, url, error) => const SizedBox.shrink(),
+                                      placeholder: (context, url) => Container(
+                                        height: 200,
+                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                                        child: const Center(child: CircularProgressIndicator()),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                                _buildHtmlContent(_fullContent!),
+                              ],
+                            );
+                          },
+                        )
                       else
                         _buildFallbackContent()
                     else
@@ -429,9 +438,66 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     );
   }
 
+  /// Check if hero image appears in the HTML content
+  bool _checkIfHeroImageInContent(String html) {
+    if (widget.article.img == null || widget.article.img!.isEmpty) {
+      return false;
+    }
+    
+    final document = html_parser.parse(html);
+    final body = document.body ?? document.documentElement!;
+    
+    // Find all img elements
+    final imgElements = body.querySelectorAll('img');
+    
+    for (final img in imgElements) {
+      // Check multiple possible image source attributes
+      String? src = img.attributes['src'] ?? 
+                    img.attributes['data-src'] ??
+                    img.attributes['data-lazy-src'] ??
+                    img.attributes['data-original'] ??
+                    img.attributes['data-url'];
+      
+      // Also check srcset
+      final srcset = img.attributes['srcset'];
+      if (srcset != null && srcset.isNotEmpty) {
+        final srcsetUrls = srcset.split(',').map((s) => s.trim().split(RegExp(r'\s+')).first).where((url) => url.isNotEmpty);
+        if (srcsetUrls.isNotEmpty) {
+          src = srcsetUrls.first;
+        }
+      }
+      
+      if (src != null && src.isNotEmpty) {
+        // Resolve relative URLs
+        String imageUrl;
+        try {
+          if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
+            imageUrl = src;
+          } else {
+            final baseUri = Uri.parse(widget.article.link);
+            if (src.startsWith('/')) {
+              imageUrl = '${baseUri.scheme}://${baseUri.host}$src';
+            } else {
+              final resolved = baseUri.resolve(src);
+              imageUrl = resolved.toString();
+            }
+          }
+        } catch (e) {
+          imageUrl = src;
+        }
+        
+        // Check if this matches the hero image
+        if (_isSameImage(imageUrl, widget.article.img!)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
   Widget _buildHtmlContent(String html) {
     _seenContentImages = {};
-    _heroImageFoundInContent = false;
     final document = html_parser.parse(html);
     final body = document.body ?? document.documentElement!;
 
@@ -810,12 +876,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           } catch (e) {
             // If URL resolution fails, try using src as-is
             imageUrl = src;
-          }
-          
-          // Check if this is the hero image (using better comparison)
-          // If found, mark it but still show it in the article at its original position
-          if (widget.article.img != null && _isSameImage(imageUrl, widget.article.img!)) {
-            _heroImageFoundInContent = true;
           }
           
           // Only skip exact duplicates within the article content (same URL)
