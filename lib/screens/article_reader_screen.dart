@@ -37,6 +37,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   late bool _isStarred;
   late bool _isUnread;
   Set<String> _seenContentImages = {};
+  bool _heroImageFoundInContent = false;
   double _fontScale = 1.0;
   double _contentPadding = 16.0;
   bool _openLinksExternally = false; // false = in-app browser (default), true = external browser
@@ -315,24 +316,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (widget.article.img != null && widget.article.img!.isNotEmpty) ...[
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: CachedNetworkImage(
-                          imageUrl: widget.article.img!,
-                          width: double.infinity,
-                          height: 200,
-                          fit: BoxFit.cover,
-                          errorWidget: (context, url, error) => const SizedBox.shrink(),
-                          placeholder: (context, url) => Container(
-                            height: 200,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            child: const Center(child: CircularProgressIndicator()),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
                     Directionality(
                       textDirection: finalTextDir,
                       child: SizedBox(
@@ -401,6 +384,27 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                       ),
                     ),
                     const Divider(height: 32),
+                    // Show hero image below divider if it doesn't appear in article content
+                    if (widget.article.img != null && 
+                        widget.article.img!.isNotEmpty && 
+                        !_heroImageFoundInContent) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: CachedNetworkImage(
+                          imageUrl: widget.article.img!,
+                          width: double.infinity,
+                          height: 200,
+                          fit: BoxFit.cover,
+                          errorWidget: (context, url, error) => const SizedBox.shrink(),
+                          placeholder: (context, url) => Container(
+                            height: 200,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            child: const Center(child: CircularProgressIndicator()),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                     if (_useFullContent)
                       if (_isLoadingFullContent)
                         const Center(
@@ -427,6 +431,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   Widget _buildHtmlContent(String html) {
     _seenContentImages = {};
+    _heroImageFoundInContent = false;
     final document = html_parser.parse(html);
     final body = document.body ?? document.documentElement!;
 
@@ -762,24 +767,68 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           ),
         );
       case 'img':
-        final src = element.attributes['src']?.toString();
+        // Check multiple possible image source attributes (for lazy loading, etc.)
+        String? src = element.attributes['src']?.toString() ?? 
+                      element.attributes['data-src']?.toString() ??
+                      element.attributes['data-lazy-src']?.toString() ??
+                      element.attributes['data-original']?.toString() ??
+                      element.attributes['data-url']?.toString();
+        
+        // Also check srcset for responsive images
+        final srcset = element.attributes['srcset']?.toString();
+        if (srcset != null && srcset.isNotEmpty) {
+          // Extract first URL from srcset (format: "url1 1x, url2 2x" or "url1 100w, url2 200w")
+          final srcsetUrls = srcset.split(',').map((s) => s.trim().split(RegExp(r'\s+')).first).where((url) => url.isNotEmpty);
+          if (srcsetUrls.isNotEmpty) {
+            src = srcsetUrls.first;
+          }
+        }
+        
         if (src != null && src.isNotEmpty) {
-          // Skip duplicate images within parsed content
-          if (_seenContentImages.contains(src)) {
+          // Skip data URIs that are too small (likely icons/spacers)
+          if (src.startsWith('data:image') && src.length < 500) {
             return const SizedBox.shrink();
           }
-          _seenContentImages.add(src);
-          // Skip if this is the same image as the hero image
-          // Normalize URLs for comparison (remove protocol, www, trailing slashes)
-          if (widget.article.img != null && _isSameImage(src, widget.article.img!)) {
+          
+          // Resolve relative URLs to absolute using article link as base
+          String imageUrl;
+          try {
+            if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
+              imageUrl = src;
+            } else {
+              // Relative URL - resolve using article link as base
+              final baseUri = Uri.parse(widget.article.link);
+              if (src.startsWith('/')) {
+                // Absolute path on same domain
+                imageUrl = '${baseUri.scheme}://${baseUri.host}$src';
+              } else {
+                // Relative path - resolve from article URL
+                final resolved = baseUri.resolve(src);
+                imageUrl = resolved.toString();
+              }
+            }
+          } catch (e) {
+            // If URL resolution fails, try using src as-is
+            imageUrl = src;
+          }
+          
+          // Check if this is the hero image
+          if (widget.article.img != null && imageUrl == widget.article.img) {
+            _heroImageFoundInContent = true;
+          }
+          
+          // Only skip exact duplicates within the article content (same URL)
+          if (_seenContentImages.contains(imageUrl)) {
             return const SizedBox.shrink();
           }
+          _seenContentImages.add(imageUrl);
+          
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 16),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: CachedNetworkImage(
-                imageUrl: src,
+                imageUrl: imageUrl,
                 fit: BoxFit.cover,
                 errorWidget: (context, url, error) => const SizedBox.shrink(),
                 placeholder: (context, url) => Container(
@@ -945,41 +994,5 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  /// Check if two image URLs refer to the same image
-  /// Handles variations in protocol (http/https), www, trailing slashes, etc.
-  bool _isSameImage(String url1, String url2) {
-    if (url1 == url2) return true;
-    
-    // Normalize URLs by removing protocol and www
-    String normalize(String url) {
-      url = url.toLowerCase().trim();
-      // Remove protocol
-      url = url.replaceAll(RegExp(r'^https?://'), '');
-      // Remove www.
-      url = url.replaceAll(RegExp(r'^www\.'), '');
-      // Remove trailing slash
-      url = url.replaceAll(RegExp(r'/$'), '');
-      // Remove query parameters and fragments for comparison
-      url = url.split('?')[0].split('#')[0];
-      return url;
-    }
-    
-    final normalized1 = normalize(url1);
-    final normalized2 = normalize(url2);
-    
-    // Check if one contains the other (for relative URLs)
-    if (normalized1.contains(normalized2) || normalized2.contains(normalized1)) {
-      return true;
-    }
-    
-    // Check if the base paths match (same domain and path)
-    final path1 = normalized1.split('/').last;
-    final path2 = normalized2.split('/').last;
-    if (path1 == path2 && path1.isNotEmpty) {
-      return true;
-    }
-    
-    return false;
-  }
 }
 
