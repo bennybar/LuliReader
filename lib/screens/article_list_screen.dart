@@ -584,8 +584,10 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
   }
 
   String _formatDate(DateTime date) {
+    // Ensure both dates are in local timezone for accurate comparison
     final now = DateTime.now();
-    final difference = now.difference(date);
+    final localDate = date.isUtc ? date.toLocal() : date;
+    final difference = now.difference(localDate);
 
     if (difference.inDays == 0) {
       if (difference.inHours == 0) {

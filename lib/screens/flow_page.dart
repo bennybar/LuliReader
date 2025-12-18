@@ -116,6 +116,15 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     _loadArticles();
   }
 
+  Future<void> _saveFilter() async {
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (account != null) {
+      await ref.read(accountServiceProvider).updateAccount(
+        account.copyWith(lastFlowFilter: _filter),
+      );
+    }
+  }
+
   Future<void> _loadArticles() async {
     setState(() => _isLoading = true);
     try {
@@ -275,6 +284,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   _filter = 'all';
                   _refreshKey++;
                 });
+                _saveFilter();
                 _loadArticles();
               },
             ),
@@ -291,6 +301,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   _filter = 'unread';
                   _refreshKey++;
                 });
+                _saveFilter();
                 _loadArticles();
               },
             ),
@@ -307,6 +318,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   _filter = 'starred';
                   _refreshKey++;
                 });
+                _saveFilter();
                 _loadArticles();
               },
             ),
@@ -1296,8 +1308,10 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   }
 
   String _formatDate(DateTime date) {
+    // Ensure both dates are in local timezone for accurate comparison
     final now = DateTime.now();
-    final difference = now.difference(date);
+    final localDate = date.isUtc ? date.toLocal() : date;
+    final difference = now.difference(localDate);
 
     if (difference.inDays == 0) {
       if (difference.inHours == 0) {

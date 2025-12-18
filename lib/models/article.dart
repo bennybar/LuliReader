@@ -57,9 +57,14 @@ class Article {
   }
 
   factory Article.fromMap(Map<String, dynamic> map) {
+    // Parse date and convert to local timezone for consistent display
+    final dateString = map['date'] as String;
+    final parsedDate = DateTime.parse(dateString);
+    final localDate = parsedDate.isUtc ? parsedDate.toLocal() : parsedDate;
+    
     return Article(
       id: map['id'] as String,
-      date: DateTime.parse(map['date'] as String),
+      date: localDate,
       title: map['title'] as String,
       author: map['author'] as String?,
       rawDescription: map['rawDescription'] as String,
