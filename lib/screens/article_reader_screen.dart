@@ -813,10 +813,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           }
           
           // Check if this is the hero image (using better comparison)
+          // If found, mark it but still show it in the article at its original position
           if (widget.article.img != null && _isSameImage(imageUrl, widget.article.img!)) {
             _heroImageFoundInContent = true;
-            // Skip showing hero image in article if we'll show it below separator
-            return const SizedBox.shrink();
           }
           
           // Only skip exact duplicates within the article content (same URL)
