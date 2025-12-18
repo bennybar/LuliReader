@@ -216,19 +216,31 @@ class RssHelper {
       }
     }
 
+    // Generate syncHash: base64 of title + feed.url
+    final articleTitle = _decodeHtml(item.title ?? feed.name);
+    final syncHash = _generateSyncHash(articleTitle, feed.url);
+
     return Article(
       id: '$accountId\$${item.guid ?? item.link ?? DateTime.now().millisecondsSinceEpoch}',
       accountId: accountId,
       feedId: feed.id,
       date: articleDate,
-      title: _decodeHtml(item.title ?? feed.name),
+      title: articleTitle,
       author: item.author,
       rawDescription: content,
       shortDescription: shortDesc,
       img: img,
       link: item.link ?? '',
       updateAt: preDate,
+      syncHash: syncHash,
     );
+  }
+
+  /// Generate a base64 hash from title + feed URL for duplicate detection
+  String _generateSyncHash(String title, String feedUrl) {
+    final combined = '$title|$feedUrl';
+    final bytes = utf8.encode(combined);
+    return base64Encode(bytes);
   }
 
   String? _findThumbnail(RssItem item, String content) {

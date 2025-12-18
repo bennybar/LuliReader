@@ -14,6 +14,7 @@ class Article {
   final bool isReadLater;
   final DateTime? updateAt;
   String? fullContent; // Cached full content after download
+  final String? syncHash; // Base64 hash of title + feed URL for duplicate detection
 
   Article({
     required this.id,
@@ -31,6 +32,7 @@ class Article {
     this.isReadLater = false,
     this.updateAt,
     this.fullContent,
+    this.syncHash,
   });
 
   Map<String, dynamic> toMap() {
@@ -50,6 +52,7 @@ class Article {
       'isReadLater': isReadLater ? 1 : 0,
       'updateAt': updateAt?.toUtc().toIso8601String(),
       'fullContent': fullContent,
+      'syncHash': syncHash,
     };
   }
 
@@ -72,6 +75,7 @@ class Article {
           ? DateTime.parse(map['updateAt'] as String).toLocal()
           : null,
       fullContent: map['fullContent'] as String?,
+      syncHash: map['syncHash'] as String?,
     );
   }
 
@@ -91,6 +95,7 @@ class Article {
     bool? isReadLater,
     DateTime? updateAt,
     String? fullContent,
+    String? syncHash,
   }) {
     return Article(
       id: id ?? this.id,
@@ -108,6 +113,7 @@ class Article {
       isReadLater: isReadLater ?? this.isReadLater,
       updateAt: updateAt ?? this.updateAt,
       fullContent: fullContent ?? this.fullContent,
+      syncHash: syncHash ?? this.syncHash,
     );
   }
 }

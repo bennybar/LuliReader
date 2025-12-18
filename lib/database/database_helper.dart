@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onConfigure: (db) async {
         // Enable foreign key cascade (e.g., deleting a feed removes its articles).
         await db.execute('PRAGMA foreign_keys = ON');
@@ -111,6 +111,7 @@ class DatabaseHelper {
         isReadLater INTEGER DEFAULT 0,
         updateAt TEXT,
         fullContent TEXT,
+        syncHash TEXT,
         FOREIGN KEY (feedId) REFERENCES feed (id) ON DELETE CASCADE ON UPDATE CASCADE
       )
     ''');
@@ -118,6 +119,7 @@ class DatabaseHelper {
     // Create indexes
     await db.execute('CREATE INDEX idx_article_feedId ON article(feedId)');
     await db.execute('CREATE INDEX idx_article_accountId ON article(accountId)');
+    await db.execute('CREATE INDEX idx_article_syncHash ON article(syncHash)');
     await db.execute('CREATE INDEX idx_feed_groupId ON feed(groupId)');
     await db.execute('CREATE INDEX idx_feed_accountId ON feed(accountId)');
     await db.execute('CREATE INDEX idx_group_accountId ON "group"(accountId)');
@@ -164,6 +166,20 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE account ADD COLUMN authToken TEXT');
       } catch (e) {
         print('Error adding authToken to account: $e');
+      }
+    }
+    if (oldVersion < 6) {
+      // Add syncHash column to article table for duplicate detection
+      try {
+        await db.execute('ALTER TABLE article ADD COLUMN syncHash TEXT');
+      } catch (e) {
+        print('Error adding syncHash to article: $e');
+      }
+      // Create index on syncHash for performance
+      try {
+        await db.execute('CREATE INDEX idx_article_syncHash ON article(syncHash)');
+      } catch (e) {
+        print('Error creating syncHash index: $e');
       }
     }
     if (oldVersion < 2) {

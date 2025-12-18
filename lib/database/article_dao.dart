@@ -20,12 +20,28 @@ class ArticleDao {
     final List<Article> newArticles = [];
 
     for (final article in articles) {
-      final existing = await db.query(
-        'article',
-        where: 'link = ? AND accountId = ?',
-        whereArgs: [article.link, article.accountId],
-        limit: 1,
-      );
+      // Check for existing article by syncHash first (if available), then fall back to link check
+      List<Map<String, dynamic>> existing = [];
+      
+      if (article.syncHash != null && article.syncHash!.isNotEmpty) {
+        // Check by syncHash (preferred method for duplicate detection)
+        existing = await db.query(
+          'article',
+          where: 'syncHash = ? AND accountId = ?',
+          whereArgs: [article.syncHash, article.accountId],
+          limit: 1,
+        );
+      }
+      
+      // Fall back to link check if syncHash check found nothing (for backward compatibility)
+      if (existing.isEmpty) {
+        existing = await db.query(
+          'article',
+          where: 'link = ? AND accountId = ?',
+          whereArgs: [article.link, article.accountId],
+          limit: 1,
+        );
+      }
 
       if (existing.isEmpty) {
         try {
@@ -60,6 +76,23 @@ class ArticleDao {
           print('[ARTICLE_DAO] Stack trace: $stackTrace');
         }
       } else {
+        // Article already exists - update syncHash if it's missing (for backward compatibility)
+        if (article.syncHash != null && article.syncHash!.isNotEmpty) {
+          final existingArticle = Article.fromMap(existing.first);
+          if (existingArticle.syncHash == null || existingArticle.syncHash!.isEmpty) {
+            try {
+              await db.update(
+                'article',
+                {'syncHash': article.syncHash},
+                where: 'id = ?',
+                whereArgs: [existingArticle.id],
+              );
+              print('[ARTICLE_DAO] Updated syncHash for existing article: ${existingArticle.id}');
+            } catch (e) {
+              print('[ARTICLE_DAO] Error updating syncHash: $e');
+            }
+          }
+        }
         print('[ARTICLE_DAO] Article already exists: ${article.id}');
       }
     }
