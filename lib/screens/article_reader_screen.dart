@@ -812,9 +812,11 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             imageUrl = src;
           }
           
-          // Check if this is the hero image
-          if (widget.article.img != null && imageUrl == widget.article.img) {
+          // Check if this is the hero image (using better comparison)
+          if (widget.article.img != null && _isSameImage(imageUrl, widget.article.img!)) {
             _heroImageFoundInContent = true;
+            // Skip showing hero image in article if we'll show it below separator
+            return const SizedBox.shrink();
           }
           
           // Only skip exact duplicates within the article content (same URL)
@@ -992,6 +994,66 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
+  }
+
+  /// Check if two image URLs refer to the same image
+  /// Handles variations in protocol (http/https), www, trailing slashes, query params, etc.
+  bool _isSameImage(String url1, String url2) {
+    if (url1 == url2) return true;
+    
+    // Normalize URLs for comparison
+    String normalize(String url) {
+      url = url.toLowerCase().trim();
+      // Remove protocol
+      url = url.replaceAll(RegExp(r'^https?://'), '');
+      // Remove www.
+      url = url.replaceAll(RegExp(r'^www\.'), '');
+      // Remove trailing slash
+      url = url.replaceAll(RegExp(r'/$'), '');
+      // Remove query parameters and fragments for comparison
+      url = url.split('?')[0].split('#')[0];
+      return url;
+    }
+    
+    final normalized1 = normalize(url1);
+    final normalized2 = normalize(url2);
+    
+    // Exact match after normalization
+    if (normalized1 == normalized2) {
+      return true;
+    }
+    
+    // Extract just the filename/path for comparison
+    // This handles cases where URLs might have different query params but same image
+    final path1 = normalized1.split('/').last;
+    final path2 = normalized2.split('/').last;
+    
+    // If filenames match and they're from the same domain, likely the same image
+    if (path1.isNotEmpty && path2.isNotEmpty && path1 == path2) {
+      // Extract domain
+      final domain1 = normalized1.split('/').first;
+      final domain2 = normalized2.split('/').first;
+      
+      // If same domain and same filename, it's the same image
+      if (domain1 == domain2) {
+        return true;
+      }
+    }
+    
+    // Check if one URL contains the other (for relative/absolute variations)
+    // Only if they're clearly the same path
+    if (normalized1.contains(normalized2) || normalized2.contains(normalized1)) {
+      // Make sure it's not just a partial match
+      // Check if the longer one ends with the shorter one
+      final shorter = normalized1.length < normalized2.length ? normalized1 : normalized2;
+      final longer = normalized1.length >= normalized2.length ? normalized1 : normalized2;
+      
+      if (longer.endsWith(shorter) || shorter.startsWith(longer.split('/').last)) {
+        return true;
+      }
+    }
+    
+    return false;
   }
 
 }
