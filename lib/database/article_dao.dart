@@ -136,7 +136,7 @@ class ArticleDao {
       'article',
       {
         'isUnread': 0,
-        'updateAt': DateTime.now().toIso8601String(),
+        'updateAt': DateTime.now().toUtc().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [id],
@@ -221,7 +221,7 @@ class ArticleDao {
   /// This helps with backward compatibility for articles marked as read before this feature
   Future<int> setUpdateAtForNullReadArticles(int accountId) async {
     final db = await _dbHelper.database;
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     
     // Update all read articles (isUnread = 0) that have NULL updateAt to set it to now
     return await db.update(
@@ -421,7 +421,7 @@ class ArticleDao {
   Future<int> batchMarkAsRead(List<String> articleIds) async {
     if (articleIds.isEmpty) return 0;
     final db = await _dbHelper.database;
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
     final placeholders = articleIds.map((_) => '?').join(',');
     return await db.rawUpdate(
       'UPDATE article SET isUnread = 0, updateAt = ? WHERE id IN ($placeholders)',

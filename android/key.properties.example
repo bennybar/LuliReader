@@ -16,3 +16,5 @@ storeFile=../path/to/your/keystore.jks
 # 4. Make sure key.properties is in .gitignore
 
 
+
+

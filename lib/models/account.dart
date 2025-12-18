@@ -50,7 +50,7 @@ class Account {
       'id': id,
       'name': name,
       'type': type.id,
-      'updateAt': updateAt?.toIso8601String(),
+      'updateAt': updateAt?.toUtc().toIso8601String(),
       'lastArticleId': lastArticleId,
       'apiEndpoint': apiEndpoint,
       'username': username,
@@ -77,7 +77,7 @@ class Account {
       name: map['name'] as String,
       type: AccountType.fromId(map['type'] as int),
       updateAt: map['updateAt'] != null
-          ? DateTime.parse(map['updateAt'] as String)
+          ? DateTime.parse(map['updateAt'] as String).toLocal()
           : null,
       lastArticleId: map['lastArticleId'] as String?,
       apiEndpoint: map['apiEndpoint'] as String?,

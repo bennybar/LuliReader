@@ -48,7 +48,7 @@ class Article {
       'isUnread': isUnread ? 1 : 0,
       'isStarred': isStarred ? 1 : 0,
       'isReadLater': isReadLater ? 1 : 0,
-      'updateAt': updateAt?.toIso8601String(),
+      'updateAt': updateAt?.toUtc().toIso8601String(),
       'fullContent': fullContent,
     };
   }
@@ -69,7 +69,7 @@ class Article {
       isStarred: (map['isStarred'] as int? ?? 0) == 1,
       isReadLater: (map['isReadLater'] as int? ?? 0) == 1,
       updateAt: map['updateAt'] != null
-          ? DateTime.parse(map['updateAt'] as String)
+          ? DateTime.parse(map['updateAt'] as String).toLocal()
           : null,
       fullContent: map['fullContent'] as String?,
     );
