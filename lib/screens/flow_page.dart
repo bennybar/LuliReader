@@ -686,12 +686,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                 },
                 onLongPress: () {
                   if (!_isBatchMode) {
-                    setState(() {
-                      _isBatchMode = true;
-                      _selectedArticleIds.add(article.id);
-                    });
-                  } else {
                     _showLongPressMenu(context, article);
+                  } else {
+                    _toggleArticleSelection(article.id);
                   }
                 },
                 child: Padding(
@@ -1049,6 +1046,17 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               onTap: () {
                 Navigator.pop(context);
                 _markBelowAsRead(article);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.select_all),
+              title: const Text('Select Articles'),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _isBatchMode = true;
+                  _selectedArticleIds.add(article.id);
+                });
               },
             ),
           ],
