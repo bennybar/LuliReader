@@ -42,6 +42,16 @@ class ArticleDao {
           limit: 1,
         );
       }
+      
+      // Also check for same title in the same feed (prevents re-uploads of same article with new date)
+      if (existing.isEmpty) {
+        existing = await db.query(
+          'article',
+          where: 'title = ? AND feedId = ? AND accountId = ?',
+          whereArgs: [article.title, article.feedId, article.accountId],
+          limit: 1,
+        );
+      }
 
       if (existing.isEmpty) {
         try {
