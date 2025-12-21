@@ -21,11 +21,24 @@ class ArticleDao {
     final List<Article> newArticles = [];
 
     for (final article in articles) {
-      // Check for existing article by syncHash first (if available), then fall back to link check
+      // Check for duplicate by title + feedId first (as per user requirement)
+      // This prevents pulling articles with titles previously synced on the same feed
       List<Map<String, dynamic>> existing = [];
       
-      if (article.syncHash != null && article.syncHash!.isNotEmpty) {
-        // Check by syncHash (preferred method for duplicate detection)
+      // Priority 1: Check by title + feedId (case-insensitive, trimmed)
+      existing = await db.rawQuery(
+        '''
+        SELECT * FROM article 
+        WHERE TRIM(UPPER(title)) = TRIM(UPPER(?)) 
+        AND feedId = ? 
+        AND accountId = ?
+        LIMIT 1
+        ''',
+        [article.title, article.feedId, article.accountId],
+      );
+      
+      // Priority 2: Check by syncHash if title+feed check found nothing (if available)
+      if (existing.isEmpty && article.syncHash != null && article.syncHash!.isNotEmpty) {
         existing = await db.query(
           'article',
           where: 'syncHash = ? AND accountId = ?',
@@ -34,28 +47,13 @@ class ArticleDao {
         );
       }
       
-      // Fall back to link check if syncHash check found nothing (for backward compatibility)
+      // Priority 3: Fall back to link check only if both above found nothing (for backward compatibility)
       if (existing.isEmpty) {
         existing = await db.query(
           'article',
           where: 'link = ? AND accountId = ?',
           whereArgs: [article.link, article.accountId],
           limit: 1,
-        );
-      }
-      
-      // Also check for same title in the same feed (prevents re-uploads of same article with new date)
-      // Use case-insensitive comparison and trim whitespace
-      if (existing.isEmpty) {
-        existing = await db.rawQuery(
-          '''
-          SELECT * FROM article 
-          WHERE TRIM(UPPER(title)) = TRIM(UPPER(?)) 
-          AND feedId = ? 
-          AND accountId = ?
-          LIMIT 1
-          ''',
-          [article.title, article.feedId, article.accountId],
         );
       }
 
@@ -183,6 +181,24 @@ class ArticleDao {
       whereArgs: [id],
     );
 
+    if (maps.isEmpty) return null;
+    return Article.fromMap(maps.first);
+  }
+
+  /// Get article by title and feedId (case-insensitive, trimmed)
+  /// This is used to check for duplicates by title + feed (not URL)
+  Future<Article?> getByTitleAndFeedId(String title, String feedId, int accountId) async {
+    final db = await _dbHelper.database;
+    final maps = await db.rawQuery(
+      '''
+      SELECT * FROM article 
+      WHERE TRIM(UPPER(title)) = TRIM(UPPER(?)) 
+      AND feedId = ? 
+      AND accountId = ?
+      LIMIT 1
+      ''',
+      [title, feedId, accountId],
+    );
     if (maps.isEmpty) return null;
     return Article.fromMap(maps.first);
   }

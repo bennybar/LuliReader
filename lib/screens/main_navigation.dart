@@ -35,7 +35,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBin
         final countBefore = await articleDao.countByAccountId(account.id!);
         
         final syncCoordinator = ref.read(syncCoordinatorProvider);
-        await syncCoordinator.syncAccount(account.id!);
+        await syncCoordinator.syncAccount(account.id!); // Progress handled by FlowPage
         
         final countAfter = await articleDao.countByAccountId(account.id!);
         final articlesSynced = countAfter - countBefore;

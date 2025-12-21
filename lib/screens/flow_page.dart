@@ -31,6 +31,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   List<ArticleWithFeed> _articles = [];
   bool _isLoading = true;
   bool _isSyncing = false;
+  double _syncProgress = 0.0;
   String _filter = 'all'; // all, unread, starred
   int _refreshKey = 0;
   Timer? _accountRefreshTimer;
@@ -189,12 +190,24 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
 
   Future<void> _syncAll() async {
     if (_isSyncing) return;
-    setState(() => _isSyncing = true);
+    setState(() {
+      _isSyncing = true;
+      _syncProgress = 0.0;
+    });
     try {
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
       if (account != null) {
         final syncCoordinator = ref.read(syncCoordinatorProvider);
-        await syncCoordinator.syncAccount(account.id!);
+        await syncCoordinator.syncAccount(
+          account.id!,
+          onProgressPercent: (progress) {
+            if (mounted) {
+              setState(() {
+                _syncProgress = progress;
+              });
+            }
+          },
+        );
         await ref.read(accountServiceProvider).updateAccount(
               account.copyWith(updateAt: DateTime.now()),
             );
@@ -209,7 +222,10 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       }
     } finally {
       if (mounted) {
-        setState(() => _isSyncing = false);
+        setState(() {
+          _isSyncing = false;
+          _syncProgress = 0.0;
+        });
       }
     }
   }
@@ -452,19 +468,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               onPressed: _isSyncing
                   ? null
                   : () async {
-                      if (widget.onSync != null) {
-                        setState(() => _isSyncing = true);
-                        try {
-                          await widget.onSync!();
-                          _loadArticles();
-                        } finally {
-                          if (mounted) {
-                            setState(() => _isSyncing = false);
-                          }
-                        }
-                      } else {
-                        await _syncAll();
-                      }
+                      // Use _syncAll which has progress tracking
+                      await _syncAll();
                     },
             ),
           ] else ...[
@@ -543,19 +548,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               onPressed: _isSyncing
                   ? null
                   : () async {
-                      if (widget.onSync != null) {
-                        setState(() => _isSyncing = true);
-                        try {
-                          await widget.onSync!();
-                          _loadArticles();
-                        } finally {
-                          if (mounted) {
-                            setState(() => _isSyncing = false);
-                          }
-                        }
-                      } else {
-                        await _syncAll();
-                      }
+                      // Use _syncAll which has progress tracking
+                      await _syncAll();
                     },
             ),
           ],
@@ -568,6 +562,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               : Column(
                   children: [
                     _buildSyncInfo(),
+                    if (_isSyncing && _syncProgress > 0.0) _buildSyncProgress(),
                     Expanded(
                       child: RefreshIndicator(
                         onRefresh: _syncAll,
@@ -1352,6 +1347,43 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       },
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+
+  Widget _buildSyncProgress() {
+    final percentage = (_syncProgress * 100).toStringAsFixed(0);
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              value: _syncProgress,
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                Theme.of(context).colorScheme.primary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$percentage%',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontSize: 11,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

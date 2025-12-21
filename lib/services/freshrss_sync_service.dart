@@ -30,8 +30,10 @@ class FreshRssSyncService {
   Future<void> sync(
     int accountId, {
     void Function(String)? onProgress,
+    void Function(double)? onProgressPercent,
   }) async {
     onProgress?.call('Loading account...');
+    onProgressPercent?.call(0.0);
     final account = await _accountDao.getById(accountId);
     if (account == null || account.type != AccountType.freshrss) {
       throw Exception('FreshRSS account not found');
@@ -43,9 +45,11 @@ class FreshRssSyncService {
     }
     final apiEndpoint = FreshRssService.normalizeApiEndpoint(base);
     onProgress?.call('Authenticating FreshRSS...');
+    onProgressPercent?.call(0.05);
     var authToken = await _ensureAuthToken(account, apiEndpoint);
 
     onProgress?.call('Fetching subscriptions...');
+    onProgressPercent?.call(0.10);
     Map<String, dynamic> subscriptions;
     try {
       subscriptions = await _api.getSubscriptions(apiEndpoint, authToken);
@@ -62,10 +66,13 @@ class FreshRssSyncService {
     final groups = parsed['groups']!.cast<Group>();
     final feeds = parsed['feeds']!.cast<Feed>();
 
+    onProgress?.call('Updating groups and feeds...');
+    onProgressPercent?.call(0.20);
     await _upsertGroups(accountId, groups);
     await _upsertFeeds(accountId, feeds);
 
     onProgress?.call('Fetching latest articles...');
+    onProgressPercent?.call(0.30);
     final articlesResult = await _fetchLatestArticles(
       apiEndpoint,
       authToken,
@@ -76,6 +83,7 @@ class FreshRssSyncService {
     final timestampMap = articlesResult['timestampMap'] as Map<String, String>;
 
     onProgress?.call('Fetching unread item IDs from server...');
+    onProgressPercent?.call(0.70);
     // Get unread item IDs from server using items/ids endpoint
     final unreadTimestampIds = await _fetchUnreadTimestampIds(
       apiEndpoint,
@@ -87,8 +95,19 @@ class FreshRssSyncService {
       for (final feed in feeds) feed.id: feed,
     };
     // Use unread IDs from server to determine read status
-    await _upsertArticles(articles, feedMap, account, timestampMap, unreadTimestampIds);
+    onProgress?.call('Processing articles...');
+    onProgressPercent?.call(0.80);
+    await _upsertArticles(
+      articles, 
+      feedMap, 
+      account, 
+      timestampMap, 
+      unreadTimestampIds,
+      onProgressPercent: onProgressPercent,
+    );
 
+    onProgress?.call('Completing sync...');
+    onProgressPercent?.call(0.95);
     await _accountDao.update(
       account.copyWith(
         updateAt: DateTime.now(),
@@ -96,6 +115,7 @@ class FreshRssSyncService {
         apiEndpoint: apiEndpoint,
       ),
     );
+    onProgressPercent?.call(1.0);
   }
 
   Future<String> _ensureAuthToken(Account account, String apiEndpoint) async {
@@ -243,15 +263,24 @@ class FreshRssSyncService {
     Map<String, Feed> feedMap,
     Account account,
     Map<String, String> timestampMap,
-    Set<String> unreadTimestampIds,
-  ) async {
+    Set<String> unreadTimestampIds, {
+    void Function(double)? onProgressPercent,
+  }) async {
+    final totalArticles = articles.length;
     final newArticles = <Article>[];
+    int processedCount = 0;
     for (final article in articles) {
       if (!feedMap.containsKey(article.feedId)) {
         continue;
       }
       final normalizedId = _normalizeItemId(article.id);
-      final existing = await _articleDao.getById(article.id);
+      
+      // Check for duplicate by title + feedId first (not by URL)
+      final existingByTitle = await _articleDao.getByTitleAndFeedId(
+        article.title,
+        article.feedId,
+        article.accountId,
+      );
       
       // Determine read status from server's unread IDs list
       // Match article by timestampUsec to see if it's in the unread set
@@ -261,28 +290,49 @@ class FreshRssSyncService {
       // Use starred status from categories (already parsed in parseArticles)
       final isStarredFromServer = article.isStarred;
 
-      if (existing == null) {
-        final toInsert = article.copyWith(
-          id: normalizedId,
-          isUnread: isUnreadFromServer, // Use server's unread IDs list
-          isStarred: isStarredFromServer, // Use server's categories
-        );
-        await _articleDao.insert(toInsert);
-        newArticles.add(toInsert);
+      if (existingByTitle == null) {
+        // Also check by ID as fallback
+        final existingById = await _articleDao.getById(article.id);
+        if (existingById == null) {
+          final toInsert = article.copyWith(
+            id: normalizedId,
+            isUnread: isUnreadFromServer, // Use server's unread IDs list
+            isStarred: isStarredFromServer, // Use server's categories
+          );
+          await _articleDao.insert(toInsert);
+          newArticles.add(toInsert);
+        } else {
+          // For existing articles, update with server state
+          final updated = existingById.copyWith(
+            id: normalizedId,
+            title: article.title,
+            rawDescription: article.rawDescription,
+            shortDescription: article.shortDescription,
+            link: article.link,
+            isUnread: isUnreadFromServer, // Use server's unread IDs list
+            isStarred: isStarredFromServer, // Use server's categories
+            date: article.date,
+            feedId: article.feedId,
+          );
+          await _articleDao.update(updated);
+        }
       } else {
-        // For existing articles, update with server state
-        final updated = existing.copyWith(
-          id: normalizedId,
-          title: article.title,
-          rawDescription: article.rawDescription,
-          shortDescription: article.shortDescription,
-          link: article.link,
-          isUnread: isUnreadFromServer, // Use server's unread IDs list
-          isStarred: isStarredFromServer, // Use server's categories
-          date: article.date,
-          feedId: article.feedId,
-        );
-        await _articleDao.update(updated);
+        // Article with same title + feed already exists, skip to avoid duplicates
+        // Optionally update read status if needed
+        if (existingByTitle.isUnread != isUnreadFromServer || existingByTitle.isStarred != isStarredFromServer) {
+          final updated = existingByTitle.copyWith(
+            isUnread: isUnreadFromServer,
+            isStarred: isStarredFromServer,
+          );
+          await _articleDao.update(updated);
+        }
+      }
+      
+      processedCount++;
+      // Update progress: 80% to 95% for article processing
+      if (onProgressPercent != null && totalArticles > 0) {
+        final progress = 0.80 + (processedCount / totalArticles) * 0.15;
+        onProgressPercent(progress);
       }
     }
 

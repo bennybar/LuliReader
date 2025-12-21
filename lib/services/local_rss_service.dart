@@ -34,11 +34,13 @@ class LocalRssService {
 
   /// Sync all feeds for an account
   /// [onProgress] callback to report progress messages
+  /// [onProgressPercent] callback to report progress percentage (0.0 to 1.0)
   Future<void> sync(
     int accountId, {
     String? feedId,
     String? groupId,
     void Function(String)? onProgress,
+    void Function(double)? onProgressPercent,
   }) async {
     onProgress?.call('Loading account...');
     final account = await _accountDao.getById(accountId);
@@ -96,6 +98,7 @@ class LocalRssService {
 
     if (feedsToSync.isEmpty) {
       onProgress?.call('No feeds to sync');
+      onProgressPercent?.call(1.0);
       return; // No feeds to sync
     }
 
@@ -107,6 +110,10 @@ class LocalRssService {
     int completedCount = 0;
     int errorCount = 0;
     const maxConcurrent = 8;
+    final totalFeeds = feedsToSync.length;
+    // Reserve 10% for final steps (timestamp update, cleanup)
+    const double finalStepsPercent = 0.1;
+    const double syncStepsPercent = 1.0 - finalStepsPercent;
 
     for (final feed in feedsToSync) {
       // Wait if we have too many active syncs
@@ -115,17 +122,23 @@ class LocalRssService {
       }
 
       activeCount++;
-      onProgress?.call('Syncing: ${feed.name} (${completedCount + errorCount + 1}/${feedsToSync.length})');
+      final currentIndex = completedCount + errorCount + 1;
+      onProgress?.call('Syncing: ${feed.name} ($currentIndex/$totalFeeds)');
+      onProgressPercent?.call((currentIndex / totalFeeds) * syncStepsPercent);
       
       futures.add(_syncFeed(feed, accountId, preDate, minDate, accountFullContent, onProgress).then((_) {
         activeCount--;
         completedCount++;
-        onProgress?.call('✓ Completed: ${feed.name} ($completedCount/${feedsToSync.length})');
+        final percent = (completedCount + errorCount) / totalFeeds * syncStepsPercent;
+        onProgress?.call('✓ Completed: ${feed.name} ($completedCount/$totalFeeds)');
+        onProgressPercent?.call(percent);
       }).catchError((e) {
         activeCount--;
         errorCount++;
+        final percent = (completedCount + errorCount) / totalFeeds * syncStepsPercent;
         final errorMsg = '✗ Error syncing ${feed.name}: $e';
         onProgress?.call(errorMsg);
+        onProgressPercent?.call(percent);
         print(errorMsg);
       }));
     }
@@ -133,14 +146,17 @@ class LocalRssService {
     // Wait for all syncs to complete
     onProgress?.call('Waiting for all feeds to complete...');
     await Future.wait(futures, eagerError: false);
+    onProgressPercent?.call(syncStepsPercent);
 
     // Update account sync time
     onProgress?.call('Updating sync timestamp...');
+    onProgressPercent?.call(syncStepsPercent + 0.03);
     await _accountDao.update(account.copyWith(updateAt: preDate));
     
     // Set updateAt for read articles with NULL timestamps (backward compatibility)
     try {
       onProgress?.call('Updating read article timestamps...');
+      onProgressPercent?.call(syncStepsPercent + 0.05);
       final updatedCount = await _articleDao.setUpdateAtForNullReadArticles(accountId);
       if (updatedCount > 0) {
         onProgress?.call('Updated $updatedCount read article timestamp(s)');
@@ -153,6 +169,7 @@ class LocalRssService {
     // Clean up old read articles
     try {
       onProgress?.call('Cleaning up old read articles...');
+      onProgressPercent?.call(syncStepsPercent + 0.08);
       final prefs = SharedPreferencesService();
       await prefs.init();
       final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
@@ -166,6 +183,7 @@ class LocalRssService {
     }
     
     onProgress?.call('Sync complete! $completedCount succeeded, $errorCount failed');
+    onProgressPercent?.call(1.0);
   }
 
   Future<void> _syncFeed(

@@ -18,16 +18,25 @@ class SyncCoordinator {
   Future<void> syncAccount(
     int accountId, {
     void Function(String)? onProgress,
+    void Function(double)? onProgressPercent,
   }) async {
     final account = await _accountDao.getById(accountId);
     if (account == null) throw Exception('Account not found');
 
     switch (account.type) {
       case AccountType.local:
-        await _localService.sync(account.id!, onProgress: onProgress);
+        await _localService.sync(
+          account.id!, 
+          onProgress: onProgress,
+          onProgressPercent: onProgressPercent,
+        );
         break;
       case AccountType.freshrss:
-        await _freshRssService.sync(account.id!, onProgress: onProgress);
+        await _freshRssService.sync(
+          account.id!, 
+          onProgress: onProgress,
+          onProgressPercent: onProgressPercent,
+        );
         break;
       case AccountType.miniflux:
         throw Exception('Miniflux support coming soon');
