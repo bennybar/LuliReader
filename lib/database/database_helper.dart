@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onConfigure: (db) async {
         // Enable foreign key cascade (e.g., deleting a feed removes its articles).
         await db.execute('PRAGMA foreign_keys = ON');
@@ -88,6 +88,7 @@ class DatabaseHelper {
         isFullContent INTEGER DEFAULT 0,
         isBrowser INTEGER DEFAULT 0,
         isRtl INTEGER,
+        lastSyncErrorAt TEXT,
         FOREIGN KEY (groupId) REFERENCES "group" (id) ON DELETE CASCADE ON UPDATE CASCADE,
         FOREIGN KEY (accountId) REFERENCES account (id) ON DELETE CASCADE ON UPDATE CASCADE
       )
@@ -227,6 +228,14 @@ class DatabaseHelper {
         ''');
       } catch (e) {
         print('Error creating read_history table: $e');
+      }
+    }
+    if (oldVersion < 8) {
+      // Add lastSyncErrorAt column to feed table to track sync errors
+      try {
+        await db.execute('ALTER TABLE feed ADD COLUMN lastSyncErrorAt TEXT');
+      } catch (e) {
+        print('Error adding lastSyncErrorAt to feed: $e');
       }
     }
     if (oldVersion < 2) {

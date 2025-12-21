@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import 'readability.dart';
@@ -84,6 +85,23 @@ class RssService {
         return latin1.decode(bytes); // Close enough
       default:
         return utf8.decode(bytes, allowMalformed: true);
+    }
+  }
+
+  /// Prefetch images from HTML content for caching
+  /// This ensures images load instantly when viewing articles
+  static void prefetchImages(String html) {
+    try {
+      final regex = RegExp('<img[^>]+src=["\']([^"\']+)["\']', caseSensitive: false);
+      final matches = regex.allMatches(html);
+      for (final m in matches) {
+        final url = m.group(1);
+        if (url != null && url.startsWith('http')) {
+          DefaultCacheManager().downloadFile(url).then((_) {}, onError: (_) {});
+        }
+      }
+    } catch (e) {
+      print('Error prefetching images: $e');
     }
   }
 }

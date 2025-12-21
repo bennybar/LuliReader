@@ -10,6 +10,7 @@ class Feed {
   final bool isBrowser;
   final bool? isRtl; // null means auto-detect, true/false means force RTL/LTR
   final int important;
+  final DateTime? lastSyncErrorAt; // Timestamp of last sync error, null if last sync succeeded
 
   Feed({
     required this.id,
@@ -23,6 +24,7 @@ class Feed {
     this.isBrowser = false,
     this.isRtl,
     this.important = 0,
+    this.lastSyncErrorAt,
   });
 
   Map<String, dynamic> toMap() {
@@ -37,11 +39,13 @@ class Feed {
       'isFullContent': isFullContent ? 1 : 0,
       'isBrowser': isBrowser ? 1 : 0,
       'isRtl': isRtl == null ? null : (isRtl! ? 1 : 0),
+      'lastSyncErrorAt': lastSyncErrorAt?.toUtc().toIso8601String(),
     };
   }
 
   factory Feed.fromMap(Map<String, dynamic> map) {
     final isRtlValue = map['isRtl'];
+    final lastSyncErrorAtStr = map['lastSyncErrorAt'] as String?;
     return Feed(
       id: map['id'] as String,
       name: map['name'] as String,
@@ -53,6 +57,9 @@ class Feed {
       isFullContent: (map['isFullContent'] as int? ?? 0) == 1,
       isBrowser: (map['isBrowser'] as int? ?? 0) == 1,
       isRtl: isRtlValue == null ? null : (isRtlValue as int) == 1,
+      lastSyncErrorAt: lastSyncErrorAtStr != null 
+          ? DateTime.parse(lastSyncErrorAtStr).toLocal()
+          : null,
     );
   }
 
@@ -68,6 +75,7 @@ class Feed {
     bool? isBrowser,
     bool? isRtl,
     int? important,
+    DateTime? lastSyncErrorAt,
   }) {
     return Feed(
       id: id ?? this.id,
@@ -81,6 +89,7 @@ class Feed {
       isBrowser: isBrowser ?? this.isBrowser,
       isRtl: isRtl ?? this.isRtl,
       important: important ?? this.important,
+      lastSyncErrorAt: lastSyncErrorAt ?? this.lastSyncErrorAt,
     );
   }
 }

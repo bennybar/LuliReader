@@ -94,6 +94,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     // Check if we already have full content
     if (widget.article.fullContent != null && widget.article.fullContent!.isNotEmpty) {
       setState(() => _fullContent = widget.article.fullContent);
+      // Prefetch images even if content already exists
+      RssService.prefetchImages(widget.article.fullContent!);
       return;
     }
 
@@ -108,6 +110,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         final articleDao = ref.read(articleDaoProvider);
         final updatedArticle = widget.article.copyWith(fullContent: content);
         await articleDao.update(updatedArticle);
+        
+        // Prefetch images for caching
+        RssService.prefetchImages(content);
       }
       
       setState(() {

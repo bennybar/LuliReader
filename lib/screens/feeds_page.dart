@@ -262,26 +262,61 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
         subtitle: Text('${groupWithFeed.feeds.length} feeds'),
         children: groupWithFeed.feeds.map((feed) {
           final feedObj = feed as Feed;
+          final hasError = feedObj.lastSyncErrorAt != null;
           return ListTile(
-            leading: feedObj.icon != null && feedObj.icon!.isNotEmpty
-                ? CircleAvatar(
-                    backgroundImage: NetworkImage(feedObj.icon!),
-                    radius: 16,
-                    onBackgroundImageError: (_, __) {},
-                    child: feedObj.icon == null || feedObj.icon!.isEmpty
-                        ? Text(feedObj.name[0].toUpperCase())
-                        : null,
-                  )
-                : CircleAvatar(
-                    child: Text(feedObj.name[0].toUpperCase()),
-                    radius: 16,
+            leading: Stack(
+              children: [
+                feedObj.icon != null && feedObj.icon!.isNotEmpty
+                    ? CircleAvatar(
+                        backgroundImage: NetworkImage(feedObj.icon!),
+                        radius: 16,
+                        onBackgroundImageError: (_, __) {},
+                        child: feedObj.icon == null || feedObj.icon!.isEmpty
+                            ? Text(feedObj.name[0].toUpperCase())
+                            : null,
+                      )
+                    : CircleAvatar(
+                        child: Text(feedObj.name[0].toUpperCase()),
+                        radius: 16,
+                      ),
+                if (hasError)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.error,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.surface,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Icon(
+                        Icons.error_outline,
+                        size: 12,
+                        color: Theme.of(context).colorScheme.onError,
+                      ),
+                    ),
                   ),
+              ],
+            ),
             title: Text(
               feedObj.name,
               textAlign: Directionality.of(context) == TextDirection.rtl
                   ? TextAlign.right
                   : TextAlign.left,
             ),
+            subtitle: hasError
+                ? Text(
+                    'Last sync failed',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 12,
+                    ),
+                  )
+                : null,
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(

@@ -352,6 +352,8 @@ class FreshRssSyncService {
           final content = await _rssService.parseFullContent(article.link, article.title);
           if (content != null) {
             await _articleDao.update(article.copyWith(fullContent: content));
+            // Prefetch images for caching
+            RssService.prefetchImages(content);
           }
         } catch (_) {}
       }
