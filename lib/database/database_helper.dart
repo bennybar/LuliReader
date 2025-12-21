@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onConfigure: (db) async {
         // Enable foreign key cascade (e.g., deleting a feed removes its articles).
         await db.execute('PRAGMA foreign_keys = ON');
@@ -459,6 +459,17 @@ class DatabaseHelper {
         await db.execute('CREATE UNIQUE INDEX idx_article_unique_normaltitle ON article(accountId, normalizedTitle)');
       } catch (e) {
         print('Error creating idx_article_unique_normaltitle: $e');
+      }
+    }
+    if (oldVersion < 11) {
+      // Normalize empty normalizedLink/normalizedTitle to NULL to avoid unique conflicts on blank values
+      try {
+        await db.execute('UPDATE article SET normalizedLink = NULL WHERE normalizedLink = \'\'');
+        await db.execute('UPDATE article SET normalizedTitle = NULL WHERE normalizedTitle = \'\'');
+        await db.execute('UPDATE read_history SET normalizedLink = NULL WHERE normalizedLink = \'\'');
+        await db.execute('UPDATE read_history SET normalizedTitle = NULL WHERE normalizedTitle = \'\'');
+      } catch (e) {
+        print('Error cleaning empty normalized fields: $e');
       }
     }
     if (oldVersion < 2) {

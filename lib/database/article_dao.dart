@@ -23,8 +23,10 @@ class ArticleDao {
     final List<Article> newArticles = [];
 
     for (final article in articles) {
-      final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
-      final normalizedTitle = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
+      final normalizedLinkRaw = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
+      final normalizedTitleRaw = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
+      final normalizedLink = normalizedLinkRaw.isEmpty ? null : normalizedLinkRaw;
+      final normalizedTitle = normalizedTitleRaw.isEmpty ? null : normalizedTitleRaw;
       final syncedAtMs = article.syncedAt ?? DateTime.now().toUtc().millisecondsSinceEpoch;
       final articleWithNormalized = article.copyWith(
         normalizedLink: normalizedLink,
@@ -35,7 +37,7 @@ class ArticleDao {
       // Check for existing article by syncHash first (if available), then fall back to link/title checks
       List<Map<String, dynamic>> existing = [];
       
-      if (normalizedLink.isNotEmpty) {
+      if (normalizedLink != null && normalizedLink.isNotEmpty) {
         existing = await db.query(
           'article',
           where: 'normalizedLink = ? AND accountId = ?',
@@ -67,7 +69,7 @@ class ArticleDao {
       }
 
       // Also check for normalized title across account to avoid re-syncing same titled items
-      if (existing.isEmpty && normalizedTitle.isNotEmpty) {
+      if (existing.isEmpty && normalizedTitle != null && normalizedTitle.isNotEmpty) {
         existing = await db.query(
           'article',
           where: 'normalizedTitle = ? AND accountId = ?',
@@ -657,13 +659,15 @@ class ArticleDao {
   }
 
   Future<Map<String, dynamic>?> _findReadHistoryMatch(Database db, Article article) async {
-    final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
-    final normalizedTitle = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
+    final normalizedLinkRaw = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
+    final normalizedTitleRaw = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
+    final normalizedLink = normalizedLinkRaw.isEmpty ? null : normalizedLinkRaw;
+    final normalizedTitle = normalizedTitleRaw.isEmpty ? null : normalizedTitleRaw;
 
     final matchClauses = <String>[];
     final whereArgs = <dynamic>[article.accountId];
 
-    if (normalizedLink.isNotEmpty) {
+    if (normalizedLink != null && normalizedLink.isNotEmpty) {
       matchClauses.add('normalizedLink = ?');
       whereArgs.add(normalizedLink);
 
@@ -677,7 +681,7 @@ class ArticleDao {
     whereArgs.add(article.link);
 
     // Normalized title across account
-    if (normalizedTitle.isNotEmpty) {
+    if (normalizedTitle != null && normalizedTitle.isNotEmpty) {
       matchClauses.add('normalizedTitle = ?');
       whereArgs.add(normalizedTitle);
     }
@@ -706,8 +710,10 @@ class ArticleDao {
   Future<void> _recordReadHistory(Article article, {DateTime? readAt}) async {
     final db = await _dbHelper.database;
     final readAtValue = (readAt ?? article.updateAt ?? DateTime.now().toUtc()).toIso8601String();
-    final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
-    final normalizedTitle = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
+    final normalizedLinkRaw = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
+    final normalizedTitleRaw = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
+    final normalizedLink = normalizedLinkRaw.isEmpty ? null : normalizedLinkRaw;
+    final normalizedTitle = normalizedTitleRaw.isEmpty ? null : normalizedTitleRaw;
     final syncedAt = article.syncedAt ?? DateTime.now().toUtc().millisecondsSinceEpoch;
 
     try {

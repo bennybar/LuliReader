@@ -221,8 +221,10 @@ class RssHelper {
 
     // Generate identifiers and hashes with normalization
     final articleTitle = _decodeHtml(item.title ?? feed.name);
-    final normalizedLink = LinkNormalizer.normalize(item.link ?? '');
-    final normalizedTitle = TitleNormalizer.normalize(articleTitle);
+    final normalizedLinkRaw = LinkNormalizer.normalize(item.link ?? '');
+    final normalizedTitleRaw = TitleNormalizer.normalize(articleTitle);
+    final normalizedLink = normalizedLinkRaw.isEmpty ? null : normalizedLinkRaw;
+    final normalizedTitle = normalizedTitleRaw.isEmpty ? null : normalizedTitleRaw;
     final syncHash = _generateSyncHash('$normalizedTitle|$normalizedLink|${feed.url}');
     final guid = item.guid?.trim();
     final rawId = guid?.isNotEmpty == true

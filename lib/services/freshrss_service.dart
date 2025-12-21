@@ -463,8 +463,10 @@ class FreshRssService {
       }
 
       // Normalizations and synced time
-      final normalizedLink = LinkNormalizer.normalize(link.isNotEmpty ? link : id);
-      final normalizedTitle = TitleNormalizer.normalize(title);
+      final normalizedLinkRaw = LinkNormalizer.normalize(link.isNotEmpty ? link : id);
+      final normalizedTitleRaw = TitleNormalizer.normalize(title);
+      final normalizedLink = normalizedLinkRaw.isEmpty ? null : normalizedLinkRaw;
+      final normalizedTitle = normalizedTitleRaw.isEmpty ? null : normalizedTitleRaw;
       final syncHash = base64Encode(utf8.encode('$normalizedTitle|$normalizedLink'));
       int? syncedAt;
       if (timestampUsec != null) {
