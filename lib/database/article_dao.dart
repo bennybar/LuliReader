@@ -358,7 +358,23 @@ class ArticleDao {
     final db = await _dbHelper.database;
     final cutoffDate = DateTime.now().subtract(Duration(days: keepReadItemsDays));
     final cutoffDateStr = cutoffDate.toIso8601String();
-    
+
+    // Capture articles to be removed so we can persist read history before deletion
+    final rows = await db.query(
+      'article',
+      where: 'accountId = ? AND isUnread = 0 AND isStarred = 0 AND updateAt IS NOT NULL AND updateAt < ?',
+      whereArgs: [accountId, cutoffDateStr],
+    );
+
+    if (rows.isEmpty) return 0;
+
+    try {
+      final ids = rows.map((r) => r['id'] as String).toList();
+      await _recordReadHistoryForIds(ids);
+    } catch (e) {
+      print('[ARTICLE_DAO] Error recording history before deleting old read articles: $e');
+    }
+
     // Delete read articles (isUnread = 0) that are not starred and were marked as read before cutoff date
     // Only delete if updateAt is set (when it was marked as read) and is older than cutoff
     return await db.delete(
@@ -633,7 +649,7 @@ class ArticleDao {
 
   Future<void> _recordReadHistory(Article article, {DateTime? readAt}) async {
     final db = await _dbHelper.database;
-    final readAtValue = (readAt ?? DateTime.now().toUtc()).toIso8601String();
+    final readAtValue = (readAt ?? article.updateAt ?? DateTime.now().toUtc()).toIso8601String();
 
     try {
       await db.insert(
@@ -665,7 +681,8 @@ class ArticleDao {
     for (final row in rows) {
       try {
         final article = Article.fromMap(row);
-        await _recordReadHistory(article, readAt: readAt);
+        final effectiveReadAt = readAt ?? article.updateAt;
+        await _recordReadHistory(article, readAt: effectiveReadAt);
       } catch (e) {
         print('[ARTICLE_DAO] Error parsing article for history: $e, row=$row');
       }
