@@ -17,6 +17,13 @@ class LinkNormalizer {
     'source',
     'rss',
     'rss_id',
+    'output',
+    'format',
+    'spm',
+    'fb_action_ids',
+    'fb_action_types',
+    'fb_ref',
+    'fb_source',
   };
 
   static String normalize(String link) {
@@ -43,11 +50,19 @@ class LinkNormalizer {
 
     uri = uri.replace(queryParameters: filteredQuery.isEmpty ? null : filteredQuery);
 
-    // Normalize host casing and trailing slash
-    final normalizedHost = uri.host.toLowerCase();
+    // Normalize host casing and strip common mobile prefixes
+    var normalizedHost = uri.host.toLowerCase();
+    if (normalizedHost.startsWith('m.')) {
+      normalizedHost = normalizedHost.substring(2);
+    }
+
+    // Normalize path: remove trailing slash and common index.* endings
     var path = uri.path;
     if (path.endsWith('/') && path.length > 1) {
       path = path.substring(0, path.length - 1);
+    }
+    if (path.endsWith('/index.html') || path.endsWith('/index.htm') || path.endsWith('/index.php')) {
+      path = path.replaceAll(RegExp(r'/index\.(html?|php)$'), '');
     }
 
     uri = Uri(

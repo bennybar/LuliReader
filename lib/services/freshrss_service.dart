@@ -4,6 +4,8 @@ import '../models/account.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/group.dart';
+import '../utils/link_normalizer.dart';
+import '../utils/title_normalizer.dart';
 
 /// Service for syncing with FreshRSS using Google Reader API
 class FreshRssService {
@@ -460,6 +462,19 @@ class FreshRssService {
         }
       }
 
+      // Normalizations and synced time
+      final normalizedLink = LinkNormalizer.normalize(link.isNotEmpty ? link : id);
+      final normalizedTitle = TitleNormalizer.normalize(title);
+      final syncHash = base64Encode(utf8.encode('$normalizedTitle|$normalizedLink'));
+      int? syncedAt;
+      if (timestampUsec != null) {
+        try {
+          final usec = int.parse(timestampUsec);
+          syncedAt = (usec / 1000).round();
+        } catch (_) {}
+      }
+      syncedAt ??= DateTime.now().toUtc().millisecondsSinceEpoch;
+
       final article = Article(
         id: id,
         date: publishedDate,
@@ -473,6 +488,10 @@ class FreshRssService {
                 : _stripHtml(contentText),
         img: imageUrl,
         link: link.isNotEmpty ? link : id,
+        normalizedLink: normalizedLink,
+        normalizedTitle: normalizedTitle,
+        syncedAt: syncedAt,
+        syncHash: syncHash,
         feedId: feedId.isNotEmpty ? feedId : 'unknown',
         accountId: accountId,
         // Article is unread if it doesn't have the read tag

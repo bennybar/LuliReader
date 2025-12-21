@@ -6,6 +6,8 @@ import '../models/article.dart';
 import '../models/feed.dart';
 import 'readability.dart';
 import '../utils/link_normalizer.dart';
+import '../utils/title_normalizer.dart';
+import '../utils/link_normalizer.dart';
 
 class RssHelper {
   final http.Client _client;
@@ -217,13 +219,19 @@ class RssHelper {
       }
     }
 
-    // Generate syncHash: base64 of title + feed.url
+    // Generate identifiers and hashes with normalization
     final articleTitle = _decodeHtml(item.title ?? feed.name);
-    final syncHash = _generateSyncHash(articleTitle, feed.url);
     final normalizedLink = LinkNormalizer.normalize(item.link ?? '');
+    final normalizedTitle = TitleNormalizer.normalize(articleTitle);
+    final syncHash = _generateSyncHash('$normalizedTitle|$normalizedLink|${feed.url}');
+    final guid = item.guid?.trim();
+    final rawId = guid?.isNotEmpty == true
+        ? guid!
+        : (item.link?.isNotEmpty == true ? item.link! : DateTime.now().millisecondsSinceEpoch.toString());
+    final syncedAt = DateTime.now().toUtc().millisecondsSinceEpoch;
 
     return Article(
-      id: '$accountId\$${item.guid ?? item.link ?? DateTime.now().millisecondsSinceEpoch}',
+      id: '$accountId\$$rawId',
       accountId: accountId,
       feedId: feed.id,
       date: articleDate,
@@ -234,14 +242,15 @@ class RssHelper {
       img: img,
       link: item.link ?? '',
       normalizedLink: normalizedLink,
+      normalizedTitle: normalizedTitle,
+      syncedAt: syncedAt,
       updateAt: preDate,
       syncHash: syncHash,
     );
   }
 
   /// Generate a base64 hash from title + feed URL for duplicate detection
-  String _generateSyncHash(String title, String feedUrl) {
-    final combined = '$title|$feedUrl';
+  String _generateSyncHash(String combined) {
     final bytes = utf8.encode(combined);
     return base64Encode(bytes);
   }

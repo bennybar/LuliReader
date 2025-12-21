@@ -10,6 +10,8 @@ class Article {
   final String feedId;
   final int accountId;
   final String? normalizedLink;
+  final String? normalizedTitle;
+  final int? syncedAt; // epoch millis (UTC) when this article was synced locally
   final bool isUnread;
   final bool isStarred;
   final bool isReadLater;
@@ -29,6 +31,8 @@ class Article {
     required this.feedId,
     required this.accountId,
     this.normalizedLink,
+    this.normalizedTitle,
+    this.syncedAt,
     this.isUnread = true,
     this.isStarred = false,
     this.isReadLater = false,
@@ -48,6 +52,8 @@ class Article {
       'img': img,
       'link': link,
       'normalizedLink': normalizedLink,
+      'normalizedTitle': normalizedTitle,
+      'syncedAt': syncedAt,
       'feedId': feedId,
       'accountId': accountId,
       'isUnread': isUnread ? 1 : 0,
@@ -75,6 +81,8 @@ class Article {
       img: map['img'] as String?,
       link: map['link'] as String,
       normalizedLink: map['normalizedLink'] as String?,
+      normalizedTitle: map['normalizedTitle'] as String?,
+      syncedAt: map['syncedAt'] as int?,
       feedId: map['feedId'] as String,
       accountId: map['accountId'] as int,
       isUnread: (map['isUnread'] as int? ?? 1) == 1,
@@ -100,6 +108,8 @@ class Article {
     String? feedId,
     int? accountId,
     String? normalizedLink,
+    String? normalizedTitle,
+    int? syncedAt,
     bool? isUnread,
     bool? isStarred,
     bool? isReadLater,
@@ -117,6 +127,8 @@ class Article {
       img: img ?? this.img,
       link: link ?? this.link,
       normalizedLink: normalizedLink ?? this.normalizedLink,
+      normalizedTitle: normalizedTitle ?? this.normalizedTitle,
+      syncedAt: syncedAt ?? this.syncedAt,
       feedId: feedId ?? this.feedId,
       accountId: accountId ?? this.accountId,
       isUnread: isUnread ?? this.isUnread,
@@ -126,6 +138,11 @@ class Article {
       fullContent: fullContent ?? this.fullContent,
       syncHash: syncHash ?? this.syncHash,
     );
+  }
+
+  DateTime? get syncedAtDate {
+    if (syncedAt == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(syncedAt!, isUtc: true).toLocal();
   }
 }
 

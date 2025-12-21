@@ -6,6 +6,7 @@ import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/group.dart';
 import '../utils/link_normalizer.dart';
+import '../utils/title_normalizer.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -27,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 10,
       onConfigure: (db) async {
         // Enable foreign key cascade (e.g., deleting a feed removes its articles).
         await db.execute('PRAGMA foreign_keys = ON');
@@ -106,6 +107,8 @@ class DatabaseHelper {
         img TEXT,
         link TEXT NOT NULL,
         normalizedLink TEXT,
+        normalizedTitle TEXT,
+        syncedAt INTEGER,
         feedId TEXT NOT NULL,
         accountId INTEGER NOT NULL,
         isUnread INTEGER DEFAULT 1,
@@ -126,6 +129,8 @@ class DatabaseHelper {
         feedId TEXT,
         link TEXT,
         normalizedLink TEXT,
+        normalizedTitle TEXT,
+        syncedAt INTEGER,
         syncHash TEXT,
         title TEXT,
         readAt TEXT NOT NULL
@@ -137,11 +142,15 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_article_accountId ON article(accountId)');
     await db.execute('CREATE INDEX idx_article_syncHash ON article(syncHash)');
     await db.execute('CREATE INDEX idx_article_normalizedLink ON article(normalizedLink)');
+    await db.execute('CREATE INDEX idx_article_normalizedTitle ON article(normalizedTitle)');
+    await db.execute('CREATE UNIQUE INDEX idx_article_unique_normallink ON article(accountId, normalizedLink)');
+    await db.execute('CREATE UNIQUE INDEX idx_article_unique_normaltitle ON article(accountId, normalizedTitle)');
     await db.execute('CREATE INDEX idx_read_history_accountId ON read_history(accountId)');
     await db.execute('CREATE INDEX idx_read_history_lookup ON read_history(accountId, syncHash, link, feedId)');
     await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_link ON read_history(accountId, link)');
     await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_syncHash ON read_history(accountId, syncHash)');
     await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_normallink ON read_history(accountId, normalizedLink)');
+    await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_normaltitle ON read_history(accountId, normalizedTitle)');
     await db.execute('CREATE INDEX idx_feed_groupId ON feed(groupId)');
     await db.execute('CREATE INDEX idx_feed_accountId ON feed(accountId)');
     await db.execute('CREATE INDEX idx_group_accountId ON "group"(accountId)');
@@ -214,6 +223,8 @@ class DatabaseHelper {
             feedId TEXT,
             link TEXT,
             normalizedLink TEXT,
+            normalizedTitle TEXT,
+            syncedAt INTEGER,
             syncHash TEXT,
             title TEXT,
             readAt TEXT NOT NULL
@@ -223,6 +234,7 @@ class DatabaseHelper {
         await db.execute('CREATE INDEX idx_read_history_lookup ON read_history(accountId, syncHash, link, feedId)');
         await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_link ON read_history(accountId, link)');
         await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_syncHash ON read_history(accountId, syncHash)');
+        await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_normaltitle ON read_history(accountId, normalizedTitle)');
 
         // Seed history from existing read articles so previously read items don't resurface
         await db.execute('''
@@ -294,6 +306,159 @@ class DatabaseHelper {
         await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_normallink ON read_history(accountId, normalizedLink)');
       } catch (e) {
         print('Error creating idx_read_history_unique_normallink: $e');
+      }
+    }
+    if (oldVersion < 9) {
+      // Add normalizedTitle and syncedAt columns for stronger dedup + reliable timestamps
+      try {
+        await db.execute('ALTER TABLE article ADD COLUMN normalizedTitle TEXT');
+      } catch (e) {
+        print('Error adding normalizedTitle to article: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE article ADD COLUMN syncedAt INTEGER');
+      } catch (e) {
+        print('Error adding syncedAt to article: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE read_history ADD COLUMN normalizedTitle TEXT');
+      } catch (e) {
+        print('Error adding normalizedTitle to read_history: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE read_history ADD COLUMN syncedAt INTEGER');
+      } catch (e) {
+        print('Error adding syncedAt to read_history: $e');
+      }
+
+      // Backfill normalized fields and syncedAt for articles
+      try {
+        final articles = await db.query('article', columns: ['id', 'link', 'title', 'updateAt', 'date']);
+        final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+        for (final row in articles) {
+          final id = row['id'] as String?;
+          if (id == null) continue;
+          final link = row['link'] as String? ?? '';
+          final title = row['title'] as String? ?? '';
+          final normalizedLink = LinkNormalizer.normalize(link);
+          final normalizedTitle = TitleNormalizer.normalize(title);
+
+          int? syncedAtMs;
+          final updateAtStr = row['updateAt'] as String?;
+          final dateStr = row['date'] as String?;
+          if (updateAtStr != null) {
+            try {
+              syncedAtMs = DateTime.parse(updateAtStr).toUtc().millisecondsSinceEpoch;
+            } catch (_) {}
+          }
+          if (syncedAtMs == null && dateStr != null) {
+            try {
+              syncedAtMs = DateTime.parse(dateStr).toUtc().millisecondsSinceEpoch;
+            } catch (_) {}
+          }
+          syncedAtMs ??= nowMs;
+
+          await db.update(
+            'article',
+            {
+              'normalizedLink': normalizedLink,
+              'normalizedTitle': normalizedTitle,
+              'syncedAt': syncedAtMs,
+            },
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      } catch (e) {
+        print('Error backfilling normalized fields on article: $e');
+      }
+
+      // Backfill normalized fields and syncedAt for read_history
+      try {
+        final historyRows = await db.query('read_history', columns: ['id', 'link', 'title', 'readAt']);
+        final nowMs = DateTime.now().toUtc().millisecondsSinceEpoch;
+        for (final row in historyRows) {
+          final id = row['id'] as int?;
+          if (id == null) continue;
+          final link = row['link'] as String? ?? '';
+          final title = row['title'] as String? ?? '';
+          final normalizedLink = LinkNormalizer.normalize(link);
+          final normalizedTitle = TitleNormalizer.normalize(title);
+
+          int? syncedAtMs;
+          final readAtStr = row['readAt'] as String?;
+          if (readAtStr != null) {
+            try {
+              syncedAtMs = DateTime.parse(readAtStr).toUtc().millisecondsSinceEpoch;
+            } catch (_) {}
+          }
+          syncedAtMs ??= nowMs;
+
+          await db.update(
+            'read_history',
+            {
+              'normalizedLink': normalizedLink,
+              'normalizedTitle': normalizedTitle,
+              'syncedAt': syncedAtMs,
+            },
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      } catch (e) {
+        print('Error backfilling normalized fields on read_history: $e');
+      }
+
+      try {
+        await db.execute('CREATE INDEX idx_article_normalizedTitle ON article(normalizedTitle)');
+      } catch (e) {
+        print('Error creating idx_article_normalizedTitle: $e');
+      }
+      try {
+        await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_normaltitle ON read_history(accountId, normalizedTitle)');
+      } catch (e) {
+        print('Error creating idx_read_history_unique_normaltitle: $e');
+      }
+    }
+    if (oldVersion < 10) {
+      // Deduplicate by normalizedLink/normalizedTitle before adding unique indexes
+      try {
+        await db.execute('''
+          DELETE FROM article
+          WHERE normalizedLink IS NOT NULL AND normalizedLink != ''
+          AND rowid NOT IN (
+            SELECT MIN(rowid)
+            FROM article
+            WHERE normalizedLink IS NOT NULL AND normalizedLink != ''
+            GROUP BY accountId, normalizedLink
+          )
+        ''');
+      } catch (e) {
+        print('Error pruning duplicate normalizedLink rows: $e');
+      }
+      try {
+        await db.execute('''
+          DELETE FROM article
+          WHERE normalizedTitle IS NOT NULL AND normalizedTitle != ''
+          AND rowid NOT IN (
+            SELECT MIN(rowid)
+            FROM article
+            WHERE normalizedTitle IS NOT NULL AND normalizedTitle != ''
+            GROUP BY accountId, normalizedTitle
+          )
+        ''');
+      } catch (e) {
+        print('Error pruning duplicate normalizedTitle rows: $e');
+      }
+      try {
+        await db.execute('CREATE UNIQUE INDEX idx_article_unique_normallink ON article(accountId, normalizedLink)');
+      } catch (e) {
+        print('Error creating idx_article_unique_normallink: $e');
+      }
+      try {
+        await db.execute('CREATE UNIQUE INDEX idx_article_unique_normaltitle ON article(accountId, normalizedTitle)');
+      } catch (e) {
+        print('Error creating idx_article_unique_normaltitle: $e');
       }
     }
     if (oldVersion < 2) {

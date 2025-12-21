@@ -386,7 +386,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      _formatDate(article.date),
+                              _formatDate(article.syncedAtDate ?? article.date),
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],

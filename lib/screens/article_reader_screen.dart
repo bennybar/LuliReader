@@ -346,7 +346,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                           ),
                         ],
                         Text(
-                          _formatDate(widget.article.date),
+                          _formatDate(widget.article.syncedAtDate ?? widget.article.date),
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
                         Builder(

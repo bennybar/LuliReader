@@ -31,7 +31,7 @@ class FreshRssSyncService {
     int accountId, {
     void Function(String)? onProgress,
   }) async {
-    onProgress?.call('Loading account...');
+    onProgress?.call('0|Loading account...');
     final account = await _accountDao.getById(accountId);
     if (account == null || account.type != AccountType.freshrss) {
       throw Exception('FreshRSS account not found');
@@ -42,10 +42,10 @@ class FreshRssSyncService {
       throw Exception('FreshRSS endpoint is missing');
     }
     final apiEndpoint = FreshRssService.normalizeApiEndpoint(base);
-    onProgress?.call('Authenticating FreshRSS...');
+    onProgress?.call('10|Authenticating FreshRSS...');
     var authToken = await _ensureAuthToken(account, apiEndpoint);
 
-    onProgress?.call('Fetching subscriptions...');
+    onProgress?.call('20|Fetching subscriptions...');
     Map<String, dynamic> subscriptions;
     try {
       subscriptions = await _api.getSubscriptions(apiEndpoint, authToken);
@@ -65,7 +65,7 @@ class FreshRssSyncService {
     await _upsertGroups(accountId, groups);
     await _upsertFeeds(accountId, feeds);
 
-    onProgress?.call('Fetching latest articles...');
+    onProgress?.call('40|Fetching latest articles...');
     final articlesResult = await _fetchLatestArticles(
       apiEndpoint,
       authToken,
@@ -75,7 +75,7 @@ class FreshRssSyncService {
     final articles = articlesResult['articles'] as List<Article>;
     final timestampMap = articlesResult['timestampMap'] as Map<String, String>;
 
-    onProgress?.call('Fetching unread item IDs from server...');
+    onProgress?.call('60|Fetching unread item IDs from server...');
     // Get unread item IDs from server using items/ids endpoint
     final unreadTimestampIds = await _fetchUnreadTimestampIds(
       apiEndpoint,
@@ -87,6 +87,7 @@ class FreshRssSyncService {
       for (final feed in feeds) feed.id: feed,
     };
     // Use unread IDs from server to determine read status
+    onProgress?.call('80|Upserting articles...');
     await _upsertArticles(articles, feedMap, account, timestampMap, unreadTimestampIds);
 
     await _accountDao.update(
@@ -96,6 +97,7 @@ class FreshRssSyncService {
         apiEndpoint: apiEndpoint,
       ),
     );
+    onProgress?.call('100|FreshRSS sync complete');
   }
 
   Future<String> _ensureAuthToken(Account account, String apiEndpoint) async {
@@ -267,7 +269,11 @@ class FreshRssSyncService {
           isUnread: isUnreadFromServer, // Use server's unread IDs list
           isStarred: isStarredFromServer, // Use server's categories
         );
-        await _articleDao.insert(toInsert);
+        // Reuse local dedup logic, including title/link/history checks
+        await _articleDao.insertListIfNotExist(
+          articles: [toInsert],
+          feed: feedMap[article.feedId]!,
+        );
         newArticles.add(toInsert);
       } else {
         // For existing articles, update with server state
@@ -277,6 +283,9 @@ class FreshRssSyncService {
           rawDescription: article.rawDescription,
           shortDescription: article.shortDescription,
           link: article.link,
+          normalizedLink: article.normalizedLink,
+          normalizedTitle: article.normalizedTitle,
+          syncedAt: article.syncedAt,
           isUnread: isUnreadFromServer, // Use server's unread IDs list
           isStarred: isStarredFromServer, // Use server's categories
           date: article.date,

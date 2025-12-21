@@ -38,6 +38,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   ArticleSortOption _sortOption = ArticleSortOption.dateDesc;
   bool _isBatchMode = false;
   Set<String> _selectedArticleIds = {};
+  String? _syncProgressText;
+  double? _syncProgressPercent;
   final SharedPreferencesService _prefs = SharedPreferencesService();
 
   void refresh() {
@@ -189,12 +191,19 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
 
   Future<void> _syncAll() async {
     if (_isSyncing) return;
-    setState(() => _isSyncing = true);
+    setState(() {
+      _isSyncing = true;
+      _syncProgressText = 'Starting sync...';
+      _syncProgressPercent = null;
+    });
     try {
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
       if (account != null) {
         final syncCoordinator = ref.read(syncCoordinatorProvider);
-        await syncCoordinator.syncAccount(account.id!);
+        await syncCoordinator.syncAccount(
+          account.id!,
+          onProgress: _handleSyncProgress,
+        );
         await ref.read(accountServiceProvider).updateAccount(
               account.copyWith(updateAt: DateTime.now()),
             );
@@ -209,9 +218,32 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       }
     } finally {
       if (mounted) {
-        setState(() => _isSyncing = false);
+        setState(() {
+          _isSyncing = false;
+          _syncProgressText = null;
+          _syncProgressPercent = null;
+        });
       }
     }
+  }
+
+  void _handleSyncProgress(String message) {
+    // Expected format: "percent|text" or plain text
+    double? pct;
+    String text = message;
+    final parts = message.split('|');
+    if (parts.length > 1) {
+      final parsed = double.tryParse(parts.first);
+      if (parsed != null) {
+        pct = parsed.clamp(0, 100) / 100.0;
+        text = parts.sublist(1).join('|').trim();
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _syncProgressPercent = pct;
+      _syncProgressText = text;
+    });
   }
 
   Future<void> _markAllAsRead() async {
@@ -823,7 +855,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                       ),
                                       const SizedBox(width: 2),
                                       Text(
-                                        _formatDate(article.date),
+                                        _formatDate(article.syncedAtDate ?? article.date),
                                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                                               fontSize: 11,
                                               color: Theme.of(context)
@@ -1332,20 +1364,51 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     return accountAsync.when(
       data: (account) {
         final lastSync = account?.updateAt;
-        if (lastSync == null) return const SizedBox.shrink();
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.history, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Last sync: ${_formatDate(lastSync)}',
-                  style: Theme.of(context).textTheme.bodySmall,
-                  overflow: TextOverflow.ellipsis,
+              if (lastSync != null)
+                Row(
+                  children: [
+                    const Icon(Icons.history, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Last sync: ${_formatDate(lastSync)}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+              if (_isSyncing && _syncProgressText != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(Icons.sync, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _syncProgressText ?? 'Syncing...',
+                            style: Theme.of(context).textTheme.bodySmall,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          LinearProgressIndicator(
+                            value: _syncProgressPercent,
+                            minHeight: 4,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         );

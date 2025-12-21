@@ -4,6 +4,7 @@ import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
 import '../utils/link_normalizer.dart';
+import '../utils/title_normalizer.dart';
 
 class ArticleDao {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
@@ -23,11 +24,15 @@ class ArticleDao {
 
     for (final article in articles) {
       final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
-      final articleWithNormalized = article.normalizedLink == null
-          ? article.copyWith(normalizedLink: normalizedLink)
-          : article;
+      final normalizedTitle = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
+      final syncedAtMs = article.syncedAt ?? DateTime.now().toUtc().millisecondsSinceEpoch;
+      final articleWithNormalized = article.copyWith(
+        normalizedLink: normalizedLink,
+        normalizedTitle: normalizedTitle,
+        syncedAt: syncedAtMs,
+      );
 
-      // Check for existing article by syncHash first (if available), then fall back to link check
+      // Check for existing article by syncHash first (if available), then fall back to link/title checks
       List<Map<String, dynamic>> existing = [];
       
       if (normalizedLink.isNotEmpty) {
@@ -40,15 +45,15 @@ class ArticleDao {
       }
 
       if (existing.isEmpty) {
-      if (article.syncHash != null && article.syncHash!.isNotEmpty) {
-        // Check by syncHash (preferred method for duplicate detection)
-        existing = await db.query(
-          'article',
-          where: 'syncHash = ? AND accountId = ?',
-          whereArgs: [article.syncHash, article.accountId],
-          limit: 1,
-        );
-      }
+        if (article.syncHash != null && article.syncHash!.isNotEmpty) {
+          // Check by syncHash (preferred method for duplicate detection)
+          existing = await db.query(
+            'article',
+            where: 'syncHash = ? AND accountId = ?',
+            whereArgs: [article.syncHash, article.accountId],
+            limit: 1,
+          );
+        }
       }
       
       // Fall back to link check if syncHash check found nothing (for backward compatibility)
@@ -57,6 +62,16 @@ class ArticleDao {
           'article',
           where: 'link = ? AND accountId = ?',
           whereArgs: [article.link, article.accountId],
+          limit: 1,
+        );
+      }
+
+      // Also check for normalized title across account to avoid re-syncing same titled items
+      if (existing.isEmpty && normalizedTitle.isNotEmpty) {
+        existing = await db.query(
+          'article',
+          where: 'normalizedTitle = ? AND accountId = ?',
+          whereArgs: [normalizedTitle, article.accountId],
           limit: 1,
         );
       }
@@ -78,6 +93,13 @@ class ArticleDao {
 
       if (existing.isEmpty) {
         try {
+          // If this article was previously synced (by title/link/history), skip to avoid resurfacing
+          final historyMatch = await _findReadHistoryMatch(db, articleWithNormalized);
+          if (historyMatch != null) {
+            print('[ARTICLE_DAO] Skipping already-seen article by history/title/link: ${article.title}');
+            continue;
+          }
+
           // Check one more time if article with this ID already exists (primary key check)
           // This catches cases where the ID might have been reused
           final idCheck = await db.query(
@@ -96,7 +118,6 @@ class ArticleDao {
           }
           
           // If this article was previously read (even if it was cleaned up), ensure it does not resurface as unread
-          final historyMatch = await _findReadHistoryMatch(db, articleWithNormalized);
           final wasReadBefore = historyMatch != null;
           final historyReadAt = historyMatch?['readAt'] as String?;
 
@@ -110,7 +131,7 @@ class ArticleDao {
           }
           print('[ARTICLE_DAO] Inserting article: id=${article.id}, title=${article.title}, accountId=${article.accountId}');
           print('[ARTICLE_DAO] Article map accountId: ${articleMap['accountId']} (type: ${articleMap['accountId'].runtimeType})');
-          await db.insert('article', articleMap, conflictAlgorithm: ConflictAlgorithm.fail);
+          await db.insert('article', articleMap, conflictAlgorithm: ConflictAlgorithm.ignore);
           
           // Verify insertion immediately with a small delay to ensure commit
           await Future.delayed(const Duration(milliseconds: 10));
@@ -210,7 +231,7 @@ class ArticleDao {
       'article',
       where: 'feedId = ?',
       whereArgs: [feedId],
-      orderBy: 'date DESC',
+      orderBy: 'syncedAt DESC, date DESC',
       limit: limit,
     );
     return maps.map((map) => Article.fromMap(map)).toList();
@@ -223,7 +244,7 @@ class ArticleDao {
       'article',
       where: 'accountId = ? AND isUnread = 1',
       whereArgs: [accountId],
-      orderBy: 'date DESC',
+      orderBy: 'syncedAt DESC, date DESC',
       limit: limit,
     );
     print('[ARTICLE_DAO] getUnread returned ${maps.length} articles');
@@ -237,7 +258,7 @@ class ArticleDao {
       'article',
       where: 'accountId = ? AND isStarred = 1',
       whereArgs: [accountId],
-      orderBy: 'date DESC',
+      orderBy: 'syncedAt DESC, date DESC',
       limit: limit,
     );
     print('[ARTICLE_DAO] getStarred returned ${maps.length} articles');
@@ -338,7 +359,7 @@ class ArticleDao {
       'article',
       where: 'feedId = ?',
       whereArgs: [feedId],
-      orderBy: 'date DESC',
+      orderBy: 'syncedAt DESC, date DESC',
       limit: 1,
     );
     if (maps.isEmpty) return null;
@@ -425,7 +446,7 @@ class ArticleDao {
       'article',
       where: 'accountId = ?',
       whereArgs: [accountId],
-      orderBy: 'date DESC',
+      orderBy: 'syncedAt DESC, date DESC',
       limit: limit,
     );
     print('[ARTICLE_DAO] Query with accountId=$accountId (int) returned ${maps.length} rows');
@@ -637,6 +658,7 @@ class ArticleDao {
 
   Future<Map<String, dynamic>?> _findReadHistoryMatch(Database db, Article article) async {
     final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
+    final normalizedTitle = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
 
     final matchClauses = <String>[];
     final whereArgs = <dynamic>[article.accountId];
@@ -654,7 +676,13 @@ class ArticleDao {
     matchClauses.add('link = ?');
     whereArgs.add(article.link);
 
-    // Title + feed fallback
+    // Normalized title across account
+    if (normalizedTitle.isNotEmpty) {
+      matchClauses.add('normalizedTitle = ?');
+      whereArgs.add(normalizedTitle);
+    }
+
+    // Title + feed fallback (legacy)
     matchClauses.add('(feedId = ? AND TRIM(UPPER(title)) = TRIM(UPPER(?)))');
     whereArgs.addAll([article.feedId, article.title]);
 
@@ -679,6 +707,8 @@ class ArticleDao {
     final db = await _dbHelper.database;
     final readAtValue = (readAt ?? article.updateAt ?? DateTime.now().toUtc()).toIso8601String();
     final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
+    final normalizedTitle = article.normalizedTitle ?? TitleNormalizer.normalize(article.title);
+    final syncedAt = article.syncedAt ?? DateTime.now().toUtc().millisecondsSinceEpoch;
 
     try {
       await db.insert(
@@ -688,6 +718,8 @@ class ArticleDao {
           'feedId': article.feedId,
           'link': article.link,
           'normalizedLink': normalizedLink,
+          'normalizedTitle': normalizedTitle,
+          'syncedAt': syncedAt,
           'syncHash': article.syncHash,
           'title': article.title,
           'readAt': readAtValue,
@@ -754,10 +786,10 @@ class ArticleDao {
     String orderBy;
     switch (sortOption) {
       case ArticleSortOption.dateDesc:
-        orderBy = 'date DESC';
+        orderBy = 'syncedAt DESC, date DESC';
         break;
       case ArticleSortOption.dateAsc:
-        orderBy = 'date ASC';
+        orderBy = 'syncedAt ASC, date ASC';
         break;
       case ArticleSortOption.titleAsc:
         orderBy = 'title ASC';
@@ -788,7 +820,7 @@ class ArticleDao {
         SELECT a.* FROM article a
         INNER JOIN feed f ON a.feedId = f.id
         WHERE ${whereClause.replaceAll('accountId = ?', 'a.accountId = ?')}
-        ORDER BY f.name $feedOrder, a.date DESC
+        ORDER BY f.name $feedOrder, a.syncedAt DESC, a.date DESC
         LIMIT ?
       ''';
       maps = await db.rawQuery(query, [...whereArgs, limit]);

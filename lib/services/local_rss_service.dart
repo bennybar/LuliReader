@@ -99,7 +99,8 @@ class LocalRssService {
       return; // No feeds to sync
     }
 
-    onProgress?.call('Found ${feedsToSync.length} feed(s) to sync');
+    final totalFeeds = feedsToSync.length;
+    onProgress?.call('0|Found $totalFeeds feed(s) to sync');
     
     // Sync feeds with limited concurrency
     final futures = <Future>[];
@@ -115,23 +116,27 @@ class LocalRssService {
       }
 
       activeCount++;
-      onProgress?.call('Syncing: ${feed.name} (${completedCount + errorCount + 1}/${feedsToSync.length})');
+      final currentIndex = completedCount + errorCount;
+      final percentStart = ((currentIndex) / totalFeeds * 100).clamp(0, 100).toStringAsFixed(0);
+      onProgress?.call('$percentStart|Syncing: ${feed.name} (${currentIndex + 1}/$totalFeeds)');
       
       futures.add(_syncFeed(feed, accountId, preDate, minDate, accountFullContent, onProgress).then((_) {
         activeCount--;
         completedCount++;
-        onProgress?.call('✓ Completed: ${feed.name} ($completedCount/${feedsToSync.length})');
+        final percentDone = ((completedCount + errorCount) / totalFeeds * 100).clamp(0, 100).toStringAsFixed(0);
+        onProgress?.call('$percentDone|✓ Completed: ${feed.name} ($completedCount/$totalFeeds)');
       }).catchError((e) {
         activeCount--;
         errorCount++;
         final errorMsg = '✗ Error syncing ${feed.name}: $e';
-        onProgress?.call(errorMsg);
+        final percentDone = ((completedCount + errorCount) / totalFeeds * 100).clamp(0, 100).toStringAsFixed(0);
+        onProgress?.call('$percentDone|$errorMsg');
         print(errorMsg);
       }));
     }
 
     // Wait for all syncs to complete
-    onProgress?.call('Waiting for all feeds to complete...');
+    onProgress?.call('100|Waiting for all feeds to complete...');
     await Future.wait(futures, eagerError: false);
 
     // Update account sync time
