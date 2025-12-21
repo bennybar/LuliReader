@@ -78,7 +78,19 @@ class ArticleDao {
             continue;
           }
           
+          // If this article was previously read (even if it was cleaned up), ensure it does not resurface as unread
+          final historyMatch = await _findReadHistoryMatch(db, article);
+          final wasReadBefore = historyMatch != null;
+          final historyReadAt = historyMatch?['readAt'] as String?;
+
           final articleMap = article.toMap();
+          if (wasReadBefore) {
+            articleMap['isUnread'] = 0;
+            if (historyReadAt != null) {
+              articleMap['updateAt'] = historyReadAt;
+            }
+            print('[ARTICLE_DAO] Article matches read history; inserting as READ. id=${article.id}, title=${article.title}');
+          }
           print('[ARTICLE_DAO] Inserting article: id=${article.id}, title=${article.title}, accountId=${article.accountId}');
           print('[ARTICLE_DAO] Article map accountId: ${articleMap['accountId']} (type: ${articleMap['accountId'].runtimeType})');
           await db.insert('article', articleMap, conflictAlgorithm: ConflictAlgorithm.fail);
@@ -114,6 +126,22 @@ class ArticleDao {
         
         // Log what we found for debugging
         print('[ARTICLE_DAO] Article already exists: existingId=${existingArticle.id}, newId=${article.id}, existingIsUnread=${existingArticle.isUnread}, existingSyncHash=${existingArticle.syncHash}');
+
+        // If history says this article was read but it is currently unread, fix it
+        final historyMatch = await _findReadHistoryMatch(db, article);
+        if (historyMatch != null && existingArticle.isUnread) {
+          final readAt = historyMatch['readAt'] as String?;
+          await db.update(
+            'article',
+            {
+              'isUnread': 0,
+              'updateAt': readAt ?? DateTime.now().toUtc().toIso8601String(),
+            },
+            where: 'id = ?',
+            whereArgs: [existingArticle.id],
+          );
+          print('[ARTICLE_DAO] Restored read status from history for article ${existingArticle.id}');
+        }
         
         // CRITICAL: Preserve read status - if existing article was read, make sure it stays read
         // The existing article's read status should already be preserved since we're not inserting
@@ -211,15 +239,28 @@ class ArticleDao {
 
   Future<int> markAsRead(String id) async {
     final db = await _dbHelper.database;
-    return await db.update(
+    final now = DateTime.now().toUtc();
+    final result = await db.update(
       'article',
       {
         'isUnread': 0,
-        'updateAt': DateTime.now().toUtc().toIso8601String(),
+        'updateAt': now.toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [id],
     );
+
+    // Persist read history so resurfaced items remain read
+    try {
+      final article = await getById(id);
+      if (article != null) {
+        await _recordReadHistory(article, readAt: now);
+      }
+    } catch (e) {
+      print('[ARTICLE_DAO] Error recording read history for $id: $e');
+    }
+
+    return result;
   }
 
   Future<int> markAsUnread(String id) async {
@@ -500,12 +541,21 @@ class ArticleDao {
   Future<int> batchMarkAsRead(List<String> articleIds) async {
     if (articleIds.isEmpty) return 0;
     final db = await _dbHelper.database;
-    final now = DateTime.now().toUtc().toIso8601String();
+    final now = DateTime.now().toUtc();
     final placeholders = articleIds.map((_) => '?').join(',');
-    return await db.rawUpdate(
+    final result = await db.rawUpdate(
       'UPDATE article SET isUnread = 0, updateAt = ? WHERE id IN ($placeholders)',
-      [now, ...articleIds],
+      [now.toIso8601String(), ...articleIds],
     );
+
+    // Persist read history for all items in the batch
+    try {
+      await _recordReadHistoryForIds(articleIds, readAt: now);
+    } catch (e) {
+      print('[ARTICLE_DAO] Error recording batch read history: $e');
+    }
+
+    return result;
   }
 
   /// Batch mark articles as unread
@@ -550,6 +600,76 @@ class ArticleDao {
       'DELETE FROM article WHERE id IN ($placeholders)',
       articleIds,
     );
+  }
+
+  Future<Map<String, dynamic>?> _findReadHistoryMatch(Database db, Article article) async {
+    final matchClauses = <String>[
+      'link = ?',
+      '(feedId = ? AND TRIM(UPPER(title)) = TRIM(UPPER(?)))',
+    ];
+    final whereArgs = <dynamic>[
+      article.accountId,
+      article.link,
+      article.feedId,
+      article.title,
+    ];
+
+    if (article.syncHash != null && article.syncHash!.isNotEmpty) {
+      matchClauses.add('syncHash = ?');
+      whereArgs.add(article.syncHash);
+    }
+
+    final maps = await db.query(
+      'read_history',
+      where: 'accountId = ? AND (${matchClauses.join(' OR ')})',
+      whereArgs: whereArgs,
+      orderBy: 'readAt DESC',
+      limit: 1,
+    );
+
+    if (maps.isEmpty) return null;
+    return maps.first;
+  }
+
+  Future<void> _recordReadHistory(Article article, {DateTime? readAt}) async {
+    final db = await _dbHelper.database;
+    final readAtValue = (readAt ?? DateTime.now().toUtc()).toIso8601String();
+
+    try {
+      await db.insert(
+        'read_history',
+        {
+          'accountId': article.accountId,
+          'feedId': article.feedId,
+          'link': article.link,
+          'syncHash': article.syncHash,
+          'title': article.title,
+          'readAt': readAtValue,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    } catch (e) {
+      print('[ARTICLE_DAO] Error recording read history for article ${article.id}: $e');
+    }
+  }
+
+  Future<void> _recordReadHistoryForIds(List<String> articleIds, {DateTime? readAt}) async {
+    if (articleIds.isEmpty) return;
+    final db = await _dbHelper.database;
+    final placeholders = articleIds.map((_) => '?').join(',');
+    final rows = await db.rawQuery(
+      'SELECT * FROM article WHERE id IN ($placeholders)',
+      articleIds,
+    );
+
+    for (final row in rows) {
+      try {
+        final article = Article.fromMap(row);
+        await _recordReadHistory(article, readAt: readAt);
+      } catch (e) {
+        print('[ARTICLE_DAO] Error parsing article for history: $e, row=$row');
+      }
+    }
   }
 
   /// Get articles with sorting

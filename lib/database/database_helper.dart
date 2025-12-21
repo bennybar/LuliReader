@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onConfigure: (db) async {
         // Enable foreign key cascade (e.g., deleting a feed removes its articles).
         await db.execute('PRAGMA foreign_keys = ON');
@@ -116,10 +116,27 @@ class DatabaseHelper {
       )
     ''');
 
+    // Read history table - used to prevent resurfacing of previously read items
+    await db.execute('''
+      CREATE TABLE read_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        accountId INTEGER NOT NULL,
+        feedId TEXT,
+        link TEXT,
+        syncHash TEXT,
+        title TEXT,
+        readAt TEXT NOT NULL
+      )
+    ''');
+
     // Create indexes
     await db.execute('CREATE INDEX idx_article_feedId ON article(feedId)');
     await db.execute('CREATE INDEX idx_article_accountId ON article(accountId)');
     await db.execute('CREATE INDEX idx_article_syncHash ON article(syncHash)');
+    await db.execute('CREATE INDEX idx_read_history_accountId ON read_history(accountId)');
+    await db.execute('CREATE INDEX idx_read_history_lookup ON read_history(accountId, syncHash, link, feedId)');
+    await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_link ON read_history(accountId, link)');
+    await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_syncHash ON read_history(accountId, syncHash)');
     await db.execute('CREATE INDEX idx_feed_groupId ON feed(groupId)');
     await db.execute('CREATE INDEX idx_feed_accountId ON feed(accountId)');
     await db.execute('CREATE INDEX idx_group_accountId ON "group"(accountId)');
@@ -180,6 +197,36 @@ class DatabaseHelper {
         await db.execute('CREATE INDEX idx_article_syncHash ON article(syncHash)');
       } catch (e) {
         print('Error creating syncHash index: $e');
+      }
+    }
+    if (oldVersion < 7) {
+      // Add read_history table to keep a durable record of read items
+      try {
+        await db.execute('''
+          CREATE TABLE read_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            accountId INTEGER NOT NULL,
+            feedId TEXT,
+            link TEXT,
+            syncHash TEXT,
+            title TEXT,
+            readAt TEXT NOT NULL
+          )
+        ''');
+        await db.execute('CREATE INDEX idx_read_history_accountId ON read_history(accountId)');
+        await db.execute('CREATE INDEX idx_read_history_lookup ON read_history(accountId, syncHash, link, feedId)');
+        await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_link ON read_history(accountId, link)');
+        await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_syncHash ON read_history(accountId, syncHash)');
+
+        // Seed history from existing read articles so previously read items don't resurface
+        await db.execute('''
+          INSERT OR IGNORE INTO read_history (accountId, feedId, link, syncHash, title, readAt)
+          SELECT accountId, feedId, link, syncHash, title, COALESCE(updateAt, datetime('now')) 
+          FROM article 
+          WHERE isUnread = 0
+        ''');
+      } catch (e) {
+        print('Error creating read_history table: $e');
       }
     }
     if (oldVersion < 2) {
