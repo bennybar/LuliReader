@@ -428,6 +428,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                         _buildFallbackContent()
                     else
                       _buildFallbackContent(),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
