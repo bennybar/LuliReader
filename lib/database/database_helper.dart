@@ -28,7 +28,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onConfigure: (db) async {
         // Enable foreign key cascade (e.g., deleting a feed removes its articles).
         await db.execute('PRAGMA foreign_keys = ON');
@@ -144,7 +144,6 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_article_normalizedLink ON article(normalizedLink)');
     await db.execute('CREATE INDEX idx_article_normalizedTitle ON article(normalizedTitle)');
     await db.execute('CREATE UNIQUE INDEX idx_article_unique_normallink ON article(accountId, normalizedLink)');
-    await db.execute('CREATE UNIQUE INDEX idx_article_unique_normaltitle ON article(accountId, normalizedTitle)');
     await db.execute('CREATE INDEX idx_read_history_accountId ON read_history(accountId)');
     await db.execute('CREATE INDEX idx_read_history_lookup ON read_history(accountId, syncHash, link, feedId)');
     await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_link ON read_history(accountId, link)');
@@ -470,6 +469,19 @@ class DatabaseHelper {
         await db.execute('UPDATE read_history SET normalizedTitle = NULL WHERE normalizedTitle = \'\'');
       } catch (e) {
         print('Error cleaning empty normalized fields: $e');
+      }
+    }
+    if (oldVersion < 12) {
+      // Drop overly strict normalizedTitle unique constraints to avoid blocking inserts
+      try {
+        await db.execute('DROP INDEX IF EXISTS idx_article_unique_normaltitle');
+      } catch (e) {
+        print('Error dropping idx_article_unique_normaltitle: $e');
+      }
+      try {
+        await db.execute('DROP INDEX IF EXISTS idx_read_history_unique_normaltitle');
+      } catch (e) {
+        print('Error dropping idx_read_history_unique_normaltitle: $e');
       }
     }
     if (oldVersion < 2) {
