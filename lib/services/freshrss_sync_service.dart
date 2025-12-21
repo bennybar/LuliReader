@@ -294,6 +294,14 @@ class FreshRssSyncService {
         // Also check by ID as fallback
         final existingById = await _articleDao.getById(article.id);
         if (existingById == null) {
+          // Check if article was previously read and deleted (in read_history)
+          // If found, skip insertion to prevent deleted articles from returning
+          final wasPreviouslyRead = await _articleDao.isInReadHistory(article);
+          if (wasPreviouslyRead) {
+            // Skip article that was previously read (and likely deleted)
+            continue;
+          }
+          
           final toInsert = article.copyWith(
             id: normalizedId,
             isUnread: isUnreadFromServer, // Use server's unread IDs list

@@ -76,19 +76,18 @@ class ArticleDao {
             continue;
           }
           
-          // If this article was previously read (even if it was cleaned up), ensure it does not resurface as unread
+          // Check if this article was previously read and deleted (in read_history)
+          // If found, skip insertion entirely to prevent deleted articles from returning
           final historyMatch = await _findReadHistoryMatch(db, article);
-          final wasReadBefore = historyMatch != null;
-          final historyReadAt = historyMatch?['readAt'] as String?;
-
-          final articleMap = article.toMap();
-          if (wasReadBefore) {
-            articleMap['isUnread'] = 0;
-            if (historyReadAt != null) {
-              articleMap['updateAt'] = historyReadAt;
-            }
-            print('[ARTICLE_DAO] Article matches read history; inserting as READ. id=${article.id}, title=${article.title}');
+          if (historyMatch != null) {
+            // Article was previously read (and likely deleted after keepReadItemsDays)
+            // Skip insertion to prevent it from resurfacing
+            print('[ARTICLE_DAO] Skipping article that was previously read: id=${article.id}, title=${article.title}');
+            continue;
           }
+
+          // Article is new, proceed with insertion
+          final articleMap = article.toMap();
           print('[ARTICLE_DAO] Inserting article: id=${article.id}, title=${article.title}, accountId=${article.accountId}');
           print('[ARTICLE_DAO] Article map accountId: ${articleMap['accountId']} (type: ${articleMap['accountId'].runtimeType})');
           await db.insert('article', articleMap, conflictAlgorithm: ConflictAlgorithm.fail);
@@ -201,6 +200,36 @@ class ArticleDao {
     );
     if (maps.isEmpty) return null;
     return Article.fromMap(maps.first);
+  }
+
+  /// Check if an article was previously read (exists in read_history)
+  /// This prevents deleted articles from being re-inserted during sync
+  Future<bool> isInReadHistory(Article article) async {
+    final db = await _dbHelper.database;
+    final matchClauses = <String>[
+      'link = ?',
+      '(feedId = ? AND TRIM(UPPER(title)) = TRIM(UPPER(?)))',
+    ];
+    final whereArgs = <dynamic>[
+      article.accountId,
+      article.link,
+      article.feedId,
+      article.title,
+    ];
+
+    if (article.syncHash != null && article.syncHash!.isNotEmpty) {
+      matchClauses.add('syncHash = ?');
+      whereArgs.add(article.syncHash);
+    }
+
+    final maps = await db.query(
+      'read_history',
+      where: 'accountId = ? AND (${matchClauses.join(' OR ')})',
+      whereArgs: whereArgs,
+      limit: 1,
+    );
+
+    return maps.isNotEmpty;
   }
 
   Future<List<Article>> getByFeedId(String feedId, {int limit = 100}) async {

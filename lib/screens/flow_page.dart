@@ -688,7 +688,11 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                             builder: (_) => ArticleReaderScreen(article: article),
                           ),
                         )
-                        .then((_) => _loadArticles());
+                        .then((_) async {
+                          // Small delay to ensure database updates are committed
+                          await Future.delayed(const Duration(milliseconds: 100));
+                          _loadArticles();
+                        });
                   }
                 },
                 onLongPress: () {

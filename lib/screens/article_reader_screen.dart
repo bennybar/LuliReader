@@ -14,6 +14,7 @@ import '../database/article_dao.dart';
 import '../database/feed_dao.dart';
 import '../providers/app_provider.dart';
 import '../services/local_rss_service.dart';
+import '../services/rss_service.dart';
 import '../services/account_service.dart';
 import '../utils/rtl_helper.dart';
 import '../utils/reading_time.dart';
@@ -98,8 +99,17 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
     setState(() => _isLoadingFullContent = true);
     try {
-      final rssService = ref.read(localRssServiceProvider);
-      final content = await rssService.downloadFullContent(widget.article);
+      // Use RssService directly (works for both local and FreshRSS accounts)
+      final rssService = ref.read(rssServiceProvider);
+      final content = await rssService.parseFullContent(widget.article.link, widget.article.title);
+      
+      // Update article in database with full content if successfully downloaded
+      if (content != null) {
+        final articleDao = ref.read(articleDaoProvider);
+        final updatedArticle = widget.article.copyWith(fullContent: content);
+        await articleDao.update(updatedArticle);
+      }
+      
       setState(() {
         _fullContent = content;
         _isLoadingFullContent = false;
@@ -133,8 +143,11 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         setState(() {
           _isUnread = false;
         });
+        // Notify that article was marked as read so parent can refresh
+        // The parent screen (FlowPage) will reload articles when returning
       } catch (e) {
-        // Error marking as read
+        // Error marking as read - reset flag so we can try again
+        _isMarkedAsRead = false;
       }
     }
   }

@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../providers/app_provider.dart';
 import '../services/account_service.dart';
 import '../services/local_rss_service.dart';
+import '../services/sync_coordinator.dart';
 import '../database/database_helper.dart';
 import '../background/background_sync.dart';
 import '../services/shared_preferences_service.dart';
@@ -606,7 +607,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.58'),
+                subtitle: const Text('Luli Reader v1.1.59'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
@@ -866,8 +867,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     try {
       await DatabaseHelper.instance.clearArticlesAndSyncState();
 
-      final rssService = ref.read(localRssServiceProvider);
-      await rssService.sync(account.id!);
+      final syncCoordinator = ref.read(syncCoordinatorProvider);
+      await syncCoordinator.syncAccount(account.id!);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
