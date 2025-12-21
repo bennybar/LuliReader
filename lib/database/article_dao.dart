@@ -124,25 +124,10 @@ class ArticleDao {
         // Log what we found for debugging
         print('[ARTICLE_DAO] Article already exists: existingId=${existingArticle.id}, newId=${article.id}, existingIsUnread=${existingArticle.isUnread}, existingSyncHash=${existingArticle.syncHash}');
 
-        // If history says this article was read but it is currently unread, fix it
-        final historyMatch = await _findReadHistoryMatch(db, article);
-        if (historyMatch != null && existingArticle.isUnread) {
-          final readAt = historyMatch['readAt'] as String?;
-          await db.update(
-            'article',
-            {
-              'isUnread': 0,
-              'updateAt': readAt ?? DateTime.now().toUtc().toIso8601String(),
-            },
-            where: 'id = ?',
-            whereArgs: [existingArticle.id],
-          );
-          print('[ARTICLE_DAO] Restored read status from history for article ${existingArticle.id}');
-        }
-        
-        // CRITICAL: Preserve read status - if existing article was read, make sure it stays read
-        // The existing article's read status should already be preserved since we're not inserting
-        // But let's ensure we don't accidentally mark it as unread by verifying the existing state
+        // CRITICAL: Preserve the current read status of existing articles
+        // Do not override the user's explicit choice to mark articles as unread
+        // The read_history is only used to prevent deleted articles from resurfacing,
+        // not to override the current state of existing articles
         
         // Update syncHash if it's missing (for backward compatibility)
         if (article.syncHash != null && article.syncHash!.isNotEmpty) {

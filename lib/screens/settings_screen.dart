@@ -607,7 +607,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.60'),
+                subtitle: const Text('Luli Reader v1.1.61'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
@@ -865,7 +865,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
     setState(() => _isResyncing = true);
     try {
+      // Clear articles and sync state
       await DatabaseHelper.instance.clearArticlesAndSyncState();
+      
+      // Also clear read_history for this account to allow articles to be re-inserted
+      final db = await DatabaseHelper.instance.database;
+      await db.delete(
+        'read_history',
+        where: 'accountId = ?',
+        whereArgs: [account.id!],
+      );
 
       final syncCoordinator = ref.read(syncCoordinatorProvider);
       await syncCoordinator.syncAccount(account.id!);
