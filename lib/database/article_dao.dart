@@ -1,3 +1,4 @@
+import 'package:sqflite/sqflite.dart';
 import '../database/database_helper.dart';
 import '../models/article.dart';
 import '../models/article_sort.dart';
@@ -44,21 +45,43 @@ class ArticleDao {
       }
       
       // Also check for same title in the same feed (prevents re-uploads of same article with new date)
+      // Use case-insensitive comparison and trim whitespace
       if (existing.isEmpty) {
-        existing = await db.query(
-          'article',
-          where: 'title = ? AND feedId = ? AND accountId = ?',
-          whereArgs: [article.title, article.feedId, article.accountId],
-          limit: 1,
+        existing = await db.rawQuery(
+          '''
+          SELECT * FROM article 
+          WHERE TRIM(UPPER(title)) = TRIM(UPPER(?)) 
+          AND feedId = ? 
+          AND accountId = ?
+          LIMIT 1
+          ''',
+          [article.title, article.feedId, article.accountId],
         );
       }
 
       if (existing.isEmpty) {
         try {
+          // Check one more time if article with this ID already exists (primary key check)
+          // This catches cases where the ID might have been reused
+          final idCheck = await db.query(
+            'article',
+            where: 'id = ?',
+            whereArgs: [article.id],
+            limit: 1,
+          );
+          
+          if (idCheck.isNotEmpty) {
+            final existingById = Article.fromMap(idCheck.first);
+            print('[ARTICLE_DAO] Article with ID ${article.id} already exists! Existing isUnread=${existingById.isUnread}, Existing title=${existingById.title}');
+            // Skip insertion - article already exists with this ID
+            // Preserve its read status by not updating it
+            continue;
+          }
+          
           final articleMap = article.toMap();
-          print('[ARTICLE_DAO] Inserting article: id=${article.id}, accountId=${article.accountId} (type: ${article.accountId.runtimeType})');
+          print('[ARTICLE_DAO] Inserting article: id=${article.id}, title=${article.title}, accountId=${article.accountId}');
           print('[ARTICLE_DAO] Article map accountId: ${articleMap['accountId']} (type: ${articleMap['accountId'].runtimeType})');
-          await db.insert('article', articleMap);
+          await db.insert('article', articleMap, conflictAlgorithm: ConflictAlgorithm.fail);
           
           // Verify insertion immediately with a small delay to ensure commit
           await Future.delayed(const Duration(milliseconds: 10));
@@ -86,9 +109,18 @@ class ArticleDao {
           print('[ARTICLE_DAO] Stack trace: $stackTrace');
         }
       } else {
-        // Article already exists - update syncHash if it's missing (for backward compatibility)
+        // Article already exists - preserve read status and update metadata if needed
+        final existingArticle = Article.fromMap(existing.first);
+        
+        // Log what we found for debugging
+        print('[ARTICLE_DAO] Article already exists: existingId=${existingArticle.id}, newId=${article.id}, existingIsUnread=${existingArticle.isUnread}, existingSyncHash=${existingArticle.syncHash}');
+        
+        // CRITICAL: Preserve read status - if existing article was read, make sure it stays read
+        // The existing article's read status should already be preserved since we're not inserting
+        // But let's ensure we don't accidentally mark it as unread by verifying the existing state
+        
+        // Update syncHash if it's missing (for backward compatibility)
         if (article.syncHash != null && article.syncHash!.isNotEmpty) {
-          final existingArticle = Article.fromMap(existing.first);
           if (existingArticle.syncHash == null || existingArticle.syncHash!.isEmpty) {
             try {
               await db.update(
@@ -103,7 +135,11 @@ class ArticleDao {
             }
           }
         }
-        print('[ARTICLE_DAO] Article already exists: ${article.id}');
+        
+        // If somehow the existing article became unread (shouldn't happen), preserve its read status
+        // But we shouldn't need this since we're not inserting/updating it
+        
+        print('[ARTICLE_DAO] Skipped duplicate article: ${article.title} (existing ID: ${existingArticle.id})');
       }
     }
 
