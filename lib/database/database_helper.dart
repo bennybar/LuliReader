@@ -5,6 +5,7 @@ import '../models/account.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/group.dart';
+import '../utils/link_normalizer.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -26,7 +27,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onConfigure: (db) async {
         // Enable foreign key cascade (e.g., deleting a feed removes its articles).
         await db.execute('PRAGMA foreign_keys = ON');
@@ -104,6 +105,7 @@ class DatabaseHelper {
         shortDescription TEXT NOT NULL,
         img TEXT,
         link TEXT NOT NULL,
+        normalizedLink TEXT,
         feedId TEXT NOT NULL,
         accountId INTEGER NOT NULL,
         isUnread INTEGER DEFAULT 1,
@@ -123,6 +125,7 @@ class DatabaseHelper {
         accountId INTEGER NOT NULL,
         feedId TEXT,
         link TEXT,
+        normalizedLink TEXT,
         syncHash TEXT,
         title TEXT,
         readAt TEXT NOT NULL
@@ -133,10 +136,12 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_article_feedId ON article(feedId)');
     await db.execute('CREATE INDEX idx_article_accountId ON article(accountId)');
     await db.execute('CREATE INDEX idx_article_syncHash ON article(syncHash)');
+    await db.execute('CREATE INDEX idx_article_normalizedLink ON article(normalizedLink)');
     await db.execute('CREATE INDEX idx_read_history_accountId ON read_history(accountId)');
     await db.execute('CREATE INDEX idx_read_history_lookup ON read_history(accountId, syncHash, link, feedId)');
     await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_link ON read_history(accountId, link)');
     await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_syncHash ON read_history(accountId, syncHash)');
+    await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_normallink ON read_history(accountId, normalizedLink)');
     await db.execute('CREATE INDEX idx_feed_groupId ON feed(groupId)');
     await db.execute('CREATE INDEX idx_feed_accountId ON feed(accountId)');
     await db.execute('CREATE INDEX idx_group_accountId ON "group"(accountId)');
@@ -208,6 +213,7 @@ class DatabaseHelper {
             accountId INTEGER NOT NULL,
             feedId TEXT,
             link TEXT,
+            normalizedLink TEXT,
             syncHash TEXT,
             title TEXT,
             readAt TEXT NOT NULL
@@ -227,6 +233,67 @@ class DatabaseHelper {
         ''');
       } catch (e) {
         print('Error creating read_history table: $e');
+      }
+    }
+    if (oldVersion < 8) {
+      // Add normalizedLink column and backfill for better duplicate detection
+      try {
+        await db.execute('ALTER TABLE article ADD COLUMN normalizedLink TEXT');
+      } catch (e) {
+        print('Error adding normalizedLink to article: $e');
+      }
+      try {
+        await db.execute('ALTER TABLE read_history ADD COLUMN normalizedLink TEXT');
+      } catch (e) {
+        print('Error adding normalizedLink to read_history: $e');
+      }
+
+      // Backfill normalizedLink values in Dart to apply consistent normalization rules
+      try {
+        final articles = await db.query('article', columns: ['id', 'link']);
+        for (final row in articles) {
+          final id = row['id'] as String?;
+          final link = row['link'] as String? ?? '';
+          if (id == null) continue;
+          final normalized = LinkNormalizer.normalize(link);
+          await db.update(
+            'article',
+            {'normalizedLink': normalized},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      } catch (e) {
+        print('Error backfilling normalizedLink on article: $e');
+      }
+
+      try {
+        final historyRows = await db.query('read_history', columns: ['id', 'link']);
+        for (final row in historyRows) {
+          final id = row['id'] as int?;
+          final link = row['link'] as String? ?? '';
+          if (id == null) continue;
+          final normalized = LinkNormalizer.normalize(link);
+          await db.update(
+            'read_history',
+            {'normalizedLink': normalized},
+            where: 'id = ?',
+            whereArgs: [id],
+          );
+        }
+      } catch (e) {
+        print('Error backfilling normalizedLink on read_history: $e');
+      }
+
+      try {
+        await db.execute('CREATE INDEX idx_article_normalizedLink ON article(normalizedLink)');
+      } catch (e) {
+        print('Error creating idx_article_normalizedLink: $e');
+      }
+      try {
+        await db.execute('CREATE UNIQUE INDEX idx_read_history_unique_normallink ON read_history(accountId, normalizedLink)');
+      } catch (e) {
+        print('Error creating idx_read_history_unique_normallink: $e');
       }
     }
     if (oldVersion < 2) {

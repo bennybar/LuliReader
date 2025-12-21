@@ -9,6 +9,7 @@ class Article {
   final String link;
   final String feedId;
   final int accountId;
+  final String? normalizedLink;
   final bool isUnread;
   final bool isStarred;
   final bool isReadLater;
@@ -27,6 +28,7 @@ class Article {
     required this.link,
     required this.feedId,
     required this.accountId,
+    this.normalizedLink,
     this.isUnread = true,
     this.isStarred = false,
     this.isReadLater = false,
@@ -45,6 +47,7 @@ class Article {
       'shortDescription': shortDescription,
       'img': img,
       'link': link,
+      'normalizedLink': normalizedLink,
       'feedId': feedId,
       'accountId': accountId,
       'isUnread': isUnread ? 1 : 0,
@@ -71,6 +74,7 @@ class Article {
       shortDescription: map['shortDescription'] as String,
       img: map['img'] as String?,
       link: map['link'] as String,
+      normalizedLink: map['normalizedLink'] as String?,
       feedId: map['feedId'] as String,
       accountId: map['accountId'] as int,
       isUnread: (map['isUnread'] as int? ?? 1) == 1,
@@ -95,6 +99,7 @@ class Article {
     String? link,
     String? feedId,
     int? accountId,
+    String? normalizedLink,
     bool? isUnread,
     bool? isStarred,
     bool? isReadLater,
@@ -111,6 +116,7 @@ class Article {
       shortDescription: shortDescription ?? this.shortDescription,
       img: img ?? this.img,
       link: link ?? this.link,
+      normalizedLink: normalizedLink ?? this.normalizedLink,
       feedId: feedId ?? this.feedId,
       accountId: accountId ?? this.accountId,
       isUnread: isUnread ?? this.isUnread,

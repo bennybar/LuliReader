@@ -3,6 +3,7 @@ import '../database/database_helper.dart';
 import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
+import '../utils/link_normalizer.dart';
 
 class ArticleDao {
   final DatabaseHelper _dbHelper = DatabaseHelper.instance;
@@ -21,9 +22,24 @@ class ArticleDao {
     final List<Article> newArticles = [];
 
     for (final article in articles) {
+      final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
+      final articleWithNormalized = article.normalizedLink == null
+          ? article.copyWith(normalizedLink: normalizedLink)
+          : article;
+
       // Check for existing article by syncHash first (if available), then fall back to link check
       List<Map<String, dynamic>> existing = [];
       
+      if (normalizedLink.isNotEmpty) {
+        existing = await db.query(
+          'article',
+          where: 'normalizedLink = ? AND accountId = ?',
+          whereArgs: [normalizedLink, article.accountId],
+          limit: 1,
+        );
+      }
+
+      if (existing.isEmpty) {
       if (article.syncHash != null && article.syncHash!.isNotEmpty) {
         // Check by syncHash (preferred method for duplicate detection)
         existing = await db.query(
@@ -32,6 +48,7 @@ class ArticleDao {
           whereArgs: [article.syncHash, article.accountId],
           limit: 1,
         );
+      }
       }
       
       // Fall back to link check if syncHash check found nothing (for backward compatibility)
@@ -79,11 +96,11 @@ class ArticleDao {
           }
           
           // If this article was previously read (even if it was cleaned up), ensure it does not resurface as unread
-          final historyMatch = await _findReadHistoryMatch(db, article);
+          final historyMatch = await _findReadHistoryMatch(db, articleWithNormalized);
           final wasReadBefore = historyMatch != null;
           final historyReadAt = historyMatch?['readAt'] as String?;
 
-          final articleMap = article.toMap();
+          final articleMap = articleWithNormalized.toMap();
           if (wasReadBefore) {
             articleMap['isUnread'] = 0;
             if (historyReadAt != null) {
@@ -106,7 +123,7 @@ class ArticleDao {
           if (verify.isNotEmpty) {
             final verifiedAccountId = verify.first['accountId'];
             print('[ARTICLE_DAO] ✓ Verified article inserted: id=${article.id}, accountId=$verifiedAccountId (type: ${verifiedAccountId.runtimeType})');
-            newArticles.add(article);
+            newArticles.add(articleWithNormalized);
           } else {
             print('[ARTICLE_DAO] ✗ ERROR: Article not found after insertion! id=${article.id}');
             // Try raw query
@@ -128,7 +145,7 @@ class ArticleDao {
         print('[ARTICLE_DAO] Article already exists: existingId=${existingArticle.id}, newId=${article.id}, existingIsUnread=${existingArticle.isUnread}, existingSyncHash=${existingArticle.syncHash}');
 
         // If history says this article was read but it is currently unread, fix it
-        final historyMatch = await _findReadHistoryMatch(db, article);
+        final historyMatch = await _findReadHistoryMatch(db, articleWithNormalized);
         if (historyMatch != null && existingArticle.isUnread) {
           final readAt = historyMatch['readAt'] as String?;
           await db.update(
@@ -619,16 +636,27 @@ class ArticleDao {
   }
 
   Future<Map<String, dynamic>?> _findReadHistoryMatch(Database db, Article article) async {
-    final matchClauses = <String>[
-      'link = ?',
-      '(feedId = ? AND TRIM(UPPER(title)) = TRIM(UPPER(?)))',
-    ];
-    final whereArgs = <dynamic>[
-      article.accountId,
-      article.link,
-      article.feedId,
-      article.title,
-    ];
+    final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
+
+    final matchClauses = <String>[];
+    final whereArgs = <dynamic>[article.accountId];
+
+    if (normalizedLink.isNotEmpty) {
+      matchClauses.add('normalizedLink = ?');
+      whereArgs.add(normalizedLink);
+
+      // Also match against raw link field in case older rows stored the normalized value there
+      matchClauses.add('link = ?');
+      whereArgs.add(normalizedLink);
+    }
+
+    // Raw link as-is
+    matchClauses.add('link = ?');
+    whereArgs.add(article.link);
+
+    // Title + feed fallback
+    matchClauses.add('(feedId = ? AND TRIM(UPPER(title)) = TRIM(UPPER(?)))');
+    whereArgs.addAll([article.feedId, article.title]);
 
     if (article.syncHash != null && article.syncHash!.isNotEmpty) {
       matchClauses.add('syncHash = ?');
@@ -650,6 +678,7 @@ class ArticleDao {
   Future<void> _recordReadHistory(Article article, {DateTime? readAt}) async {
     final db = await _dbHelper.database;
     final readAtValue = (readAt ?? article.updateAt ?? DateTime.now().toUtc()).toIso8601String();
+    final normalizedLink = article.normalizedLink ?? LinkNormalizer.normalize(article.link);
 
     try {
       await db.insert(
@@ -658,6 +687,7 @@ class ArticleDao {
           'accountId': article.accountId,
           'feedId': article.feedId,
           'link': article.link,
+          'normalizedLink': normalizedLink,
           'syncHash': article.syncHash,
           'title': article.title,
           'readAt': readAtValue,

@@ -5,6 +5,7 @@ import 'package:html/parser.dart' as html_parser;
 import '../models/article.dart';
 import '../models/feed.dart';
 import 'readability.dart';
+import '../utils/link_normalizer.dart';
 
 class RssHelper {
   final http.Client _client;
@@ -219,6 +220,7 @@ class RssHelper {
     // Generate syncHash: base64 of title + feed.url
     final articleTitle = _decodeHtml(item.title ?? feed.name);
     final syncHash = _generateSyncHash(articleTitle, feed.url);
+    final normalizedLink = LinkNormalizer.normalize(item.link ?? '');
 
     return Article(
       id: '$accountId\$${item.guid ?? item.link ?? DateTime.now().millisecondsSinceEpoch}',
@@ -231,6 +233,7 @@ class RssHelper {
       shortDescription: shortDesc,
       img: img,
       link: item.link ?? '',
+      normalizedLink: normalizedLink,
       updateAt: preDate,
       syncHash: syncHash,
     );
