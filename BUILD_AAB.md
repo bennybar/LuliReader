@@ -61,7 +61,7 @@ applicationId = "com.yourcompany.luli_reader"  // Change from com.example.luli_r
 
 Update the version in `pubspec.yaml`:
 ```yaml
-version: 1.1.61+11
+version: 1.1.61+12
 ```
 - The first number (1.1.61) is the version name (shown to users)
 - The number after + (10) is the version code (must increment for each release)
