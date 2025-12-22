@@ -1,3 +1,4 @@
+import 'package:sqflite/sqflite.dart';
 import '../database/database_helper.dart';
 import '../models/feed.dart';
 import '../models/article.dart';
@@ -7,7 +8,7 @@ class FeedDao {
 
   Future<void> insert(Feed feed) async {
     final db = await _dbHelper.database;
-    await db.insert('feed', feed.toMap());
+    await db.insert('feed', feed.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> insertList(List<Feed> feeds) async {

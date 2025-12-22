@@ -9,6 +9,9 @@ import '../services/article_action_service.dart';
 import '../services/freshrss_account_service.dart';
 import '../services/freshrss_service.dart';
 import '../services/freshrss_sync_service.dart';
+import '../services/miniflux_account_service.dart';
+import '../services/miniflux_service.dart';
+import '../services/miniflux_sync_service.dart';
 import '../services/local_rss_service.dart';
 import '../services/rss_helper.dart';
 import '../services/rss_service.dart';
@@ -42,6 +45,10 @@ final freshRssServiceProvider = Provider((ref) {
   return FreshRssService(ref.watch(httpClientProvider));
 });
 
+final minifluxServiceProvider = Provider((ref) {
+  return MinifluxService(ref.watch(httpClientProvider));
+});
+
 final accountServiceProvider = Provider((ref) {
   return AccountService(
     ref.watch(accountDaoProvider),
@@ -56,6 +63,15 @@ final freshRssAccountServiceProvider = Provider((ref) {
     ref.watch(groupDaoProvider),
     ref.watch(sharedPreferencesProvider),
     ref.watch(freshRssServiceProvider),
+  );
+});
+
+final minifluxAccountServiceProvider = Provider((ref) {
+  return MinifluxAccountService(
+    ref.watch(accountDaoProvider),
+    ref.watch(groupDaoProvider),
+    ref.watch(sharedPreferencesProvider),
+    ref.watch(minifluxServiceProvider),
   );
 });
 
@@ -82,11 +98,23 @@ final freshRssSyncServiceProvider = Provider((ref) {
   );
 });
 
+final minifluxSyncServiceProvider = Provider((ref) {
+  return MinifluxSyncService(
+    ref.watch(minifluxServiceProvider),
+    ref.watch(articleDaoProvider),
+    ref.watch(feedDaoProvider),
+    ref.watch(groupDaoProvider),
+    ref.watch(accountDaoProvider),
+    ref.watch(rssServiceProvider),
+  );
+});
+
 final syncCoordinatorProvider = Provider((ref) {
   return SyncCoordinator(
     ref.watch(accountDaoProvider),
     ref.watch(localRssServiceProvider),
     ref.watch(freshRssSyncServiceProvider),
+    ref.watch(minifluxSyncServiceProvider),
   );
 });
 
@@ -95,6 +123,7 @@ final articleActionServiceProvider = Provider((ref) {
     ref.watch(articleDaoProvider),
     ref.watch(accountDaoProvider),
     ref.watch(freshRssServiceProvider),
+    ref.watch(minifluxServiceProvider),
   );
 });
 

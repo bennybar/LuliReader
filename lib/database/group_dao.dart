@@ -1,3 +1,4 @@
+import 'package:sqflite/sqflite.dart';
 import '../database/database_helper.dart';
 import '../models/group.dart';
 import '../models/feed.dart';
@@ -7,7 +8,7 @@ class GroupDao {
 
   Future<void> insert(Group group) async {
     final db = await _dbHelper.database;
-    await db.insert('group', group.toMap());
+    await db.insert('group', group.toMap(), conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<Group?> getById(String id) async {

@@ -8,6 +8,7 @@ import '../models/feed.dart';
 import '../models/group.dart';
 import '../services/rss_helper.dart';
 import '../services/freshrss_service.dart';
+import '../services/miniflux_service.dart';
 import '../services/sync_coordinator.dart';
 import 'package:uuid/uuid.dart';
 
@@ -41,6 +42,7 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
       final feedDao = ref.read(feedDaoProvider);
       final groupDao = ref.read(groupDaoProvider);
       final freshRssService = ref.read(freshRssServiceProvider);
+      final minifluxService = ref.read(minifluxServiceProvider);
       final syncCoordinator = ref.read(syncCoordinatorProvider);
 
       // Check if feed already exists
@@ -82,9 +84,23 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
         final endpoint = FreshRssService.normalizeApiEndpoint(
           account.apiEndpoint ?? _urlController.text.trim(),
         );
-        final token = await _ensureFreshRssAuthToken(account, endpoint);
+        final token = await _ensureCloudAuthToken(account, endpoint, AccountType.freshrss);
         final groupName = (await groupDao.getById(targetGroupId))?.name;
         await freshRssService.subscribeToFeed(
+          endpoint,
+          token,
+          _urlController.text.trim(),
+          title: syndFeed.title,
+          categoryLabel: groupName,
+        );
+        await syncCoordinator.syncAccount(account.id!);
+      } else if (account.type == AccountType.miniflux) {
+        final endpoint = MinifluxService.normalizeApiEndpoint(
+          account.apiEndpoint ?? _urlController.text.trim(),
+        );
+        final token = await _ensureCloudAuthToken(account, endpoint, AccountType.miniflux);
+        final groupName = (await groupDao.getById(targetGroupId))?.name;
+        await minifluxService.subscribeToFeed(
           endpoint,
           token,
           _urlController.text.trim(),
@@ -129,7 +145,7 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
     }
   }
 
-  Future<String> _ensureFreshRssAuthToken(Account account, String endpoint) async {
+  Future<String> _ensureCloudAuthToken(Account account, String endpoint, AccountType type) async {
     if (account.authToken != null && account.authToken!.isNotEmpty) {
       return account.authToken!;
     }
@@ -137,13 +153,19 @@ class _AddFeedScreenState extends ConsumerState<AddFeedScreen> {
         account.username!.isEmpty ||
         account.password == null ||
         account.password!.isEmpty) {
-      throw Exception('FreshRSS credentials missing');
+      throw Exception('Cloud account credentials missing');
     }
-    final token = await ref.read(freshRssServiceProvider).authenticate(
-          endpoint,
-          account.username!,
-          account.password!,
-        );
+    final token = type == AccountType.miniflux
+        ? await ref.read(minifluxServiceProvider).authenticate(
+              endpoint,
+              account.username!,
+              account.password!,
+            )
+        : await ref.read(freshRssServiceProvider).authenticate(
+              endpoint,
+              account.username!,
+              account.password!,
+            );
     final updatedAccount = account.copyWith(
       authToken: token,
       apiEndpoint: endpoint,

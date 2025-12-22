@@ -12,6 +12,8 @@ import '../database/article_dao.dart';
 import '../database/feed_dao.dart';
 import '../services/freshrss_service.dart';
 import '../services/freshrss_sync_service.dart';
+import '../services/miniflux_service.dart';
+import '../services/miniflux_sync_service.dart';
 import '../services/rss_helper.dart';
 import '../services/rss_service.dart';
 import '../services/sync_log_service.dart';
@@ -143,10 +145,20 @@ void backgroundSyncDispatcher() {
         accountDao,
         rssService,
       );
+      final minifluxService = MinifluxService(http.Client());
+      final minifluxSyncService = MinifluxSyncService(
+        minifluxService,
+        articleDao,
+        feedDao,
+        groupDao,
+        accountDao,
+        rssService,
+      );
       final syncCoordinator = SyncCoordinator(
         accountDao,
         localRssService,
         freshRssSyncService,
+        minifluxSyncService,
       );
 
       final articleDaoBefore = ArticleDao();

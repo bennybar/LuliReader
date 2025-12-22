@@ -8,6 +8,7 @@ import '../models/feed.dart';
 import '../utils/rtl_helper.dart';
 import '../services/sync_coordinator.dart';
 import 'add_freshrss_account_screen.dart';
+import 'add_miniflux_account_screen.dart';
 import 'article_list_screen.dart';
 import 'add_feed_screen.dart';
 import 'feed_options_screen.dart';
@@ -156,19 +157,10 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
               onTap: () => Navigator.pop(context, 'freshrss'),
             ),
             ListTile(
-              leading: Icon(
-                Icons.cloud_queue,
-                color: Theme.of(context).disabledColor,
-              ),
-              title: Text(
-                'Miniflux (coming soon)',
-                style: TextStyle(color: Theme.of(context).disabledColor),
-              ),
-              subtitle: Text(
-                'Not available yet',
-                style: TextStyle(color: Theme.of(context).disabledColor),
-              ),
-              enabled: false,
+              leading: const Icon(Icons.cloud),
+              title: const Text('Miniflux'),
+              subtitle: const Text('Google Reader compatible'),
+              onTap: () => Navigator.pop(context, 'miniflux'),
             ),
           ],
         ),
@@ -179,6 +171,15 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
       final result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => const AddFreshRssAccountScreen(),
+        ),
+      );
+      if (result == true) {
+        _refresh();
+      }
+    } else if (selection == 'miniflux') {
+      final result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => const AddMinifluxAccountScreen(),
         ),
       );
       if (result == true) {

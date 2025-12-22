@@ -689,8 +689,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                           ),
                         )
                         .then((_) async {
-                          // Small delay to ensure database updates are committed
-                          await Future.delayed(const Duration(milliseconds: 100));
+                          // Reload articles immediately - database updates should be committed
+                          // For remote accounts (Miniflux/FreshRSS), the markAsRead operation
+                          // updates the local DB first, then syncs to server
                           _loadArticles();
                         });
                   }
