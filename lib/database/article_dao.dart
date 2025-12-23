@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import '../database/database_helper.dart';
+import '../database/blacklist_dao.dart';
 import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
@@ -83,6 +84,14 @@ class ArticleDao {
             // Article was previously read (and likely deleted after keepReadItemsDays)
             // Skip insertion to prevent it from resurfacing
             print('[ARTICLE_DAO] Skipping article that was previously read: id=${article.id}, title=${article.title}');
+            continue;
+          }
+
+          // Check if article is blocked by blacklist
+          final blacklistDao = BlacklistDao();
+          final isBlocked = await blacklistDao.isBlocked(article.id, article.title, article.feedId, article.accountId);
+          if (isBlocked) {
+            print('[ARTICLE_DAO] Skipping article blocked by blacklist: id=${article.id}, title=${article.title}');
             continue;
           }
 
@@ -226,7 +235,19 @@ class ArticleDao {
       orderBy: 'date DESC',
       limit: limit,
     );
-    return maps.map((map) => Article.fromMap(map)).toList();
+    
+    // Filter out blocked articles
+    final blacklistDao = BlacklistDao();
+    final articles = <Article>[];
+    for (final map in maps) {
+      final article = Article.fromMap(map);
+      final isBlocked = await blacklistDao.isBlocked(article.id, article.title, article.feedId, article.accountId);
+      if (!isBlocked) {
+        articles.add(article);
+      }
+    }
+    
+    return articles;
   }
 
   Future<List<Article>> getUnread(int accountId, {int limit = 100}) async {
@@ -239,8 +260,20 @@ class ArticleDao {
       orderBy: 'date DESC',
       limit: limit,
     );
-    print('[ARTICLE_DAO] getUnread returned ${maps.length} articles');
-    return maps.map((map) => Article.fromMap(map)).toList();
+    
+    // Filter out blocked articles
+    final blacklistDao = BlacklistDao();
+    final articles = <Article>[];
+    for (final map in maps) {
+      final article = Article.fromMap(map);
+      final isBlocked = await blacklistDao.isBlocked(article.id, article.title, article.feedId, article.accountId);
+      if (!isBlocked) {
+        articles.add(article);
+      }
+    }
+    
+    print('[ARTICLE_DAO] getUnread returned ${articles.length} articles (filtered from ${maps.length})');
+    return articles;
   }
 
   Future<List<Article>> getStarred(int accountId, {int limit = 100}) async {
@@ -253,8 +286,20 @@ class ArticleDao {
       orderBy: 'date DESC',
       limit: limit,
     );
-    print('[ARTICLE_DAO] getStarred returned ${maps.length} articles');
-    return maps.map((map) => Article.fromMap(map)).toList();
+    
+    // Filter out blocked articles
+    final blacklistDao = BlacklistDao();
+    final articles = <Article>[];
+    for (final map in maps) {
+      final article = Article.fromMap(map);
+      final isBlocked = await blacklistDao.isBlocked(article.id, article.title, article.feedId, article.accountId);
+      if (!isBlocked) {
+        articles.add(article);
+      }
+    }
+    
+    print('[ARTICLE_DAO] getStarred returned ${articles.length} articles (filtered from ${maps.length})');
+    return articles;
   }
 
   Future<int> update(Article article) async {
@@ -488,7 +533,7 @@ class ArticleDao {
       print('[ARTICLE_DAO] First article: id=${maps.first['id']}, title=${maps.first['title']}, accountId=${maps.first['accountId']} (type: ${maps.first['accountId'].runtimeType})');
     }
     
-    final articles = maps.map((map) {
+    final parsedArticles = maps.map((map) {
       try {
         return Article.fromMap(map);
       } catch (e) {
@@ -496,7 +541,18 @@ class ArticleDao {
         rethrow;
       }
     }).toList();
-    print('[ARTICLE_DAO] Parsed ${articles.length} articles successfully');
+    
+    // Filter out blocked articles
+    final blacklistDao = BlacklistDao();
+    final articles = <Article>[];
+    for (final article in parsedArticles) {
+      final isBlocked = await blacklistDao.isBlocked(article.id, article.title, article.feedId, article.accountId);
+      if (!isBlocked) {
+        articles.add(article);
+      }
+    }
+    
+    print('[ARTICLE_DAO] Parsed ${parsedArticles.length} articles, filtered to ${articles.length} (blocked: ${parsedArticles.length - articles.length})');
     return articles;
   }
 
@@ -580,7 +636,18 @@ class ArticleDao {
       limit: limit,
     );
     
-    return maps.map((map) => Article.fromMap(map)).toList();
+    // Filter out blocked articles
+    final blacklistDao = BlacklistDao();
+    final articles = <Article>[];
+    for (final map in maps) {
+      final article = Article.fromMap(map);
+      final isBlocked = await blacklistDao.isBlocked(article.id, article.title, article.feedId, article.accountId);
+      if (!isBlocked) {
+        articles.add(article);
+      }
+    }
+    
+    return articles;
   }
 
   /// Batch mark articles as read
@@ -802,7 +869,18 @@ class ArticleDao {
       );
     }
     
-    return maps.map((map) => Article.fromMap(map)).toList();
+    // Filter out blocked articles
+    final blacklistDao = BlacklistDao();
+    final articles = <Article>[];
+    for (final map in maps) {
+      final article = Article.fromMap(map);
+      final isBlocked = await blacklistDao.isBlocked(article.id, article.title, article.feedId, article.accountId);
+      if (!isBlocked) {
+        articles.add(article);
+      }
+    }
+    
+    return articles;
   }
 }
 

@@ -4,6 +4,7 @@ import '../database/account_dao.dart';
 import '../database/article_dao.dart';
 import '../database/feed_dao.dart';
 import '../database/group_dao.dart';
+import '../database/blacklist_dao.dart';
 import '../services/account_service.dart';
 import '../services/article_action_service.dart';
 import '../services/freshrss_account_service.dart';
@@ -28,6 +29,7 @@ final accountDaoProvider = Provider((ref) => AccountDao());
 final articleDaoProvider = Provider((ref) => ArticleDao());
 final feedDaoProvider = Provider((ref) => FeedDao());
 final groupDaoProvider = Provider((ref) => GroupDao());
+final blacklistDaoProvider = Provider((ref) => BlacklistDao());
 
 // Services
 final httpClientProvider = Provider((ref) => http.Client());

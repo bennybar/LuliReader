@@ -61,9 +61,9 @@ applicationId = "com.yourcompany.luli_reader"  // Change from com.example.luli_r
 
 Update the version in `pubspec.yaml`:
 ```yaml
-version: 1.1.62+13
+version: 1.1.63+14
 ```
-- The first number (1.1.62) is the version name (shown to users)
+- The first number (1.1.63) is the version name (shown to users)
 - The number after + (10) is the version code (must increment for each release)
 
 ## Step 5: Build the AAB

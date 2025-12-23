@@ -12,6 +12,7 @@ import '../models/account.dart';
 import '../services/sync_log_service.dart';
 import 'opml_import_export_screen.dart';
 import 'startup_screen.dart';
+import 'blacklist_screen.dart';
 import '../database/database_helper.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -566,6 +567,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+              
+              // Blacklist Settings
+              Text(
+                'Content Filtering',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.block),
+                  title: const Text('Blacklist'),
+                  subtitle: const Text('Block articles by title patterns'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const BlacklistScreen(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
               ListTile(
                 leading: const Icon(Icons.import_export),
                 title: const Text('OPML Import/Export'),
@@ -607,7 +634,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.62'),
+                subtitle: const Text('Luli Reader v1.1.63'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],

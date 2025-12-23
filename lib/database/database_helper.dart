@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 8,
+      version: 9,
       onConfigure: (db) async {
         // Enable foreign key cascade (e.g., deleting a feed removes its articles).
         await db.execute('PRAGMA foreign_keys = ON');
@@ -130,6 +130,29 @@ class DatabaseHelper {
       )
     ''');
 
+    // Blacklist table
+    await db.execute('''
+      CREATE TABLE blacklist (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pattern TEXT NOT NULL,
+        feedId TEXT,
+        accountId INTEGER NOT NULL,
+        FOREIGN KEY (accountId) REFERENCES account (id) ON DELETE CASCADE ON UPDATE CASCADE,
+        FOREIGN KEY (feedId) REFERENCES feed (id) ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    ''');
+
+    // Blacklist exception table - articles that were blocked but released
+    await db.execute('''
+      CREATE TABLE blacklist_exception (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        articleId TEXT NOT NULL,
+        accountId INTEGER NOT NULL,
+        createdAt TEXT NOT NULL,
+        FOREIGN KEY (accountId) REFERENCES account (id) ON DELETE CASCADE ON UPDATE CASCADE
+      )
+    ''');
+
     // Create indexes
     await db.execute('CREATE INDEX idx_article_feedId ON article(feedId)');
     await db.execute('CREATE INDEX idx_article_accountId ON article(accountId)');
@@ -141,6 +164,8 @@ class DatabaseHelper {
     await db.execute('CREATE INDEX idx_feed_groupId ON feed(groupId)');
     await db.execute('CREATE INDEX idx_feed_accountId ON feed(accountId)');
     await db.execute('CREATE INDEX idx_group_accountId ON "group"(accountId)');
+    await db.execute('CREATE INDEX idx_blacklist_accountId ON blacklist(accountId)');
+    await db.execute('CREATE INDEX idx_blacklist_exception_accountId ON blacklist_exception(accountId)');
   }
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
@@ -236,6 +261,34 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE feed ADD COLUMN lastSyncErrorAt TEXT');
       } catch (e) {
         print('Error adding lastSyncErrorAt to feed: $e');
+      }
+    }
+    if (oldVersion < 9) {
+      // Add blacklist tables
+      try {
+        await db.execute('''
+          CREATE TABLE blacklist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pattern TEXT NOT NULL,
+            feedId TEXT,
+            accountId INTEGER NOT NULL,
+            FOREIGN KEY (accountId) REFERENCES account (id) ON DELETE CASCADE ON UPDATE CASCADE,
+            FOREIGN KEY (feedId) REFERENCES feed (id) ON DELETE CASCADE ON UPDATE CASCADE
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE blacklist_exception (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            articleId TEXT NOT NULL,
+            accountId INTEGER NOT NULL,
+            createdAt TEXT NOT NULL,
+            FOREIGN KEY (accountId) REFERENCES account (id) ON DELETE CASCADE ON UPDATE CASCADE
+          )
+        ''');
+        await db.execute('CREATE INDEX idx_blacklist_accountId ON blacklist(accountId)');
+        await db.execute('CREATE INDEX idx_blacklist_exception_accountId ON blacklist_exception(accountId)');
+      } catch (e) {
+        print('Error creating blacklist tables: $e');
       }
     }
     if (oldVersion < 2) {
