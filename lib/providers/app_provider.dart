@@ -182,3 +182,46 @@ final currentAccountProvider = FutureProvider((ref) async {
   return await accountService.getCurrentAccount();
 });
 
+// Group filter provider - stores which groups are visible
+final groupFilterProvider = StateNotifierProvider.family<GroupFilterNotifier, Set<String>, int>((ref, accountId) {
+  return GroupFilterNotifier(ref.watch(sharedPreferencesProvider), accountId);
+});
+
+class GroupFilterNotifier extends StateNotifier<Set<String>> {
+  final SharedPreferencesService _prefs;
+  final int accountId;
+  static const String _keyPrefix = 'visible_groups_';
+
+  GroupFilterNotifier(this._prefs, this.accountId) : super({}) {
+    _loadFilter();
+  }
+
+  Future<void> _loadFilter() async {
+    await _prefs.init();
+    final key = '$_keyPrefix$accountId';
+    final groupIdsStr = await _prefs.getString(key);
+    if (groupIdsStr != null && groupIdsStr.isNotEmpty) {
+      state = groupIdsStr.split(',').where((id) => id.isNotEmpty).toSet();
+    } else {
+      // Empty set means all groups are visible
+      state = {};
+    }
+  }
+
+  Future<void> setFilter(Set<String> groupIds) async {
+    await _prefs.init();
+    state = groupIds;
+    final key = '$_keyPrefix$accountId';
+    if (groupIds.isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, groupIds.join(','));
+    }
+  }
+
+  bool isGroupVisible(String groupId) {
+    // Empty set means all groups are visible
+    return state.isEmpty || state.contains(groupId);
+  }
+}
+

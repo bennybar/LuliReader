@@ -10,6 +10,7 @@ import '../services/local_rss_service.dart';
 import '../services/shared_preferences_service.dart';
 import '../utils/reading_time.dart';
 import 'article_reader_screen.dart';
+import '../widgets/group_filter_dialog.dart';
 
 class ArticleListScreen extends ConsumerStatefulWidget {
   final Feed feed;
@@ -339,6 +340,29 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
               ),
             ],
           ] else ...[
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: 'Filter Folders',
+              onPressed: () async {
+                final account = await ref.read(accountServiceProvider).getCurrentAccount();
+                if (account != null) {
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => const GroupFilterDialog(),
+                  );
+                  if (result == true && mounted) {
+                    // Check if current feed's group is still visible
+                    final visibleGroupIds = ref.read(groupFilterProvider(account.id!));
+                    if (visibleGroupIds.isNotEmpty && !visibleGroupIds.contains(widget.feed.groupId)) {
+                      // Current feed's group is hidden, go back
+                      Navigator.of(context).pop();
+                    } else {
+                      _loadArticles();
+                    }
+                  }
+                }
+              },
+            ),
             PopupMenuButton<ArticleSortOption>(
               icon: const Icon(Icons.sort),
               tooltip: 'Sort',

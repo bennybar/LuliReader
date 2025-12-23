@@ -16,6 +16,7 @@ import '../services/shared_preferences_service.dart';
 import 'article_reader_screen.dart';
 import 'settings_screen.dart';
 import 'search_screen.dart';
+import '../widgets/group_filter_dialog.dart';
 import 'package:swipe_to_action/swipe_to_action.dart';
 
 class FlowPage extends ConsumerStatefulWidget {
@@ -148,6 +149,19 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         starred: _filter == 'starred' ? true : null,
         limit: 500,
       );
+
+      // Filter by selected groups
+      final visibleGroupIds = ref.read(groupFilterProvider(account.id!));
+      if (visibleGroupIds.isNotEmpty) {
+        // Get all feeds and filter by group
+        final allFeeds = await feedDao.getAll(account.id!);
+        final visibleFeedIds = allFeeds
+            .where((feed) => visibleGroupIds.contains(feed.groupId))
+            .map((feed) => feed.id)
+            .toSet();
+        
+        articles = articles.where((article) => visibleFeedIds.contains(article.feedId)).toList();
+      }
 
       // Get feeds for each article
       final articlesWithFeed = <ArticleWithFeed>[];
@@ -357,6 +371,22 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               },
             ),
           ] else if (isSmallScreen) ...[
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: 'Filter Folders',
+              onPressed: () async {
+                final account = await ref.read(accountServiceProvider).getCurrentAccount();
+                if (account != null) {
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => const GroupFilterDialog(),
+                  );
+                  if (result == true && mounted) {
+                    _loadArticles();
+                  }
+                }
+              },
+            ),
             // On small screens, put most actions in a menu
             PopupMenuButton<ArticleSortOption>(
               icon: const Icon(Icons.sort),
@@ -474,6 +504,22 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
             ),
           ] else ...[
             // On larger screens, show all actions as icon buttons
+            IconButton(
+              icon: const Icon(Icons.filter_list),
+              tooltip: 'Filter Folders',
+              onPressed: () async {
+                final account = await ref.read(accountServiceProvider).getCurrentAccount();
+                if (account != null) {
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => const GroupFilterDialog(),
+                  );
+                  if (result == true && mounted) {
+                    _loadArticles();
+                  }
+                }
+              },
+            ),
             IconButton(
               icon: const Icon(Icons.search),
               tooltip: 'Search',

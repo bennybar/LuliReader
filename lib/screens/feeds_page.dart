@@ -13,6 +13,7 @@ import 'article_list_screen.dart';
 import 'add_feed_screen.dart';
 import 'feed_options_screen.dart';
 import 'settings_screen.dart';
+import '../widgets/group_filter_dialog.dart';
 
 class FeedsPage extends ConsumerStatefulWidget {
   final Future<void> Function()? onSync;
@@ -52,6 +53,22 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
       appBar: AppBar(
         title: const Text('Feeds'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            tooltip: 'Filter Folders',
+            onPressed: () async {
+              final account = await ref.read(accountServiceProvider).getCurrentAccount();
+              if (account != null) {
+                final result = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => const GroupFilterDialog(),
+                );
+                if (result == true && mounted) {
+                  _refresh();
+                }
+              }
+            },
+          ),
           IconButton(
             icon: _isSyncing
                 ? const SizedBox(
@@ -203,24 +220,32 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
 
         final groups = snapshot.data ?? [];
 
-        if (groups.isEmpty) {
+        // Filter groups based on filter
+        final visibleGroupIds = ref.watch(groupFilterProvider(accountId));
+        final filteredGroups = groups.where((g) {
+          return visibleGroupIds.isEmpty || visibleGroupIds.contains(g.group.id);
+        }).toList();
+
+        if (filteredGroups.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  Icons.rss_feed,
+                  visibleGroupIds.isEmpty ? Icons.rss_feed : Icons.filter_alt_off,
                   size: 64,
                   color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'No feeds yet',
+                  visibleGroupIds.isEmpty ? 'No feeds yet' : 'No folders match filter',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Tap the + button to add a feed',
+                  visibleGroupIds.isEmpty 
+                      ? 'Tap the + button to add a feed'
+                      : 'Adjust your folder filter to see feeds',
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
@@ -230,9 +255,9 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
 
         return ListView.builder(
           padding: const EdgeInsets.only(bottom: 96),
-          itemCount: groups.length,
+          itemCount: filteredGroups.length,
           itemBuilder: (context, index) {
-            final groupWithFeed = groups[index];
+            final groupWithFeed = filteredGroups[index];
             return _buildGroupCard(groupWithFeed);
           },
         );
