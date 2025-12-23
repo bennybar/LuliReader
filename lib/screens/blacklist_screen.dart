@@ -5,6 +5,7 @@ import '../providers/app_provider.dart';
 import '../services/account_service.dart';
 import '../models/feed.dart';
 import 'blocked_articles_screen.dart';
+import 'blacklist_import_export_screen.dart';
 
 class BlacklistScreen extends ConsumerStatefulWidget {
   const BlacklistScreen({super.key});
@@ -177,12 +178,27 @@ class _BlacklistScreenState extends ConsumerState<BlacklistScreen> {
     return feed.name;
   }
 
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Blacklist'),
         actions: [
+          TextButton(
+            onPressed: () async {
+              final result = await Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const BlacklistImportExportScreen(),
+                ),
+              );
+              // Reload if import was successful
+              if (result == true) {
+                await _loadData();
+              }
+            },
+            child: const Text('Import/Export'),
+          ),
           IconButton(
             icon: const Icon(Icons.block),
             tooltip: 'View Blocked Articles',
