@@ -411,8 +411,15 @@ class FreshRssService {
       final feedTitle = origin?['title'] as String? ?? '';
 
       // Parse dates
-      // Use local sync time instead of remote published time for display consistency
-      final DateTime syncDate = DateTime.now();
+      // Prefer published/updated time; convert to local to match "ago" calculations
+      DateTime publishedDate;
+      if (published != null) {
+        publishedDate = DateTime.fromMillisecondsSinceEpoch(published * 1000, isUtc: true).toLocal();
+      } else if (updated != null) {
+        publishedDate = DateTime.fromMillisecondsSinceEpoch(updated * 1000, isUtc: true).toLocal();
+      } else {
+        publishedDate = DateTime.now();
+      }
 
       // Check states from server categories
       // Read status: article is READ if "user/-/state/com.google/read" is in categories
@@ -456,7 +463,7 @@ class FreshRssService {
 
       final article = Article(
         id: id,
-        date: syncDate,
+        date: publishedDate,
         title: title,
         author: author,
         rawDescription: contentText,

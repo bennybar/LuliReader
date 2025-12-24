@@ -555,17 +555,18 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
           },
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: Row(
-              textDirection: TextDirection.ltr, // keep hero image visually on the right
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_isBatchMode) ...[
-                  Checkbox(
-                    value: isSelected,
-                    onChanged: (_) => _toggleArticleSelection(article.id),
-                  ),
-                  const SizedBox(width: 12),
-                ],
+            child: IntrinsicHeight(
+              child: Row(
+                textDirection: TextDirection.ltr, // keep hero image visually on the right
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_isBatchMode) ...[
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: (_) => _toggleArticleSelection(article.id),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
               Expanded(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minHeight: 80),
@@ -662,41 +663,42 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   ),
                 ),
               ),
-                if (!_isBatchMode &&
-                    _showHeroImage &&
-                    article.img != null &&
-                    article.img!.isNotEmpty) ...[
-                  const SizedBox(width: 12),
+                  if (!_isBatchMode &&
+                      _showHeroImage &&
+                      article.img != null &&
+                      article.img!.isNotEmpty) ...[
+                    const SizedBox(width: 12),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                     child: CachedNetworkImage(
                       imageUrl: article.img!,
-                      width: 80,
-                      height: 80,
+                      width: 100,
+                      height: 100,
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Icon(
                         Icons.photo_outlined,
                         color: Theme.of(context).colorScheme.outline,
                       ),
                       placeholder: (_, __) => Container(
-                        width: 80,
-                        height: 80,
-                        color: Colors.grey[300],
+                        width: 100,
+                        height: 100,
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
                     ),
                   ),
-                ],
+                  ],
                 if (!_isBatchMode &&
                     (_showHeroImage == false || article.img == null || article.img!.isEmpty)) ...[
                   const SizedBox(width: 12),
                   Icon(
                     Icons.photo_outlined,
                     size: 40,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                   ),
                 ],
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -705,10 +707,10 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
   }
 
   String _formatDate(DateTime date) {
-    // Use UTC for both sides to avoid timezone offsets (e.g., +2h seen in Jerusalem)
-    final now = DateTime.now().toUtc();
-    final articleUtc = date.isUtc ? date : date.toUtc();
-    final difference = now.difference(articleUtc);
+    // Use local time consistently to avoid double-offset issues
+    final now = DateTime.now();
+    final articleLocal = date.isUtc ? date.toLocal() : date;
+    final difference = now.difference(articleLocal);
 
     if (difference.inDays == 0) {
       if (difference.inHours == 0) {
