@@ -292,7 +292,7 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
                             ),
                           )
                         : ListView.builder(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            padding: const EdgeInsets.fromLTRB(0, 8, 0, 80),
                             itemCount: _groupsWithFeeds.length,
                             itemBuilder: (context, index) {
                               final groupWithFeed = _groupsWithFeeds[index];

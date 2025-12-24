@@ -1189,7 +1189,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
-        Icons.article,
+        Icons.photo_outlined,
         size: 40,
         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
       ),

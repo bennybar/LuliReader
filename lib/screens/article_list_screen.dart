@@ -674,7 +674,10 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                       width: 80,
                       height: 80,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => const Icon(Icons.article),
+                      errorWidget: (_, __, ___) => Icon(
+                        Icons.photo_outlined,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                       placeholder: (_, __) => Container(
                         width: 80,
                         height: 80,
@@ -682,6 +685,15 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                         child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
                     ),
+                  ),
+                ],
+                if (!_isBatchMode &&
+                    (_showHeroImage == false || article.img == null || article.img!.isEmpty)) ...[
+                  const SizedBox(width: 12),
+                  Icon(
+                    Icons.photo_outlined,
+                    size: 40,
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                   ),
                 ],
               ],
