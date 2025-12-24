@@ -505,9 +505,6 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
 
   Widget _buildArticleCard(Article article, int index) {
     final isSelected = _selectedArticleIds.contains(article.id);
-    final readingTime = ReadingTime.calculateAndFormat(
-      article.fullContent ?? article.rawDescription,
-    );
 
     // Derive text direction from content and feed settings (consistent with FlowPage)
     final contentText = '${article.title} ${article.shortDescription} ${article.fullContent ?? ''}';
@@ -569,8 +566,11 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   ),
                   const SizedBox(width: 12),
                 ],
-                Expanded(
+              Expanded(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 80),
                   child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                     children: [
                       Row(
@@ -608,59 +608,60 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                         ),
                       ],
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        alignment: isRtl ? WrapAlignment.end : WrapAlignment.start,
-                        children: [
-                          if (readingTime.isNotEmpty)
+                      Align(
+                        alignment:
+                            isRtl ? AlignmentDirectional.centerEnd : Alignment.centerLeft,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                widget.feed.name,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withOpacity(0.6),
+                                    ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(
-                                  Icons.timer_outlined,
+                                  Icons.access_time,
                                   size: 14,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onSurface
-                                      .withOpacity(0.6),
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
-                                  readingTime,
+                                  _formatDate(article.date),
                                   style: Theme.of(context).textTheme.bodySmall,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ],
                             ),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.access_time,
-                                size: 14,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurface
-                                    .withOpacity(0.6),
+                            if (article.isStarred)
+                              Padding(
+                                padding: EdgeInsets.only(left: isRtl ? 4 : 8),
+                                child: Icon(
+                                  Icons.star,
+                                  size: 14,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
                               ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _formatDate(article.date),
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
-                            ],
-                          ),
-                          if (article.isStarred)
-                            Icon(
-                              Icons.star,
-                              size: 14,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
+              ),
                 if (!_isBatchMode &&
                     _showHeroImage &&
                     article.img != null &&

@@ -791,9 +791,6 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     final isRtl = textDirection == TextDirection.rtl;
     final alignRight = isRtl || Directionality.of(context) == TextDirection.rtl || (feed.isRtl ?? false);
     final isSelected = _selectedArticleIds.contains(article.id);
-    final readingTime = ReadingTime.calculateAndFormat(
-      article.fullContent ?? article.rawDescription,
-    );
 
     return FutureBuilder(
       future: ref.read(accountServiceProvider).getCurrentAccount(),
@@ -890,126 +887,113 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                           const SizedBox(width: 8),
                         ],
                         Expanded(
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment:
-                                alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      article.title,
-                                      style: TextStyle(
-                                        fontWeight:
-                                            article.isUnread ? FontWeight.bold : FontWeight.normal,
-                                        fontSize: 15,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: alignRight ? TextAlign.right : TextAlign.left,
-                                    ),
-                                  ),
-                                  if (article.isStarred)
-                                    Padding(
-                                      padding: EdgeInsets.only(
-                                          left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
-                                      child: Icon(
-                                        Icons.star,
-                                        size: 16,
-                                        color: Theme.of(context).colorScheme.primary,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(minHeight: 80),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment:
+                                  alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        article.title,
+                                        style: TextStyle(
+                                          fontWeight:
+                                              article.isUnread ? FontWeight.bold : FontWeight.normal,
+                                          fontSize: 15,
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: alignRight ? TextAlign.right : TextAlign.left,
                                       ),
                                     ),
-                                ],
-                              ),
-                              if (_showPreviewText) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  article.shortDescription,
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        fontSize: 13,
-                                        color:
-                                            Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                    if (article.isStarred)
+                                      Padding(
+                                        padding: EdgeInsets.only(
+                                            left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
+                                        child: Icon(
+                                          Icons.star,
+                                          size: 16,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
                                       ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  textAlign: alignRight ? TextAlign.right : TextAlign.left,
+                                  ],
                                 ),
-                              ],
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 4,
-                                alignment: alignRight ? WrapAlignment.end : WrapAlignment.start,
-                                children: [
+                                if (_showPreviewText) ...[
+                                  const SizedBox(height: 4),
                                   Text(
-                                    feed.name,
+                                    article.shortDescription,
                                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withOpacity(0.5),
-                                          fontSize: 11,
+                                          fontSize: 13,
+                                          color:
+                                              Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                                         ),
-                                    maxLines: 1,
+                                    maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
+                                    textAlign: alignRight ? TextAlign.right : TextAlign.left,
                                   ),
-                                  if (readingTime.isNotEmpty)
-                                    Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.timer_outlined,
-                                          size: 11,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface
-                                              .withOpacity(0.5),
-                                        ),
-                                        const SizedBox(width: 2),
-                                        Text(
-                                          readingTime,
+                                ],
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: alignRight
+                                      ? AlignmentDirectional.centerEnd
+                                      : Alignment.centerLeft,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          feed.name,
                                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                fontSize: 11,
                                                 color: Theme.of(context)
                                                     .colorScheme
                                                     .onSurface
                                                     .withOpacity(0.5),
+                                                fontSize: 11,
                                               ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
+                                          textAlign:
+                                              alignRight ? TextAlign.right : TextAlign.left,
                                         ),
-                                      ],
-                                    ),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.access_time,
-                                        size: 11,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurface
-                                            .withOpacity(0.5),
                                       ),
-                                      const SizedBox(width: 2),
-                                      Text(
-                                        _formatDate(article.date),
-                                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                              fontSize: 11,
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onSurface
-                                                  .withOpacity(0.5),
-                                            ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      const SizedBox(width: 8),
+                                      Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.access_time,
+                                            size: 11,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
+                                                .withOpacity(0.5),
+                                          ),
+                                          const SizedBox(width: 2),
+                                          Text(
+                                            _formatDate(article.date),
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodySmall
+                                                ?.copyWith(
+                                                  fontSize: 11,
+                                                  color: Theme.of(context)
+                                                      .colorScheme
+                                                      .onSurface
+                                                      .withOpacity(0.5),
+                                                ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         if (_showHeroImage &&
