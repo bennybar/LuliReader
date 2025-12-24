@@ -5,9 +5,11 @@ import 'package:html/parser.dart' as html_parser;
 import '../models/article.dart';
 import '../models/feed.dart';
 import 'readability.dart';
+import 'shared_preferences_service.dart';
 
 class RssHelper {
   final http.Client _client;
+  final SharedPreferencesService _prefs = SharedPreferencesService();
 
   RssHelper(this._client);
 
@@ -31,7 +33,13 @@ class RssHelper {
     DateTime preDate,
   ) async {
     try {
-      final response = await _client.get(Uri.parse(feed.url));
+      await _prefs.init();
+      final timeoutSeconds = await _prefs.getInt('feedTimeoutSeconds') ?? 10;
+      
+      final response = await _client
+          .get(Uri.parse(feed.url))
+          .timeout(Duration(seconds: timeoutSeconds));
+      
       if (response.statusCode != 200) {
         return [];
       }
@@ -55,6 +63,10 @@ class RssHelper {
       return articles;
     } catch (e) {
       print('Error querying RSS: $e');
+      // Re-throw timeout errors so they can be handled by the sync service
+      if (e.toString().contains('TimeoutException') || e.toString().contains('timeout')) {
+        rethrow;
+      }
       return [];
     }
   }

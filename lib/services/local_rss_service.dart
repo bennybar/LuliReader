@@ -137,7 +137,12 @@ class LocalRssService {
         activeCount--;
         errorCount++;
         final percent = (completedCount + errorCount) / totalFeeds * syncStepsPercent;
-        final errorMsg = '✗ Error syncing ${feed.name}: $e';
+        final isTimeout = e.toString().contains('TimeoutException') || 
+                         e.toString().contains('timeout') ||
+                         e.toString().contains('Timeout');
+        final errorMsg = isTimeout 
+            ? '✗ Timeout syncing ${feed.name} (exceeded timeout)'
+            : '✗ Error syncing ${feed.name}: $e';
         onProgress?.call(errorMsg);
         onProgressPercent?.call(percent);
         print(errorMsg);

@@ -28,12 +28,44 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
   bool _isBatchMode = false;
   Set<String> _selectedArticleIds = {};
   final SharedPreferencesService _prefs = SharedPreferencesService();
+  final ScrollController _scrollController = ScrollController();
+  bool _showPreviewText = true;
+  String _heroImagePosition = 'before';
 
   @override
   void initState() {
     super.initState();
     _loadSortPreference();
     _loadArticles();
+    _loadArticleViewPrefs();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload preferences when screen becomes visible (e.g., returning from settings)
+    _loadArticleViewPrefs();
+  }
+
+  Future<void> _loadArticleViewPrefs() async {
+    await _prefs.init();
+    if (mounted) {
+      final showPreviewTextValue = await _prefs.getBool('showPreviewText');
+      final heroImagePositionRaw = await _prefs.getString('heroImagePosition');
+      final heroImagePositionValue = switch (heroImagePositionRaw) {
+        'left' => 'before',
+        'right' => 'after',
+        'after' => 'after',
+        'none' => 'none',
+        'before' => 'before',
+        _ => 'before',
+      };
+      
+      setState(() {
+        _showPreviewText = showPreviewTextValue ?? true;
+        _heroImagePosition = heroImagePositionValue;
+      });
+    }
   }
 
   Future<void> _loadSortPreference() async {
@@ -470,21 +502,26 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                       ],
                     )
                   : ListView.builder(
+                      controller: _scrollController,
                       itemCount: _articles.length,
                       itemBuilder: (context, index) {
                         final article = _articles[index];
-                        return _buildArticleCard(article);
+                        return _buildArticleCard(article, index);
                       },
                     ),
             ),
     );
   }
 
-  Widget _buildArticleCard(Article article) {
+  Widget _buildArticleCard(Article article, int index) {
     final isSelected = _selectedArticleIds.contains(article.id);
     final readingTime = ReadingTime.calculateAndFormat(
       article.fullContent ?? article.rawDescription,
     );
+    
+    // Use state variables for article view preferences
+    final showPreviewText = _showPreviewText;
+    final heroImagePosition = _heroImagePosition;
     
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -504,7 +541,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                 value: isSelected,
                 onChanged: (_) => _toggleArticleSelection(article.id),
               )
-            : (article.img != null
+            : (heroImagePosition == 'before' && article.img != null && article.img!.isNotEmpty
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
@@ -522,26 +559,48 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                     ),
                   )
                 : const Icon(Icons.article, size: 40)),
+        trailing: (!_isBatchMode &&
+                heroImagePosition == 'after' &&
+                article.img != null &&
+                article.img!.isNotEmpty)
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: CachedNetworkImage(
+                  imageUrl: article.img!,
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.cover,
+                  errorWidget: (_, __, ___) => const Icon(Icons.article),
+                  placeholder: (_, __) => Container(
+                    width: 80,
+                    height: 80,
+                    color: Colors.grey[300],
+                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                  ),
+                ),
+              )
+            : null,
         title: Text(
           article.title,
           style: TextStyle(
             fontWeight: article.isUnread ? FontWeight.bold : FontWeight.normal,
           ),
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text(
-              article.shortDescription,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
+        subtitle: showPreviewText 
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 4),
+                  Text(
+                    article.shortDescription,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
                 if (readingTime.isNotEmpty) ...[
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -583,16 +642,21 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
               ],
             ),
           ],
-        ),
+        ) : null,
         onTap: () {
           if (_isBatchMode) {
             _toggleArticleSelection(article.id);
           } else {
+            final scrollPosition = _scrollController.hasClients 
+                ? _scrollController.position.pixels 
+                : 0.0;
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ArticleReaderScreen(article: article),
               ),
-            ).then((_) => _loadArticles());
+            ).then((_) async {
+              await _updateArticleAfterReading(article.id, scrollPosition, index);
+            });
           }
         },
         onLongPress: () {
@@ -625,6 +689,42 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
+  }
+
+  Future<void> _updateArticleAfterReading(String articleId, double scrollPosition, int articleIndex) async {
+    try {
+      final articleDao = ref.read(articleDaoProvider);
+      
+      // Get updated article from database
+      final updatedArticle = await articleDao.getById(articleId);
+      if (updatedArticle == null) return;
+
+      setState(() {
+        // Update article in place
+        final index = _articles.indexWhere((a) => a.id == articleId);
+        if (index != -1) {
+          _articles[index] = updatedArticle;
+        }
+      });
+
+      // Restore scroll position
+      if (_scrollController.hasClients && scrollPosition > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(scrollPosition);
+          }
+        });
+      }
+    } catch (e) {
+      // If incremental update fails, fall back to full reload
+      _loadArticles();
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 }
 

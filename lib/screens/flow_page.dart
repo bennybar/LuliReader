@@ -41,6 +41,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   bool _isBatchMode = false;
   Set<String> _selectedArticleIds = {};
   final SharedPreferencesService _prefs = SharedPreferencesService();
+  final ScrollController _scrollController = ScrollController();
+  bool _showPreviewText = true;
+  String _heroImagePosition = 'before';
 
   void refresh() {
     setState(() {
@@ -55,7 +58,36 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     WidgetsBinding.instance.addObserver(this);
     _loadLastFilter();
     _loadSortPreference();
+    _loadArticleViewPrefs();
     _startAccountRefreshTimer();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Reload preferences when screen becomes visible (e.g., returning from settings)
+    _loadArticleViewPrefs();
+  }
+
+  Future<void> _loadArticleViewPrefs() async {
+    await _prefs.init();
+    if (mounted) {
+      final showPreviewTextValue = await _prefs.getBool('showPreviewText');
+      final heroImagePositionRaw = await _prefs.getString('heroImagePosition');
+      final heroImagePositionValue = switch (heroImagePositionRaw) {
+        'left' => 'before',
+        'right' => 'after',
+        'after' => 'after',
+        'none' => 'none',
+        'before' => 'before',
+        _ => 'before',
+      };
+      
+      setState(() {
+        _showPreviewText = showPreviewTextValue ?? true;
+        _heroImagePosition = heroImagePositionValue;
+      });
+    }
   }
 
   Future<void> _loadSortPreference() async {
@@ -84,6 +116,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _accountRefreshTimer?.cancel();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -199,6 +232,53 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
           SnackBar(content: Text('Error loading articles: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _updateArticleAfterReading(String articleId, double scrollPosition, int articleIndex) async {
+    try {
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account == null) return;
+
+      final articleDao = ref.read(articleDaoProvider);
+      final feedDao = ref.read(feedDaoProvider);
+      
+      // Get updated article from database
+      final updatedArticle = await articleDao.getById(articleId);
+      if (updatedArticle == null) return;
+
+      // Check if article should be removed based on current filter
+      final shouldRemove = (_filter == 'unread' && !updatedArticle.isUnread) ||
+                          (_filter == 'starred' && !updatedArticle.isStarred);
+
+      setState(() {
+        if (shouldRemove && articleIndex < _articles.length && _articles[articleIndex].article.id == articleId) {
+          // Remove article from list
+          _articles.removeAt(articleIndex);
+        } else {
+          // Update article in place
+          final index = _articles.indexWhere((a) => a.article.id == articleId);
+          if (index != -1) {
+            final feed = _articles[index].feed;
+            _articles[index] = ArticleWithFeed(
+              article: updatedArticle,
+              feed: feed,
+            );
+          }
+        }
+      });
+
+      // Restore scroll position
+      if (_scrollController.hasClients && scrollPosition > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_scrollController.hasClients) {
+            _scrollController.jumpTo(scrollPosition);
+          }
+        });
+      }
+    } catch (e) {
+      // If incremental update fails, fall back to full reload
+      _loadArticles();
     }
   }
 
@@ -477,11 +557,19 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     _markAllAsRead();
                     break;
                   case 'settings':
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SettingsScreen(),
-                      ),
-                    );
+                    Navigator.of(context)
+                        .push(
+                          MaterialPageRoute(
+                            builder: (_) => const SettingsScreen(),
+                          ),
+                        )
+                        .then((_) async {
+                          await _loadArticleViewPrefs();
+                          if (mounted) {
+                            setState(() => _refreshKey++);
+                            _loadArticles();
+                          }
+                        });
                     break;
                 }
               },
@@ -575,11 +663,19 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               icon: const Icon(Icons.settings),
               tooltip: 'Settings',
               onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const SettingsScreen(),
-                  ),
-                );
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                        builder: (_) => const SettingsScreen(),
+                      ),
+                    )
+                    .then((_) async {
+                      await _loadArticleViewPrefs();
+                      if (mounted) {
+                        setState(() => _refreshKey++);
+                        _loadArticles();
+                      }
+                    });
               },
             ),
             IconButton(
@@ -651,7 +747,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                 itemCount: _articles.length,
                                 itemBuilder: (context, index) {
                                   final articleWithFeed = _articles[index];
-                                  return _buildArticleCard(articleWithFeed);
+                                  return _buildArticleCard(articleWithFeed, index);
                                 },
                               ),
                       ),
@@ -665,7 +761,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     );
   }
 
-  Widget _buildArticleCard(ArticleWithFeed articleWithFeed) {
+  Widget _buildArticleCard(ArticleWithFeed articleWithFeed, int index) {
     final article = articleWithFeed.article;
     final feed = articleWithFeed.feed as Feed;
     final contentText =
@@ -689,7 +785,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         return Directionality(
           textDirection: textDirection,
           child: Swipeable(
-            key: ValueKey(article.id),
+            key: ValueKey('${article.id}_${_refreshKey}'),
             direction: SwipeDirection.horizontal,
             background: _buildSwipeBackground(
               context,
@@ -706,11 +802,15 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               isStart: false,
             ),
             confirmSwipe: (dir) async {
+              if (!mounted) return false;
               final action = dir == SwipeDirection.startToEnd ? swipeStartAction : swipeEndAction;
               if (action == 0) return false;
               return await _handleSwipeAction(action, article, fromSwipe: true);
             },
-            onSwipe: (_) {},
+            onSwipe: (_) {
+              // Prevent updates if widget is disposed
+              if (!mounted) return;
+            },
             child: Card(
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               shape: RoundedRectangleBorder(
@@ -728,6 +828,12 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   if (_isBatchMode) {
                     _toggleArticleSelection(article.id);
                   } else {
+                    if (!mounted) return;
+                    final scrollPosition = _scrollController.hasClients 
+                        ? _scrollController.position.pixels 
+                        : 0.0;
+                    final articleIndex = index;
+                    
                     Navigator.of(context)
                         .push(
                           MaterialPageRoute(
@@ -735,10 +841,10 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                           ),
                         )
                         .then((_) async {
-                          // Reload articles immediately - database updates should be committed
-                          // For remote accounts (Miniflux/FreshRSS), the markAsRead operation
-                          // updates the local DB first, then syncs to server
-                          _loadArticles();
+                          if (mounted) {
+                            // Incrementally update instead of full reload
+                            await _updateArticleAfterReading(article.id, scrollPosition, articleIndex);
+                          }
                         });
                   }
                 },
@@ -762,7 +868,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                           ),
                           const SizedBox(width: 8),
                         ],
-                        if (!isRtl) ...[
+                        if (_heroImagePosition == 'before' &&
+                            article.img != null &&
+                            article.img!.isNotEmpty) ...[
                           _buildArticleImage(article),
                           const SizedBox(width: 12),
                         ],
@@ -799,18 +907,20 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                     ),
                                 ],
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                article.shortDescription,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      fontSize: 13,
-                                      color:
-                                          Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                                    ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: alignRight ? TextAlign.right : TextAlign.left,
-                              ),
+                              if (_showPreviewText) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  article.shortDescription,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        fontSize: 13,
+                                        color:
+                                            Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                      ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: alignRight ? TextAlign.right : TextAlign.left,
+                                ),
+                              ],
                               const SizedBox(height: 8),
                               Wrap(
                                 spacing: 8,
@@ -887,7 +997,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                             ],
                           ),
                         ),
-                        if (isRtl) ...[
+                        if (_heroImagePosition == 'after' &&
+                            article.img != null &&
+                            article.img!.isNotEmpty) ...[
                           const SizedBox(width: 12),
                           _buildArticleImage(article),
                         ],
@@ -904,10 +1016,11 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   }
 
   Future<bool> _handleSwipeAction(int action, Article article, {bool fromSwipe = false}) async {
+    if (!mounted) return false;
     // Update UI immediately for instant feedback
     final index = _articles.indexWhere((a) => a.article.id == article.id);
     bool shouldRemove = false;
-    if (index != -1) {
+    if (index != -1 && mounted) {
       setState(() {
         final currentArticle = _articles[index].article;
         Article updatedArticle;
@@ -940,6 +1053,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
 
     // Update database in background
     Future.microtask(() async {
+      if (!mounted) return;
       try {
         final actions = ref.read(articleActionServiceProvider);
         switch (action) {
@@ -959,7 +1073,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         if (mounted && index != -1) {
           final articleDao = ref.read(articleDaoProvider);
           final updatedArticle = await articleDao.getById(article.id);
-          if (updatedArticle != null) {
+          if (updatedArticle != null && mounted) {
             setState(() {
               _articles[index] = ArticleWithFeed(
                 article: updatedArticle,

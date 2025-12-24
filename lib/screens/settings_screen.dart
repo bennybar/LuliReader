@@ -29,6 +29,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   String _themeLabel = 'System';
   bool _openLinksExternally = false;
   int _keepReadItemsDays = 3;
+  int _feedTimeoutSeconds = 10;
+  bool _showPreviewText = true;
+  String _heroImagePosition = 'before'; // before, after, none
+  final SharedPreferencesService _prefs = SharedPreferencesService();
 
   @override
   void initState() {
@@ -44,6 +48,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final theme = await prefs.getString('themeMode');
     final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
     final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
+    final feedTimeoutSeconds = await prefs.getInt('feedTimeoutSeconds') ?? 10;
+    final showPreviewText = await prefs.getBool('showPreviewText') ?? true;
+    final heroImagePositionRaw = await prefs.getString('heroImagePosition');
+    // Backward compatibility: map old left/right to before/after
+    final heroImagePosition = switch (heroImagePositionRaw) {
+      'left' => 'before',
+      'right' => 'after',
+      'after' => 'after',
+      'none' => 'none',
+      _ => 'before',
+    };
     if (mounted) {
       setState(() {
         _articleFontScale = font;
@@ -51,6 +66,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _themeLabel = _labelFromTheme(theme);
         _openLinksExternally = openLinksExternally;
         _keepReadItemsDays = keepReadItemsDays;
+        _feedTimeoutSeconds = feedTimeoutSeconds;
+        _showPreviewText = showPreviewText;
+        _heroImagePosition = heroImagePosition;
       });
     }
   }
@@ -200,6 +218,71 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         setState(() {
           _keepReadItemsDays = selected;
+        });
+      }
+    }
+  }
+
+  Future<void> _showFeedTimeoutDialog(BuildContext context) async {
+    const options = [5, 10, 15, 30, 60];
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Feed Timeout'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options
+              .map((seconds) => RadioListTile<int>(
+                    title: Text('$seconds seconds'),
+                    value: seconds,
+                    groupValue: _feedTimeoutSeconds,
+                    onChanged: (value) => Navigator.of(context).pop(value),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
+
+    if (selected != null) {
+      await _saveIntPref('feedTimeoutSeconds', selected);
+      if (mounted) {
+        setState(() {
+          _feedTimeoutSeconds = selected;
+        });
+      }
+    }
+  }
+
+  Future<void> _showHeroImagePositionDialog(BuildContext context) async {
+    const options = ['before', 'after', 'none'];
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hero Image Position'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: options
+              .map((position) => RadioListTile<String>(
+                    title: Text(
+                      position == 'before'
+                          ? 'Before Text'
+                          : (position == 'after' ? 'After Text' : 'None'),
+                    ),
+                    value: position,
+                    groupValue: _heroImagePosition,
+                    onChanged: (value) => Navigator.of(context).pop(value),
+                  ))
+              .toList(),
+        ),
+      ),
+    );
+
+    if (selected != null) {
+      await _prefs.init();
+      await _prefs.setString('heroImagePosition', selected);
+      if (mounted) {
+        setState(() {
+          _heroImagePosition = selected;
         });
       }
     }
@@ -408,6 +491,49 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
               
+              // Article List View Settings
+              Text(
+                'Article List View',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.swap_horiz),
+                  title: const Text('Hero Image Position'),
+                  subtitle: Text(
+                    switch (_heroImagePosition) {
+                      'before' => 'Before Text',
+                      'after' => 'After Text',
+                      _ => 'None',
+                    },
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showHeroImagePositionDialog(context),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: SwitchListTile(
+                  secondary: const Icon(Icons.text_fields),
+                  title: const Text('Show Preview Text'),
+                  subtitle: const Text('Display 2 rows of article preview text'),
+                  value: _showPreviewText,
+                  onChanged: (value) async {
+                    await _saveBoolPref('showPreviewText', value);
+                    if (mounted) {
+                      setState(() {
+                        _showPreviewText = value;
+                      });
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 24),
+              
               // Reading Settings
               Text(
                 'Reading Settings',
@@ -446,6 +572,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   subtitle: Text('$_keepReadItemsDays ${_keepReadItemsDays == 1 ? 'day' : 'days'} • Read articles older than this will be deleted'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => _showKeepReadItemsDialog(context),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.timer),
+                  title: const Text('Feed Timeout'),
+                  subtitle: Text('$_feedTimeoutSeconds seconds • Timeout for fetching feeds'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showFeedTimeoutDialog(context),
                 ),
               ),
               const SizedBox(height: 24),
@@ -634,7 +770,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.65'),
+                subtitle: const Text('Luli Reader v1.1.66'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
