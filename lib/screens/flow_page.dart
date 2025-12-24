@@ -1467,10 +1467,10 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   }
 
   String _formatDate(DateTime date) {
-    // Ensure both dates are in local timezone for accurate comparison
-    final now = DateTime.now();
-    final localDate = date.isUtc ? date.toLocal() : date;
-    final difference = now.difference(localDate);
+    // Use UTC for both sides to avoid timezone offsets (e.g., +2h seen in Jerusalem)
+    final now = DateTime.now().toUtc();
+    final articleUtc = date.isUtc ? date : date.toUtc();
+    final difference = now.difference(articleUtc);
 
     if (difference.inDays == 0) {
       if (difference.inHours == 0) {
