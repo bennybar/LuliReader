@@ -10,7 +10,7 @@ import '../services/local_rss_service.dart';
 import '../services/shared_preferences_service.dart';
 import '../utils/reading_time.dart';
 import 'article_reader_screen.dart';
-import '../widgets/group_filter_dialog.dart';
+import '../widgets/filter_drawer.dart';
 
 class ArticleListScreen extends ConsumerStatefulWidget {
   final Feed feed;
@@ -330,8 +330,26 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: FilterDrawer(onFiltersChanged: _loadArticles),
       appBar: AppBar(
-        title: Text(widget.feed.name),
+        automaticallyImplyLeading: false,
+        title: Row(
+          children: [
+            Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.tune),
+                tooltip: 'Filters',
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                widget.feed.name,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
         actions: [
           if (_isBatchMode) ...[
             IconButton(
@@ -372,29 +390,6 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
               ),
             ],
           ] else ...[
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              tooltip: 'Filter Folders',
-              onPressed: () async {
-                final account = await ref.read(accountServiceProvider).getCurrentAccount();
-                if (account != null) {
-                  final result = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => const GroupFilterDialog(),
-                  );
-                  if (result == true && mounted) {
-                    // Check if current feed's group is still visible
-                    final visibleGroupIds = ref.read(groupFilterProvider(account.id!));
-                    if (visibleGroupIds.isNotEmpty && !visibleGroupIds.contains(widget.feed.groupId)) {
-                      // Current feed's group is hidden, go back
-                      Navigator.of(context).pop();
-                    } else {
-                      _loadArticles();
-                    }
-                  }
-                }
-              },
-            ),
             PopupMenuButton<ArticleSortOption>(
               icon: const Icon(Icons.sort),
               tooltip: 'Sort',

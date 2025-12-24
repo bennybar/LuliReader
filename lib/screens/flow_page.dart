@@ -16,7 +16,7 @@ import '../services/shared_preferences_service.dart';
 import 'article_reader_screen.dart';
 import 'settings_screen.dart';
 import 'search_screen.dart';
-import '../widgets/group_filter_dialog.dart';
+import '../widgets/filter_drawer.dart';
 import 'package:swipe_to_action/swipe_to_action.dart';
 
 class FlowPage extends ConsumerStatefulWidget {
@@ -36,12 +36,15 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   String _filter = 'all'; // all, unread, starred
   int _refreshKey = 0;
   Timer? _accountRefreshTimer;
-  bool _accountListenerSet = false;
+  bool _filterListenerSet = false;
   ArticleSortOption _sortOption = ArticleSortOption.dateDesc;
   bool _isBatchMode = false;
   Set<String> _selectedArticleIds = {};
   final SharedPreferencesService _prefs = SharedPreferencesService();
   final ScrollController _scrollController = ScrollController();
+  ProviderSubscription<Set<String>>? _groupFilterSub;
+  ProviderSubscription<Set<String>>? _feedFilterSub;
+  ProviderSubscription<AsyncValue<dynamic>>? _accountSub;
   bool _showPreviewText = true;
   String _heroImagePosition = 'before';
 
@@ -60,6 +63,10 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     _loadSortPreference();
     _loadArticleViewPrefs();
     _startAccountRefreshTimer();
+    // Set up listeners after first frame to ensure ref is ready
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _setupFilterListeners();
+    });
   }
 
   @override
@@ -117,7 +124,42 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     WidgetsBinding.instance.removeObserver(this);
     _accountRefreshTimer?.cancel();
     _scrollController.dispose();
+    _groupFilterSub?.close();
+    _feedFilterSub?.close();
+    _accountSub?.close();
     super.dispose();
+  }
+
+  Future<void> _setupFilterListeners() async {
+    // Listen for account changes to reattach filter listeners
+    _accountSub ??= ref.listenManual(currentAccountProvider, (previous, next) async {
+      _filterListenerSet = false;
+      await _setupFilterListeners();
+      _loadArticles();
+    });
+
+    if (_filterListenerSet) return;
+
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (account == null) return;
+
+    // Close existing listeners if any
+    _groupFilterSub?.close();
+    _feedFilterSub?.close();
+
+    _groupFilterSub = ref.listenManual(groupFilterProvider(account.id!), (previous, next) {
+      if (previous != next && mounted) {
+        _loadArticles();
+      }
+    });
+
+    _feedFilterSub = ref.listenManual(feedFilterProvider(account.id!), (previous, next) {
+      if (previous != next && mounted) {
+        _loadArticles();
+      }
+    });
+
+    _filterListenerSet = true;
   }
 
   @override
@@ -183,17 +225,29 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         limit: 500,
       );
 
-      // Filter by selected groups
+      // Filter by selected groups and feeds
       final visibleGroupIds = ref.read(groupFilterProvider(account.id!));
-      if (visibleGroupIds.isNotEmpty) {
-        // Get all feeds and filter by group
+      final visibleFeedIds = ref.read(feedFilterProvider(account.id!));
+      
+      if (visibleGroupIds.isNotEmpty || visibleFeedIds.isNotEmpty) {
+        // Get all feeds
         final allFeeds = await feedDao.getAll(account.id!);
-        final visibleFeedIds = allFeeds
-            .where((feed) => visibleGroupIds.contains(feed.groupId))
-            .map((feed) => feed.id)
-            .toSet();
+        Set<String> allowedFeedIds;
         
-        articles = articles.where((article) => visibleFeedIds.contains(article.feedId)).toList();
+        if (visibleFeedIds.isNotEmpty) {
+          // If feed filter is set, use it (more specific)
+          allowedFeedIds = visibleFeedIds;
+        } else if (visibleGroupIds.isNotEmpty) {
+          // Otherwise, filter by group
+          allowedFeedIds = allFeeds
+              .where((feed) => visibleGroupIds.contains(feed.groupId))
+              .map((feed) => feed.id)
+              .toSet();
+        } else {
+          allowedFeedIds = allFeeds.map((feed) => feed.id).toSet();
+        }
+        
+        articles = articles.where((article) => allowedFeedIds.contains(article.feedId)).toList();
       }
 
       // Get feeds for each article
@@ -365,21 +419,23 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
 
   @override
   Widget build(BuildContext context) {
-    if (!_accountListenerSet) {
-      _accountListenerSet = true;
-      ref.listen(currentAccountProvider, (_, __) {
-        _loadArticles();
-      });
-    }
-
     final screenWidth = MediaQuery.of(context).size.width;
     final isSmallScreen = screenWidth < 600;
 
     return Scaffold(
+      drawer: FilterDrawer(onFiltersChanged: _loadArticles),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.tune),
+                tooltip: 'Filters',
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
+            ),
             // Filter icons in app bar
             IconButton(
               icon: Icon(
@@ -451,22 +507,6 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               },
             ),
           ] else if (isSmallScreen) ...[
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              tooltip: 'Filter Folders',
-              onPressed: () async {
-                final account = await ref.read(accountServiceProvider).getCurrentAccount();
-                if (account != null) {
-                  final result = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => const GroupFilterDialog(),
-                  );
-                  if (result == true && mounted) {
-                    _loadArticles();
-                  }
-                }
-              },
-            ),
             // On small screens, put most actions in a menu
             PopupMenuButton<ArticleSortOption>(
               icon: const Icon(Icons.sort),
@@ -592,22 +632,6 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
             ),
           ] else ...[
             // On larger screens, show all actions as icon buttons
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              tooltip: 'Filter Folders',
-              onPressed: () async {
-                final account = await ref.read(accountServiceProvider).getCurrentAccount();
-                if (account != null) {
-                  final result = await showDialog<bool>(
-                    context: context,
-                    builder: (_) => const GroupFilterDialog(),
-                  );
-                  if (result == true && mounted) {
-                    _loadArticles();
-                  }
-                }
-              },
-            ),
             IconButton(
               icon: const Icon(Icons.search),
               tooltip: 'Search',

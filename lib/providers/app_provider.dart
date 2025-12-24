@@ -187,6 +187,11 @@ final groupFilterProvider = StateNotifierProvider.family<GroupFilterNotifier, Se
   return GroupFilterNotifier(ref.watch(sharedPreferencesProvider), accountId);
 });
 
+// Feed filter provider - stores which feeds are visible
+final feedFilterProvider = StateNotifierProvider.family<FeedFilterNotifier, Set<String>, int>((ref, accountId) {
+  return FeedFilterNotifier(ref.watch(sharedPreferencesProvider), accountId);
+});
+
 class GroupFilterNotifier extends StateNotifier<Set<String>> {
   final SharedPreferencesService _prefs;
   final int accountId;
@@ -222,6 +227,44 @@ class GroupFilterNotifier extends StateNotifier<Set<String>> {
   bool isGroupVisible(String groupId) {
     // Empty set means all groups are visible
     return state.isEmpty || state.contains(groupId);
+  }
+}
+
+class FeedFilterNotifier extends StateNotifier<Set<String>> {
+  final SharedPreferencesService _prefs;
+  final int accountId;
+  static const String _keyPrefix = 'visible_feeds_';
+
+  FeedFilterNotifier(this._prefs, this.accountId) : super({}) {
+    _loadFilter();
+  }
+
+  Future<void> _loadFilter() async {
+    await _prefs.init();
+    final key = '$_keyPrefix$accountId';
+    final feedIdsStr = await _prefs.getString(key);
+    if (feedIdsStr != null && feedIdsStr.isNotEmpty) {
+      state = feedIdsStr.split(',').where((id) => id.isNotEmpty).toSet();
+    } else {
+      // Empty set means all feeds are visible
+      state = {};
+    }
+  }
+
+  Future<void> setFilter(Set<String> feedIds) async {
+    await _prefs.init();
+    state = feedIds;
+    final key = '$_keyPrefix$accountId';
+    if (feedIds.isEmpty) {
+      await _prefs.remove(key);
+    } else {
+      await _prefs.setString(key, feedIds.join(','));
+    }
+  }
+
+  bool isFeedVisible(String feedId) {
+    // Empty set means all feeds are visible
+    return state.isEmpty || state.contains(feedId);
   }
 }
 

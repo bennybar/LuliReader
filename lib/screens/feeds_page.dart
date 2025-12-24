@@ -13,7 +13,7 @@ import 'article_list_screen.dart';
 import 'add_feed_screen.dart';
 import 'feed_options_screen.dart';
 import 'settings_screen.dart';
-import '../widgets/group_filter_dialog.dart';
+import '../widgets/filter_drawer.dart';
 
 class FeedsPage extends ConsumerStatefulWidget {
   final Future<void> Function()? onSync;
@@ -50,24 +50,17 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
     final accountAsync = ref.watch(currentAccountProvider);
 
     return Scaffold(
+      drawer: FilterDrawer(onFiltersChanged: _refresh),
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text('Feeds'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.filter_list),
-            tooltip: 'Filter Folders',
-            onPressed: () async {
-              final account = await ref.read(accountServiceProvider).getCurrentAccount();
-              if (account != null) {
-                final result = await showDialog<bool>(
-                  context: context,
-                  builder: (_) => const GroupFilterDialog(),
-                );
-                if (result == true && mounted) {
-                  _refresh();
-                }
-              }
-            },
+          Builder(
+            builder: (context) => IconButton(
+              icon: const Icon(Icons.tune),
+              tooltip: 'Filters',
+              onPressed: () => Scaffold.of(context).openDrawer(),
+            ),
           ),
           IconButton(
             icon: _isSyncing
