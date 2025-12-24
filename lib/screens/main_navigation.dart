@@ -8,6 +8,7 @@ import '../services/sync_coordinator.dart';
 import '../background/background_sync.dart';
 import '../services/sync_log_service.dart';
 import '../database/article_dao.dart';
+import '../services/shared_preferences_service.dart';
 import 'feeds_page.dart';
 import 'flow_page.dart';
 import 'settings_screen.dart';
@@ -83,16 +84,23 @@ class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBin
     _syncTimer?.cancel();
     Future.microtask(() async {
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      final prefs = SharedPreferencesService();
+      await prefs.init();
+      final backgroundEnabled = await prefs.getBool('backgroundSyncEnabled') ?? true;
       if (account != null && account.syncInterval > 0) {
         _syncTimer = Timer.periodic(
           Duration(minutes: account.syncInterval),
           (_) => _syncAll(showMessage: false),
         );
-        await registerBackgroundSync(
-          account.syncInterval,
-          requiresCharging: account.syncOnlyWhenCharging,
-          requiresWiFi: account.syncOnlyOnWiFi,
-        );
+        if (backgroundEnabled) {
+          await registerBackgroundSync(
+            account.syncInterval,
+            requiresCharging: account.syncOnlyWhenCharging,
+            requiresWiFi: account.syncOnlyOnWiFi,
+          );
+        } else {
+          await cancelBackgroundSync();
+        }
       } else {
         await cancelBackgroundSync();
       }

@@ -32,6 +32,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _feedTimeoutSeconds = 10;
   bool _showPreviewText = true;
   bool _showHeroImage = true; // simple on/off
+  bool _backgroundSyncEnabled = true; // controls background worker
   final SharedPreferencesService _prefs = SharedPreferencesService();
 
   @override
@@ -50,6 +51,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
     final feedTimeoutSeconds = await prefs.getInt('feedTimeoutSeconds') ?? 10;
     final showPreviewText = await prefs.getBool('showPreviewText') ?? true;
+    final backgroundSyncEnabled = await prefs.getBool('backgroundSyncEnabled') ?? true;
     // New: showHeroImage on/off. Backward compatibility: map old heroImagePosition.
     final legacyHeroPosition = await prefs.getString('heroImagePosition');
     final showHeroImage = await prefs.getBool('showHeroImage') ??
@@ -66,6 +68,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _feedTimeoutSeconds = feedTimeoutSeconds;
         _showPreviewText = showPreviewText;
         _showHeroImage = showHeroImage;
+        _backgroundSyncEnabled = backgroundSyncEnabled;
       });
     }
   }
@@ -260,19 +263,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       switch (field) {
         case 'syncOnlyOnWiFi':
           updatedAccount = account.copyWith(syncOnlyOnWiFi: value as bool);
-          await registerBackgroundSync(
-            account.syncInterval,
-            requiresCharging: account.syncOnlyWhenCharging,
-            requiresWiFi: value as bool,
-          );
           break;
         case 'syncOnlyWhenCharging':
           updatedAccount = account.copyWith(syncOnlyWhenCharging: value as bool);
-          await registerBackgroundSync(
-            account.syncInterval,
-            requiresCharging: value as bool,
-            requiresWiFi: account.syncOnlyOnWiFi,
-          );
           break;
         case 'isFullContent':
           updatedAccount = account.copyWith(isFullContent: value as bool);
@@ -300,6 +293,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       }
 
       await accountService.updateAccount(updatedAccount);
+      await _applyBackgroundSyncSetting(updatedAccount);
       if (mounted) {
         ref.invalidate(currentAccountProvider);
       }
@@ -310,6 +304,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         );
       }
     }
+  }
+
+  Future<void> _applyBackgroundSyncSetting(Account account) async {
+    await _prefs.init();
+    final enabled = await _prefs.getBool('backgroundSyncEnabled') ?? true;
+    if (!enabled || account.syncInterval <= 0) {
+      await cancelBackgroundSync();
+      return;
+    }
+    await registerBackgroundSync(
+      account.syncInterval,
+      requiresCharging: account.syncOnlyWhenCharging,
+      requiresWiFi: account.syncOnlyOnWiFi,
+    );
   }
 
   @override
@@ -600,6 +608,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
               Card(
                 child: SwitchListTile(
+                  secondary: const Icon(Icons.sync_lock),
+                  title: const Text('Background Sync'),
+                  subtitle: const Text('Allow background worker to run sync'),
+                  value: _backgroundSyncEnabled,
+                  onChanged: (value) async {
+                    await _prefs.init();
+                    await _prefs.setBool('backgroundSyncEnabled', value);
+                    if (!value) {
+                      await cancelBackgroundSync();
+                    } else {
+                      await _applyBackgroundSyncSetting(account);
+                    }
+                    if (mounted) {
+                      setState(() {
+                        _backgroundSyncEnabled = value;
+                      });
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: SwitchListTile(
                   secondary: const Icon(Icons.play_circle_outline),
                   title: const Text('Sync on App Start'),
                   subtitle: const Text('Automatically sync when the app starts'),
@@ -733,7 +764,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.68'),
+                subtitle: const Text('Luli Reader v1.1.69'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
