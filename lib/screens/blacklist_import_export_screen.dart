@@ -118,7 +118,9 @@ class _BlacklistImportExportScreenState extends ConsumerState<BlacklistImportExp
       }
 
       final file = File(result.files.single.path!);
-      final content = await file.readAsString();
+      // Read file as UTF-8 bytes and decode explicitly to handle special characters
+      final bytes = await file.readAsBytes();
+      final content = utf8.decode(bytes, allowMalformed: false);
       final lines = content.split('\n').where((line) => line.trim().isNotEmpty).toList();
 
       if (lines.isEmpty) {

@@ -46,7 +46,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   ProviderSubscription<Set<String>>? _feedFilterSub;
   ProviderSubscription<AsyncValue<dynamic>>? _accountSub;
   bool _showPreviewText = true;
-  String _heroImagePosition = 'before';
+  bool _showHeroImage = true; // simple on/off
 
   void refresh() {
     setState(() {
@@ -80,19 +80,15 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     await _prefs.init();
     if (mounted) {
       final showPreviewTextValue = await _prefs.getBool('showPreviewText');
-      final heroImagePositionRaw = await _prefs.getString('heroImagePosition');
-      final heroImagePositionValue = switch (heroImagePositionRaw) {
-        'left' => 'before',
-        'right' => 'after',
-        'after' => 'after',
-        'none' => 'none',
-        'before' => 'before',
-        _ => 'before',
-      };
+      // New: showHeroImage on/off. Backward compatibility: map old heroImagePosition.
+      final legacyHeroPosition = await _prefs.getString('heroImagePosition');
+      final showHeroImageValue =
+          await _prefs.getBool('showHeroImage') ??
+              (legacyHeroPosition == 'none' ? false : true);
       
       setState(() {
         _showPreviewText = showPreviewTextValue ?? true;
-        _heroImagePosition = heroImagePositionValue;
+        _showHeroImage = showHeroImageValue;
       });
     }
   }
@@ -883,6 +879,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   padding: const EdgeInsets.all(12),
                   child: IntrinsicHeight(
                     child: Row(
+                      textDirection: TextDirection.ltr, // keep hero image visually on the right
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (_isBatchMode) ...[
@@ -891,12 +888,6 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                             onChanged: (_) => _toggleArticleSelection(article.id),
                           ),
                           const SizedBox(width: 8),
-                        ],
-                        if (_heroImagePosition == 'before' &&
-                            article.img != null &&
-                            article.img!.isNotEmpty) ...[
-                          _buildArticleImage(article),
-                          const SizedBox(width: 12),
                         ],
                         Expanded(
                           child: Column(
@@ -1021,7 +1012,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                             ],
                           ),
                         ),
-                        if (_heroImagePosition == 'after' &&
+                        if (_showHeroImage &&
                             article.img != null &&
                             article.img!.isNotEmpty) ...[
                           const SizedBox(width: 12),

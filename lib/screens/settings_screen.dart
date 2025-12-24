@@ -31,7 +31,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   int _keepReadItemsDays = 3;
   int _feedTimeoutSeconds = 10;
   bool _showPreviewText = true;
-  String _heroImagePosition = 'before'; // before, after, none
+  bool _showHeroImage = true; // simple on/off
   final SharedPreferencesService _prefs = SharedPreferencesService();
 
   @override
@@ -50,15 +50,12 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
     final feedTimeoutSeconds = await prefs.getInt('feedTimeoutSeconds') ?? 10;
     final showPreviewText = await prefs.getBool('showPreviewText') ?? true;
-    final heroImagePositionRaw = await prefs.getString('heroImagePosition');
-    // Backward compatibility: map old left/right to before/after
-    final heroImagePosition = switch (heroImagePositionRaw) {
-      'left' => 'before',
-      'right' => 'after',
-      'after' => 'after',
-      'none' => 'none',
-      _ => 'before',
-    };
+    // New: showHeroImage on/off. Backward compatibility: map old heroImagePosition.
+    final legacyHeroPosition = await prefs.getString('heroImagePosition');
+    final showHeroImage = await prefs.getBool('showHeroImage') ??
+        (legacyHeroPosition == 'none'
+            ? false
+            : true); // any non-none legacy value means on
     if (mounted) {
       setState(() {
         _articleFontScale = font;
@@ -68,7 +65,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _keepReadItemsDays = keepReadItemsDays;
         _feedTimeoutSeconds = feedTimeoutSeconds;
         _showPreviewText = showPreviewText;
-        _heroImagePosition = heroImagePosition;
+        _showHeroImage = showHeroImage;
       });
     }
   }
@@ -248,41 +245,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) {
         setState(() {
           _feedTimeoutSeconds = selected;
-        });
-      }
-    }
-  }
-
-  Future<void> _showHeroImagePositionDialog(BuildContext context) async {
-    const options = ['before', 'after', 'none'];
-    final selected = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Hero Image Position'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options
-              .map((position) => RadioListTile<String>(
-                    title: Text(
-                      position == 'before'
-                          ? 'Before Text'
-                          : (position == 'after' ? 'After Text' : 'None'),
-                    ),
-                    value: position,
-                    groupValue: _heroImagePosition,
-                    onChanged: (value) => Navigator.of(context).pop(value),
-                  ))
-              .toList(),
-        ),
-      ),
-    );
-
-    if (selected != null) {
-      await _prefs.init();
-      await _prefs.setString('heroImagePosition', selected);
-      if (mounted) {
-        setState(() {
-          _heroImagePosition = selected;
         });
       }
     }
@@ -501,18 +463,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 12),
               Card(
-                child: ListTile(
-                  leading: const Icon(Icons.swap_horiz),
-                  title: const Text('Hero Image Position'),
-                  subtitle: Text(
-                    switch (_heroImagePosition) {
-                      'before' => 'Before Text',
-                      'after' => 'After Text',
-                      _ => 'None',
-                    },
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _showHeroImagePositionDialog(context),
+                child: SwitchListTile(
+                  secondary: const Icon(Icons.image),
+                  title: const Text('Show Hero Image'),
+                  subtitle: const Text('Toggle article thumbnail in lists'),
+                  value: _showHeroImage,
+                  onChanged: (value) async {
+                    await _saveBoolPref('showHeroImage', value);
+                    if (mounted) {
+                      setState(() {
+                        _showHeroImage = value;
+                      });
+                    }
+                  },
                 ),
               ),
               const SizedBox(height: 8),
@@ -770,7 +733,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.67'),
+                subtitle: const Text('Luli Reader v1.1.68'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],

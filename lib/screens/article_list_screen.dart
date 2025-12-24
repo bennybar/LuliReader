@@ -11,6 +11,7 @@ import '../services/shared_preferences_service.dart';
 import '../utils/reading_time.dart';
 import 'article_reader_screen.dart';
 import '../widgets/filter_drawer.dart';
+import '../utils/rtl_helper.dart';
 
 class ArticleListScreen extends ConsumerStatefulWidget {
   final Feed feed;
@@ -30,7 +31,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
   final SharedPreferencesService _prefs = SharedPreferencesService();
   final ScrollController _scrollController = ScrollController();
   bool _showPreviewText = true;
-  String _heroImagePosition = 'before';
+  bool _showHeroImage = true; // simple on/off
 
   @override
   void initState() {
@@ -51,19 +52,15 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     await _prefs.init();
     if (mounted) {
       final showPreviewTextValue = await _prefs.getBool('showPreviewText');
-      final heroImagePositionRaw = await _prefs.getString('heroImagePosition');
-      final heroImagePositionValue = switch (heroImagePositionRaw) {
-        'left' => 'before',
-        'right' => 'after',
-        'after' => 'after',
-        'none' => 'none',
-        'before' => 'before',
-        _ => 'before',
-      };
+      // New: showHeroImage on/off. Backward compatibility: map old heroImagePosition.
+      final legacyHeroPosition = await _prefs.getString('heroImagePosition');
+      final showHeroImageValue =
+          await _prefs.getBool('showHeroImage') ??
+              (legacyHeroPosition == 'none' ? false : true);
       
       setState(() {
         _showPreviewText = showPreviewTextValue ?? true;
-        _heroImagePosition = heroImagePositionValue;
+        _showHeroImage = showHeroImageValue;
       });
     }
   }
@@ -335,12 +332,10 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
         automaticallyImplyLeading: false,
         title: Row(
           children: [
-            Builder(
-              builder: (context) => IconButton(
-                icon: const Icon(Icons.tune),
-                tooltip: 'Filters',
-                onPressed: () => Scaffold.of(context).openDrawer(),
-              ),
+            IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: 'Back',
+              onPressed: () => Navigator.of(context).maybePop(),
             ),
             Expanded(
               child: Text(
@@ -513,31 +508,165 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     final readingTime = ReadingTime.calculateAndFormat(
       article.fullContent ?? article.rawDescription,
     );
-    
+
+    // Derive text direction from content and feed settings (consistent with FlowPage)
+    final contentText = '${article.title} ${article.shortDescription} ${article.fullContent ?? ''}';
+    final textDirection =
+        RtlHelper.getTextDirectionFromContent(contentText, feedRtl: widget.feed.isRtl);
+    final isRtl = textDirection == TextDirection.rtl;
+
     // Use state variables for article view preferences
     final showPreviewText = _showPreviewText;
-    final heroImagePosition = _heroImagePosition;
     
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: isSelected
-            ? BorderSide(
-                color: Theme.of(context).colorScheme.primary,
-                width: 2,
-              )
-            : BorderSide.none,
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: _isBatchMode
-            ? Checkbox(
-                value: isSelected,
-                onChanged: (_) => _toggleArticleSelection(article.id),
-              )
-            : (heroImagePosition == 'before' && article.img != null && article.img!.isNotEmpty
-                ? ClipRRect(
+    return Directionality(
+      textDirection: textDirection,
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: isSelected
+              ? BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 2,
+                )
+              : BorderSide.none,
+        ),
+        child: InkWell(
+          onTap: () {
+            if (_isBatchMode) {
+              _toggleArticleSelection(article.id);
+            } else {
+              final scrollPosition = _scrollController.hasClients
+                  ? _scrollController.position.pixels
+                  : 0.0;
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ArticleReaderScreen(article: article),
+                ),
+              ).then((_) async {
+                await _updateArticleAfterReading(article.id, scrollPosition, index);
+              });
+            }
+          },
+          onLongPress: () {
+            if (!_isBatchMode) {
+              setState(() {
+                _isBatchMode = true;
+                _selectedArticleIds.add(article.id);
+              });
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              textDirection: TextDirection.ltr, // keep hero image visually on the right
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_isBatchMode) ...[
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => _toggleArticleSelection(article.id),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              article.title,
+                              style: TextStyle(
+                                fontWeight: article.isUnread ? FontWeight.bold : FontWeight.normal,
+                              ),
+                              textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (article.isStarred)
+                            Padding(
+                              padding: EdgeInsets.only(
+                                  left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
+                              child: Icon(
+                                Icons.star,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                        ],
+                      ),
+                      if (showPreviewText) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          article.shortDescription,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        alignment: isRtl ? WrapAlignment.end : WrapAlignment.start,
+                        children: [
+                          if (readingTime.isNotEmpty)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.timer_outlined,
+                                  size: 14,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withOpacity(0.6),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  readingTime,
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              ],
+                            ),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.access_time,
+                                size: 14,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withOpacity(0.6),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatDate(article.date),
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                          if (article.isStarred)
+                            Icon(
+                              Icons.star,
+                              size: 14,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                if (!_isBatchMode &&
+                    _showHeroImage &&
+                    article.img != null &&
+                    article.img!.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: CachedNetworkImage(
                       imageUrl: article.img!,
@@ -552,116 +681,12 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                         child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
                     ),
-                  )
-                : const Icon(Icons.article, size: 40)),
-        trailing: (!_isBatchMode &&
-                heroImagePosition == 'after' &&
-                article.img != null &&
-                article.img!.isNotEmpty)
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: CachedNetworkImage(
-                  imageUrl: article.img!,
-                  width: 80,
-                  height: 80,
-                  fit: BoxFit.cover,
-                  errorWidget: (_, __, ___) => const Icon(Icons.article),
-                  placeholder: (_, __) => Container(
-                    width: 80,
-                    height: 80,
-                    color: Colors.grey[300],
-                    child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                  ),
-                ),
-              )
-            : null,
-        title: Text(
-          article.title,
-          style: TextStyle(
-            fontWeight: article.isUnread ? FontWeight.bold : FontWeight.normal,
-          ),
-        ),
-        subtitle: showPreviewText 
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 4),
-                  Text(
-                    article.shortDescription,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                if (readingTime.isNotEmpty) ...[
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.timer_outlined,
-                        size: 14,
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        readingTime,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
                   ),
                 ],
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.access_time,
-                      size: 14,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      _formatDate(article.date),
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
-                ),
-                if (article.isStarred)
-                  Icon(
-                    Icons.star,
-                    size: 14,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
               ],
             ),
-          ],
-        ) : null,
-        onTap: () {
-          if (_isBatchMode) {
-            _toggleArticleSelection(article.id);
-          } else {
-            final scrollPosition = _scrollController.hasClients 
-                ? _scrollController.position.pixels 
-                : 0.0;
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => ArticleReaderScreen(article: article),
-              ),
-            ).then((_) async {
-              await _updateArticleAfterReading(article.id, scrollPosition, index);
-            });
-          }
-        },
-        onLongPress: () {
-          if (!_isBatchMode) {
-            setState(() {
-              _isBatchMode = true;
-              _selectedArticleIds.add(article.id);
-            });
-          }
-        },
+          ),
+        ),
       ),
     );
   }
