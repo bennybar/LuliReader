@@ -95,6 +95,7 @@ class RssHelper {
             author: item.findElements('author').firstOrNull?.innerText ??
                     item.findElements('dc:creator').firstOrNull?.innerText,
             content: item.findElements('content:encoded').firstOrNull?.innerText,
+            mediaContentUrl: _extractMediaContentUrl(item),
           );
         }).toList();
       } else {
@@ -116,6 +117,7 @@ class RssHelper {
               author: entry.findElements('author').firstOrNull
                       ?.findElements('name').firstOrNull?.innerText,
               content: entry.findElements('content').firstOrNull?.innerText,
+              mediaContentUrl: _extractMediaContentUrl(entry),
             );
           }).toList();
         } else {
@@ -143,6 +145,7 @@ class RssHelper {
                 author: entry.findElements('author').firstOrNull
                         ?.findElements('name').firstOrNull?.innerText,
                 content: entry.findElements('content').firstOrNull?.innerText,
+                mediaContentUrl: _extractMediaContentUrl(entry),
               );
             }).toList();
           } else {
@@ -156,6 +159,7 @@ class RssHelper {
                 author: item.findElements('author').firstOrNull?.innerText ??
                         item.findElements('dc:creator').firstOrNull?.innerText,
                 content: item.findElements('content:encoded').firstOrNull?.innerText,
+                mediaContentUrl: _extractMediaContentUrl(item),
               );
             }).toList();
           }
@@ -255,8 +259,41 @@ class RssHelper {
     return base64Encode(bytes);
   }
 
+  /// Extract media:content URL from an XML element
+  String? _extractMediaContentUrl(xml.XmlElement element) {
+    try {
+      // Try to find media:content element directly
+      final mediaContent = element.findElements('media:content').firstOrNull;
+      if (mediaContent != null) {
+        final medium = mediaContent.getAttribute('medium');
+        final url = mediaContent.getAttribute('url');
+        if (medium == 'image' && url != null && url.isNotEmpty) {
+          return url;
+        }
+      }
+      
+      // Fallback: search all elements with local name 'content' that have medium='image'
+      final allContentElements = element.findAllElements('content');
+      for (final contentElem in allContentElements) {
+        final medium = contentElem.getAttribute('medium');
+        final url = contentElem.getAttribute('url');
+        if (medium == 'image' && url != null && url.isNotEmpty) {
+          return url;
+        }
+      }
+    } catch (e) {
+      // Ignore errors, fall back to HTML content parsing
+    }
+    return null;
+  }
+
   String? _findThumbnail(RssItem item, String content) {
-    // Check content for images
+    // First priority: check media:content URL (RSS media namespace)
+    if (item.mediaContentUrl != null && item.mediaContentUrl!.isNotEmpty) {
+      return item.mediaContentUrl;
+    }
+    
+    // Second priority: check content for images (existing behavior)
     if (content.isNotEmpty) {
       final doc = html_parser.parse(content);
       final img = doc.querySelector('img');
@@ -337,6 +374,7 @@ class RssItem {
   final String? guid;
   final String? author;
   final String? content;
+  final String? mediaContentUrl;
 
   RssItem({
     this.title,
@@ -346,5 +384,6 @@ class RssItem {
     this.guid,
     this.author,
     this.content,
+    this.mediaContentUrl,
   });
 }

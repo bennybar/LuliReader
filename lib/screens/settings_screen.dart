@@ -764,7 +764,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.71'),
+                subtitle: const Text('Luli Reader v1.1.72'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
