@@ -107,20 +107,44 @@ class _BlacklistImportExportScreenState extends ConsumerState<BlacklistImportExp
         throw Exception('No account found');
       }
 
-      final result = await FilePicker.platform.pickFiles(
+      // Try with specific extension first
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['txt'],
+        allowMultiple: false,
+        withData: true, // Read file data directly (works with cloud storage)
+        withReadStream: false,
       );
 
-      if (result == null || result.files.single.path == null) {
+      // If no result or file not accessible, try with any file type
+      if (result == null || (result.files.single.path == null && result.files.single.bytes == null)) {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          allowMultiple: false,
+          withData: true,
+          withReadStream: false,
+        );
+      }
+
+      if (result == null || result.files.isEmpty) {
         setState(() => _isImporting = false);
         return;
       }
 
-      final file = File(result.files.single.path!);
-      // Read file as UTF-8 bytes and decode explicitly to handle special characters
-      final bytes = await file.readAsBytes();
-      final content = utf8.decode(bytes, allowMalformed: false);
+      final pickedFile = result.files.single;
+      String content;
+
+      // Try to read from bytes first (works with cloud storage)
+      if (pickedFile.bytes != null) {
+        content = utf8.decode(pickedFile.bytes!, allowMalformed: false);
+      } else if (pickedFile.path != null) {
+        // Fallback to reading from local path
+        final file = File(pickedFile.path!);
+        final bytes = await file.readAsBytes();
+        content = utf8.decode(bytes, allowMalformed: false);
+      } else {
+        throw Exception('Unable to access file. Please ensure the file is available and try again.');
+      }
       final lines = content.split('\n').where((line) => line.trim().isNotEmpty).toList();
 
       if (lines.isEmpty) {

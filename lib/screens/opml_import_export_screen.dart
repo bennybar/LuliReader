@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
+import 'dart:convert';
 import '../providers/app_provider.dart';
 import '../widgets/sync_progress_dialog.dart';
 
@@ -21,18 +22,51 @@ class _OpmlImportExportScreenState extends ConsumerState<OpmlImportExportScreen>
     setState(() => _isImporting = true);
 
     try {
-      final result = await FilePicker.platform.pickFiles(
+      // Try with specific extensions first
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['opml', 'xml'],
+        allowMultiple: false,
+        withData: true, // Read file data directly (works with cloud storage)
+        withReadStream: false,
       );
 
-      if (result == null || result.files.single.path == null) {
+      // If no result or file not accessible, try with any file type
+      if (result == null || (result.files.single.path == null && result.files.single.bytes == null)) {
+        result = await FilePicker.platform.pickFiles(
+          type: FileType.any,
+          allowMultiple: false,
+          withData: true,
+          withReadStream: false,
+        );
+      }
+
+      if (result == null || result.files.isEmpty) {
         setState(() => _isImporting = false);
         return;
       }
 
-      final file = File(result.files.single.path!);
-      final content = await file.readAsString();
+      final pickedFile = result.files.single;
+      String content;
+
+      // Try to read from bytes first (works with cloud storage)
+      if (pickedFile.bytes != null) {
+        content = utf8.decode(pickedFile.bytes!);
+      } else if (pickedFile.path != null) {
+        // Fallback to reading from local path
+        final file = File(pickedFile.path!);
+        content = await file.readAsString();
+      } else {
+        throw Exception('Unable to access file. Please ensure the file is available and try again.');
+      }
+
+      // Validate that the content looks like OPML/XML
+      if (!content.trim().startsWith('<?xml') && !content.trim().startsWith('<opml')) {
+        // Check if it's at least XML-like
+        if (!content.contains('<') || !content.contains('>')) {
+          throw Exception('Selected file does not appear to be a valid OPML/XML file. Please select an OPML file.');
+        }
+      }
 
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
       if (account == null) {
