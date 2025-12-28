@@ -32,6 +32,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showPreviewText = true;
   bool _showHeroImage = true; // simple on/off
+  double _listFontScale = 1.0;
 
   @override
   void initState() {
@@ -50,19 +51,84 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
 
   Future<void> _loadArticleViewPrefs() async {
     await _prefs.init();
+    final showPreviewTextValue = await _prefs.getBool('showPreviewText');
+    // New: showHeroImage on/off. Backward compatibility: map old heroImagePosition.
+    final legacyHeroPosition = await _prefs.getString('heroImagePosition');
+    final showHeroImageValue =
+        await _prefs.getBool('showHeroImage') ??
+            (legacyHeroPosition == 'none' ? false : true);
+    final listFontScaleValue = await _prefs.getDouble('articleListFontScale') ?? 1.0;
+
     if (mounted) {
-      final showPreviewTextValue = await _prefs.getBool('showPreviewText');
-      // New: showHeroImage on/off. Backward compatibility: map old heroImagePosition.
-      final legacyHeroPosition = await _prefs.getString('heroImagePosition');
-      final showHeroImageValue =
-          await _prefs.getBool('showHeroImage') ??
-              (legacyHeroPosition == 'none' ? false : true);
-      
       setState(() {
         _showPreviewText = showPreviewTextValue ?? true;
         _showHeroImage = showHeroImageValue;
+        _listFontScale = listFontScaleValue;
       });
     }
+  }
+
+  Future<void> _showListFontSizeDialog(BuildContext context) async {
+    await _prefs.init();
+    final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+    double tempFontSize = baseSize * _listFontScale;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> updateSize(double newSize) async {
+            setDialogState(() {
+              tempFontSize = newSize.clamp(10.0, 32.0);
+            });
+            final newScale = tempFontSize / baseSize;
+            await _prefs.setDouble('articleListFontScale', newScale);
+            if (mounted) {
+              setState(() => _listFontScale = newScale);
+            }
+          }
+
+          Future<void> resetSize() async {
+            await updateSize(baseSize);
+          }
+
+          return AlertDialog(
+            title: const Text('List Font Size'),
+            content: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.remove),
+                  onPressed: () => updateSize(tempFontSize - 1),
+                ),
+                SizedBox(
+                  width: 70,
+                  child: Text(
+                    '${tempFontSize.toStringAsFixed(0)} px',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () => updateSize(tempFontSize + 1),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: resetSize,
+                child: const Text('Reset'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _loadSortPreference() async {
@@ -326,7 +392,14 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final media = MediaQuery.of(context);
+    final scaledMedia = media.copyWith(
+      textScaler: TextScaler.linear(_listFontScale),
+    );
+
+    return MediaQuery(
+      data: scaledMedia,
+      child: Scaffold(
       drawer: FilterDrawer(onFiltersChanged: _loadArticles),
       appBar: AppBar(
         automaticallyImplyLeading: false,
@@ -385,6 +458,11 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
               ),
             ],
           ] else ...[
+            IconButton(
+              icon: const Icon(Icons.text_fields),
+              tooltip: 'List Font Size',
+              onPressed: () => _showListFontSizeDialog(context),
+            ),
             PopupMenuButton<ArticleSortOption>(
               icon: const Icon(Icons.sort),
               tooltip: 'Sort',
@@ -500,11 +578,15 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                       },
                     ),
             ),
+      ),
     );
   }
 
   Widget _buildArticleCard(Article article, int index) {
     final isSelected = _selectedArticleIds.contains(article.id);
+    final double heroSize = (100 * _listFontScale).clamp(72.0, 160.0).toDouble();
+    final double placeholderIconSize =
+        (40 * _listFontScale).clamp(28.0, 80.0).toDouble();
 
     // Derive text direction from content and feed settings (consistent with FlowPage)
     final contentText = '${article.title} ${article.shortDescription} ${article.fullContent ?? ''}';
@@ -672,16 +754,16 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                     borderRadius: BorderRadius.circular(12),
                     child: CachedNetworkImage(
                       imageUrl: article.img!,
-                      width: 100,
-                      height: 100,
+                      width: heroSize,
+                      height: heroSize,
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Icon(
                         Icons.photo_outlined,
                         color: Theme.of(context).colorScheme.outline,
                       ),
                       placeholder: (_, __) => Container(
-                        width: 100,
-                        height: 100,
+                        width: heroSize,
+                        height: heroSize,
                         color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
@@ -691,10 +773,14 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                 if (!_isBatchMode &&
                     (_showHeroImage == false || article.img == null || article.img!.isEmpty)) ...[
                   const SizedBox(width: 12),
-                  Icon(
-                    Icons.photo_outlined,
-                    size: 40,
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                  SizedBox(
+                    width: heroSize,
+                    height: heroSize,
+                    child: Icon(
+                      Icons.photo_outlined,
+                      size: placeholderIconSize,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                    ),
                   ),
                 ],
                 ],

@@ -27,6 +27,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _articleFontScale = 1.0;
   double _titleFontScale = 1.0;
   double _articlePadding = 16.0;
+  double _articleListFontScale = 1.0;
   String _themeLabel = 'System';
   bool _openLinksExternally = false;
   int _keepReadItemsDays = 3;
@@ -48,6 +49,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final font = await prefs.getDouble('articleFontScale') ?? 1.0;
     final titleFont = await prefs.getDouble('titleFontScale') ?? 1.0;
     final pad = await prefs.getDouble('articlePadding') ?? 16.0;
+    final listFont = await prefs.getDouble('articleListFontScale') ?? 1.0;
     final theme = await prefs.getString('themeMode');
     final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
     final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
@@ -65,6 +67,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _articleFontScale = font;
         _titleFontScale = titleFont;
         _articlePadding = pad;
+        _articleListFontScale = listFont;
         _themeLabel = _labelFromTheme(theme);
         _openLinksExternally = openLinksExternally;
         _keepReadItemsDays = keepReadItemsDays;
@@ -564,6 +567,71 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 12),
               Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'List Font Size',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+                                  final currentSize = baseSize * _articleListFontScale;
+                                  final newSize = (currentSize - 1).clamp(10.0, 32.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _articleListFontScale = newScale);
+                                  await _saveReadingPref('articleListFontScale', newScale);
+                                },
+                              ),
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  '${((Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0) * _articleListFontScale).toStringAsFixed(0)} px',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+                                  final currentSize = baseSize * _articleListFontScale;
+                                  final newSize = (currentSize + 1).clamp(10.0, 32.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _articleListFontScale = newScale);
+                                  await _saveReadingPref('articleListFontScale', newScale);
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reset'),
+                          onPressed: () async {
+                            setState(() => _articleListFontScale = 1.0);
+                            await _saveReadingPref('articleListFontScale', 1.0);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
                 child: SwitchListTile(
                   secondary: const Icon(Icons.image),
                   title: const Text('Show Hero Image'),
@@ -857,7 +925,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.74'),
+                subtitle: const Text('Luli Reader v1.1.78'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
