@@ -25,6 +25,7 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _isResyncing = false;
   double _articleFontScale = 1.0;
+  double _titleFontScale = 1.0;
   double _articlePadding = 16.0;
   String _themeLabel = 'System';
   bool _openLinksExternally = false;
@@ -45,6 +46,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final prefs = SharedPreferencesService();
     await prefs.init();
     final font = await prefs.getDouble('articleFontScale') ?? 1.0;
+    final titleFont = await prefs.getDouble('titleFontScale') ?? 1.0;
     final pad = await prefs.getDouble('articlePadding') ?? 16.0;
     final theme = await prefs.getString('themeMode');
     final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
@@ -61,6 +63,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (mounted) {
       setState(() {
         _articleFontScale = font;
+        _titleFontScale = titleFont;
         _articlePadding = pad;
         _themeLabel = _labelFromTheme(theme);
         _openLinksExternally = openLinksExternally;
@@ -424,20 +427,110 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        'Font Size',
-                        style: Theme.of(context).textTheme.titleSmall,
+                      // Title Font Size
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Title Font Size',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
+                                  final currentSize = baseSize * _titleFontScale;
+                                  final newSize = (currentSize - 1).clamp(12.0, 48.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _titleFontScale = newScale);
+                                  await _saveReadingPref('titleFontScale', newScale);
+                                },
+                              ),
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  '${((Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0) * _titleFontScale).toStringAsFixed(0)} px',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
+                                  final currentSize = baseSize * _titleFontScale;
+                                  final newSize = (currentSize + 1).clamp(12.0, 48.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _titleFontScale = newScale);
+                                  await _saveReadingPref('titleFontScale', newScale);
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
-                      Slider(
-                        value: _articleFontScale,
-                        min: 0.8,
-                        max: 1.4,
-                        divisions: 12,
-                        label: '${_articleFontScale.toStringAsFixed(2)}x',
-                        onChanged: (v) async {
-                          setState(() => _articleFontScale = v);
-                          await _saveReadingPref('articleFontScale', v);
-                        },
+                      const SizedBox(height: 8),
+                      // Article Font Size
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Article Font Size',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+                                  final currentSize = baseSize * _articleFontScale;
+                                  final newSize = (currentSize - 1).clamp(10.0, 32.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _articleFontScale = newScale);
+                                  await _saveReadingPref('articleFontScale', newScale);
+                                },
+                              ),
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  '${((Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0) * _articleFontScale).toStringAsFixed(0)} px',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+                                  final currentSize = baseSize * _articleFontScale;
+                                  final newSize = (currentSize + 1).clamp(10.0, 32.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _articleFontScale = newScale);
+                                  await _saveReadingPref('articleFontScale', newScale);
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // Reset button
+                      Center(
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reset to Default'),
+                          onPressed: () async {
+                            setState(() {
+                              _titleFontScale = 1.0;
+                              _articleFontScale = 1.0;
+                            });
+                            await _saveReadingPref('titleFontScale', 1.0);
+                            await _saveReadingPref('articleFontScale', 1.0);
+                          },
+                        ),
                       ),
                       const SizedBox(height: 8),
                       Text(
@@ -764,7 +857,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.73'),
+                subtitle: const Text('Luli Reader v1.1.74'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],

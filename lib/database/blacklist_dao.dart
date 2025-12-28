@@ -127,8 +127,8 @@ class BlacklistDao {
         continue; // This entry is for a different feed
       }
       
-      // Check if title contains the pattern (case-insensitive)
-      if (title.toLowerCase().contains(entry.pattern.toLowerCase())) {
+      // Check if title matches the pattern (case-insensitive, supports wildcards)
+      if (_matchesPattern(title.toLowerCase(), entry.pattern.toLowerCase())) {
         return true; // Blocked
       }
     }
@@ -203,7 +203,7 @@ class BlacklistDao {
       
       // Check if title matches any blacklist pattern
       for (final entry in blacklistEntries) {
-        if (title.toLowerCase().contains(entry.pattern.toLowerCase())) {
+        if (_matchesPattern(title.toLowerCase(), entry.pattern.toLowerCase())) {
           // Check if this entry applies to this feed
           final feedId = articleMap['feedId'] as String;
           if (entry.feedId == null || entry.feedId == feedId) {
@@ -231,6 +231,36 @@ class BlacklistDao {
     }
     
     return blockedArticles;
+  }
+
+  /// Check if a string matches a pattern with wildcard support
+  /// Supports * (matches any sequence of characters) and ? (matches any single character)
+  bool _matchesPattern(String text, String pattern) {
+    // Convert wildcard pattern to regex
+    // Escape special regex characters except * and ?
+    String regexPattern = pattern
+        .replaceAll('\\', '\\\\')  // Escape backslashes first
+        .replaceAll('.', r'\.')    // Escape dots
+        .replaceAll('+', r'\+')    // Escape plus
+        .replaceAll('(', r'\(')    // Escape parentheses
+        .replaceAll(')', r'\)')    // Escape parentheses
+        .replaceAll('[', r'\[')    // Escape brackets
+        .replaceAll(']', r'\]')    // Escape brackets
+        .replaceAll('{', r'\{')    // Escape braces
+        .replaceAll('}', r'\}')    // Escape braces
+        .replaceAll('^', r'\^')    // Escape caret
+        .replaceAll('\$', r'\$')   // Escape dollar
+        .replaceAll('|', r'\|')    // Escape pipe
+        .replaceAll('*', '.*')     // Convert * to .* (any sequence)
+        .replaceAll('?', '.');     // Convert ? to . (any single character)
+    
+    try {
+      final regex = RegExp(regexPattern, caseSensitive: false);
+      return regex.hasMatch(text);
+    } catch (e) {
+      // If regex is invalid, fall back to simple substring matching
+      return text.contains(pattern);
+    }
   }
 }
 

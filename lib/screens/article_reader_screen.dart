@@ -39,6 +39,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   late bool _isUnread;
   Set<String> _seenContentImages = {};
   double _fontScale = 1.0;
+  double _titleFontScale = 1.0;
   double _contentPadding = 16.0;
   bool _openLinksExternally = false; // false = in-app browser (default), true = external browser
 
@@ -56,11 +57,13 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     final prefs = SharedPreferencesService();
     await prefs.init();
     final font = await prefs.getDouble('articleFontScale') ?? 1.0;
+    final titleFont = await prefs.getDouble('titleFontScale') ?? 1.0;
     final pad = await prefs.getDouble('articlePadding') ?? 16.0;
     final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
     if (mounted) {
       setState(() {
         _fontScale = font;
+        _titleFontScale = titleFont;
         _contentPadding = pad;
         _openLinksExternally = openLinksExternally;
       });
@@ -248,6 +251,131 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     }
   }
 
+  Future<void> _showFontSizeDialog(BuildContext context) async {
+    // Get base font sizes
+    final baseTitleSize = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
+    final baseArticleSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+    
+    double tempTitleFontSize = baseTitleSize * _titleFontScale;
+    double tempArticleFontSize = baseArticleSize * _fontScale;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> updateTitleSize(double newSize) async {
+            setDialogState(() {
+              tempTitleFontSize = newSize.clamp(12.0, 48.0);
+            });
+            final newScale = tempTitleFontSize / baseTitleSize;
+            await _saveFontSize('titleFontScale', newScale);
+            if (mounted) {
+              setState(() {
+                _titleFontScale = newScale;
+              });
+            }
+          }
+          
+          Future<void> updateArticleSize(double newSize) async {
+            setDialogState(() {
+              tempArticleFontSize = newSize.clamp(10.0, 32.0);
+            });
+            final newScale = tempArticleFontSize / baseArticleSize;
+            await _saveFontSize('articleFontScale', newScale);
+            if (mounted) {
+              setState(() {
+                _fontScale = newScale;
+              });
+            }
+          }
+          
+          Future<void> resetFontSizes() async {
+            await updateTitleSize(baseTitleSize);
+            await updateArticleSize(baseArticleSize);
+          }
+          
+          return AlertDialog(
+            title: const Text('Font Size'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Title:'),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove),
+                          onPressed: () => updateTitleSize(tempTitleFontSize - 1),
+                        ),
+                        SizedBox(
+                          width: 60,
+                          child: Text(
+                            '${tempTitleFontSize.toStringAsFixed(0)} px',
+                            style: Theme.of(context).textTheme.titleMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add),
+                          onPressed: () => updateTitleSize(tempTitleFontSize + 1),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Article:'),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove),
+                          onPressed: () => updateArticleSize(tempArticleFontSize - 1),
+                        ),
+                        SizedBox(
+                          width: 60,
+                          child: Text(
+                            '${tempArticleFontSize.toStringAsFixed(0)} px',
+                            style: Theme.of(context).textTheme.titleMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add),
+                          onPressed: () => updateArticleSize(tempArticleFontSize + 1),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: resetFontSizes,
+                child: const Text('Reset'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _saveFontSize(String key, double value) async {
+    final prefs = SharedPreferencesService();
+    await prefs.init();
+    await prefs.setDouble(key, value);
+  }
+
   bool _isRtl() {
     // Feed RTL setting takes precedence
     if (_feed?.isRtl == true) {
@@ -291,6 +419,11 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             overflow: TextOverflow.ellipsis,
           ),
           actions: [
+            IconButton(
+              icon: const Icon(Icons.text_fields),
+              tooltip: 'Font Size',
+              onPressed: () => _showFontSizeDialog(context),
+            ),
             IconButton(
               icon: Icon(
                 _useFullContent ? Icons.article : Icons.article_outlined,
@@ -341,6 +474,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                           widget.article.title,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
+                                fontSize: (Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24) * _titleFontScale,
                               ),
                           textAlign: TextAlign.start,
                         ),
@@ -609,9 +743,13 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   }
 
   Widget _buildListItemWithMixedContent(dynamic element, TextDirection textDir) {
+    final baseStyle = Theme.of(context).textTheme.bodyLarge;
+    final scaledStyle = baseStyle?.copyWith(
+      fontSize: (baseStyle.fontSize ?? 16) * _fontScale,
+    );
     final spans = _buildTextSpansFromNodes(
       element.nodes ?? [],
-      Theme.of(context).textTheme.bodyLarge,
+      scaledStyle ?? baseStyle!,
     );
     
     return SizedBox(
@@ -620,7 +758,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         textAlign: TextAlign.start,
         text: TextSpan(
           children: spans,
-          style: Theme.of(context).textTheme.bodyLarge,
+          style: scaledStyle,
         ),
       ),
     );
@@ -752,6 +890,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             child: Text(
               nodeText,
               textAlign: TextAlign.start,
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) * _fontScale,
+              ),
             ),
           ));
         } else if (node is html_dom.Element) {
@@ -773,9 +914,13 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         // If paragraph has children (like links), build them using RichText; otherwise use text
         if (children.isNotEmpty || (element.nodes != null && element.nodes!.any((n) => n is html_dom.Element && n.localName == 'a'))) {
           // Build TextSpan list from nodes for RichText
+          final baseStyle = Theme.of(context).textTheme.bodyLarge;
+          final scaledStyle = baseStyle?.copyWith(
+            fontSize: (baseStyle.fontSize ?? 16) * _fontScale,
+          );
           final spans = _buildTextSpansFromNodes(
             element.nodes ?? [],
-            Theme.of(context).textTheme.bodyLarge,
+            scaledStyle ?? baseStyle!,
           );
           
           return Padding(
@@ -788,7 +933,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                   textAlign: TextAlign.start,
                   text: TextSpan(
                     children: spans,
-                    style: Theme.of(context).textTheme.bodyLarge,
+                    style: scaledStyle,
                   ),
                 ),
               ),
@@ -803,7 +948,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               width: double.infinity,
               child: Text(
                 text,
-                style: Theme.of(context).textTheme.bodyLarge,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) * _fontScale,
+                ),
                 textAlign: TextAlign.start,
               ),
             ),
@@ -824,6 +971,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                 text,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
+                      fontSize: (Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24) * _fontScale,
                     ),
                 textAlign: TextAlign.start,
               ),
@@ -845,6 +993,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                 text,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
+                      fontSize: (Theme.of(context).textTheme.titleMedium?.fontSize ?? 20) * _fontScale,
                     ),
                 textAlign: TextAlign.start,
               ),
@@ -1009,7 +1158,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                   width: double.infinity,
                   child: Text(
                     text,
-                    style: Theme.of(context).textTheme.bodyLarge,
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontSize: (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) * _fontScale,
+                    ),
                     textAlign: TextAlign.start,
                   ),
                 ),
