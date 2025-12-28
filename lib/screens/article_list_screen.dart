@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,7 +23,7 @@ class ArticleListScreen extends ConsumerStatefulWidget {
   ConsumerState<ArticleListScreen> createState() => _ArticleListScreenState();
 }
 
-class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
+class _ArticleListScreenState extends ConsumerState<ArticleListScreen> with WidgetsBindingObserver {
   List<Article> _articles = [];
   bool _isLoading = true;
   ArticleSortOption _sortOption = ArticleSortOption.dateDesc;
@@ -32,13 +33,32 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
   final ScrollController _scrollController = ScrollController();
   bool _showPreviewText = true;
   bool _showHeroImage = true; // simple on/off
+  double _listTitleFontScale = 1.0;
+  double _listPreviewFontScale = 1.0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadSortPreference();
     _loadArticles();
     _loadArticleViewPrefs();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Background refresh - update articles incrementally
+      _refreshArticlesInBackground();
+    }
+    super.didChangeAppLifecycleState(state);
   }
 
   @override
@@ -57,11 +77,61 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
       final showHeroImageValue =
           await _prefs.getBool('showHeroImage') ??
               (legacyHeroPosition == 'none' ? false : true);
+      final listTitleFontScale = await _prefs.getDouble('listTitleFontScale') ?? 1.0;
+      final listPreviewFontScale = await _prefs.getDouble('listPreviewFontScale') ?? 1.0;
       
       setState(() {
         _showPreviewText = showPreviewTextValue ?? true;
         _showHeroImage = showHeroImageValue;
+        _listTitleFontScale = listTitleFontScale;
+        _listPreviewFontScale = listPreviewFontScale;
       });
+    }
+  }
+
+  Future<void> _refreshArticlesInBackground() async {
+    // Background refresh - update articles incrementally without reloading the whole list
+    try {
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account == null || !mounted) return;
+
+      final articleDao = ref.read(articleDaoProvider);
+      final updatedArticles = await articleDao.getArticlesWithSort(
+        accountId: account.id!,
+        sortOption: _sortOption,
+        feedId: widget.feed.id,
+        limit: 500,
+      );
+
+      if (!mounted) return;
+
+      // Create a map of updated articles for quick lookup
+      final updatedMap = {for (var article in updatedArticles) article.id: article};
+
+      setState(() {
+        // Update existing articles in place
+        for (int i = 0; i < _articles.length; i++) {
+          final articleId = _articles[i].id;
+          if (updatedMap.containsKey(articleId)) {
+            _articles[i] = updatedMap[articleId]!;
+          }
+        }
+
+        // Add new articles that weren't in the original list
+        final existingIds = _articles.map((a) => a.id).toSet();
+        final newArticles = updatedArticles.where((a) => !existingIds.contains(a.id)).toList();
+        if (newArticles.isNotEmpty) {
+          _articles.addAll(newArticles);
+          // Re-sort if needed (though they should already be sorted from the query)
+        }
+
+        // Remove articles that are no longer in the database (shouldn't happen often)
+        final updatedIds = updatedMap.keys.toSet();
+        _articles.removeWhere((a) => !updatedIds.contains(a.id));
+      });
+    } catch (e) {
+      // Silently fail - background refresh shouldn't disrupt user experience
+      print('Background refresh error: $e');
     }
   }
 
@@ -581,6 +651,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                               article.title,
                               style: TextStyle(
                                 fontWeight: article.isUnread ? FontWeight.bold : FontWeight.normal,
+                                fontSize: (Theme.of(context).textTheme.titleMedium?.fontSize ?? 16) * _listTitleFontScale,
                               ),
                               textAlign: isRtl ? TextAlign.right : TextAlign.left,
                               maxLines: 2,
@@ -603,6 +674,9 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                         const SizedBox(height: 6),
                         Text(
                           article.shortDescription,
+                          style: TextStyle(
+                            fontSize: (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * _listPreviewFontScale,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           textAlign: isRtl ? TextAlign.right : TextAlign.left,
@@ -672,16 +746,16 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                     borderRadius: BorderRadius.circular(12),
                     child: CachedNetworkImage(
                       imageUrl: article.img!,
-                      width: 100,
-                      height: 100,
+                      width: 80 + (20 * _listTitleFontScale).clamp(0, 40),
+                      height: 80 + (20 * _listTitleFontScale).clamp(0, 40),
                       fit: BoxFit.cover,
                       errorWidget: (_, __, ___) => Icon(
                         Icons.photo_outlined,
                         color: Theme.of(context).colorScheme.outline,
                       ),
                       placeholder: (_, __) => Container(
-                        width: 100,
-                        height: 100,
+                        width: 80 + (20 * _listTitleFontScale).clamp(0, 40),
+                        height: 80 + (20 * _listTitleFontScale).clamp(0, 40),
                         color: Theme.of(context).colorScheme.surfaceContainerHighest,
                         child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
                       ),
@@ -693,7 +767,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   const SizedBox(width: 12),
                   Icon(
                     Icons.photo_outlined,
-                    size: 40,
+                    size: 40 + (10 * _listTitleFontScale).clamp(0, 20),
                     color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
                   ),
                 ],
@@ -756,10 +830,5 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     }
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
 }
 

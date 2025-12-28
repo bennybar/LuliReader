@@ -27,6 +27,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _articleFontScale = 1.0;
   double _titleFontScale = 1.0;
   double _articlePadding = 16.0;
+  double _listTitleFontScale = 1.0;
+  double _listPreviewFontScale = 1.0;
   String _themeLabel = 'System';
   bool _openLinksExternally = false;
   int _keepReadItemsDays = 3;
@@ -48,6 +50,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final font = await prefs.getDouble('articleFontScale') ?? 1.0;
     final titleFont = await prefs.getDouble('titleFontScale') ?? 1.0;
     final pad = await prefs.getDouble('articlePadding') ?? 16.0;
+    final listTitleFont = await prefs.getDouble('listTitleFontScale') ?? 1.0;
+    final listPreviewFont = await prefs.getDouble('listPreviewFontScale') ?? 1.0;
     final theme = await prefs.getString('themeMode');
     final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
     final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
@@ -65,6 +69,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _articleFontScale = font;
         _titleFontScale = titleFont;
         _articlePadding = pad;
+        _listTitleFontScale = listTitleFont;
+        _listPreviewFontScale = listPreviewFont;
         _themeLabel = _labelFromTheme(theme);
         _openLinksExternally = openLinksExternally;
         _keepReadItemsDays = keepReadItemsDays;
@@ -532,6 +538,121 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           },
                         ),
                       ),
+                      const SizedBox(height: 24),
+                      // Article List Font Sizes
+                      Text(
+                        'Article List Font Sizes',
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.primary,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      const SizedBox(height: 8),
+                      // List Title Font Size
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'List Title Font Size',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.titleMedium?.fontSize ?? 16.0;
+                                  final currentSize = baseSize * _listTitleFontScale;
+                                  final newSize = (currentSize - 1).clamp(10.0, 28.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _listTitleFontScale = newScale);
+                                  await _saveReadingPref('listTitleFontScale', newScale);
+                                },
+                              ),
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  '${((Theme.of(context).textTheme.titleMedium?.fontSize ?? 16.0) * _listTitleFontScale).toStringAsFixed(0)} px',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.titleMedium?.fontSize ?? 16.0;
+                                  final currentSize = baseSize * _listTitleFontScale;
+                                  final newSize = (currentSize + 1).clamp(10.0, 28.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _listTitleFontScale = newScale);
+                                  await _saveReadingPref('listTitleFontScale', newScale);
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // List Preview Font Size
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'List Preview Font Size',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
+                                  final currentSize = baseSize * _listPreviewFontScale;
+                                  final newSize = (currentSize - 1).clamp(8.0, 24.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _listPreviewFontScale = newScale);
+                                  await _saveReadingPref('listPreviewFontScale', newScale);
+                                },
+                              ),
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  '${((Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0) * _listPreviewFontScale).toStringAsFixed(0)} px',
+                                  style: Theme.of(context).textTheme.bodyMedium,
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () async {
+                                  final baseSize = Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
+                                  final currentSize = baseSize * _listPreviewFontScale;
+                                  final newSize = (currentSize + 1).clamp(8.0, 24.0);
+                                  final newScale = newSize / baseSize;
+                                  setState(() => _listPreviewFontScale = newScale);
+                                  await _saveReadingPref('listPreviewFontScale', newScale);
+                                },
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      // Reset button for list font sizes
+                      Center(
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reset List Fonts to Default'),
+                          onPressed: () async {
+                            setState(() {
+                              _listTitleFontScale = 1.0;
+                              _listPreviewFontScale = 1.0;
+                            });
+                            await _saveReadingPref('listTitleFontScale', 1.0);
+                            await _saveReadingPref('listPreviewFontScale', 1.0);
+                          },
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       Text(
                         'Content Padding',
@@ -857,7 +978,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.info),
                 title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.74'),
+                subtitle: const Text('Luli Reader v1.1.75'),
                 trailing: const Icon(Icons.chevron_right),
               ),
             ],
