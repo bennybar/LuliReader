@@ -48,6 +48,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   bool _showPreviewText = true;
   bool _showHeroImage = true; // simple on/off
   double _listFontScale = 1.0;
+  DateTime? _pausedAt; // Track when app was paused for incremental refresh
 
   void refresh() {
     setState(() {
@@ -228,9 +229,10 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.invalidate(currentAccountProvider);
-      _loadArticles();
+      _refreshArticlesIncrementally(); // Use incremental refresh instead of full reload
       _startAccountRefreshTimer(); // Restart timer when resumed
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _pausedAt = DateTime.now(); // Track when app was paused
       _accountRefreshTimer?.cancel(); // Stop timer when paused/inactive
     }
     super.didChangeAppLifecycleState(state);
@@ -348,6 +350,248 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
           SnackBar(content: Text('Error loading articles: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _refreshArticlesIncrementally() async {
+    if (_articles.isEmpty) {
+      // If no articles, do a full load
+      _loadArticles();
+      return;
+    }
+
+    try {
+      final account = await ref.read(accountServiceProvider).getCurrentAccount();
+      if (account == null) return;
+
+      final articleDao = ref.read(articleDaoProvider);
+      final feedDao = ref.read(feedDaoProvider);
+      
+      // Get visible feed IDs for filtering
+      final visibleGroupIds = ref.read(groupFilterProvider(account.id!));
+      final visibleFeedIds = ref.read(feedFilterProvider(account.id!));
+      Set<String>? allowedFeedIds;
+      
+      if (visibleGroupIds.isNotEmpty || visibleFeedIds.isNotEmpty) {
+        final allFeeds = await feedDao.getAll(account.id!);
+        if (visibleFeedIds.isNotEmpty) {
+          allowedFeedIds = visibleFeedIds;
+        } else if (visibleGroupIds.isNotEmpty) {
+          allowedFeedIds = allFeeds
+              .where((feed) => visibleGroupIds.contains(feed.groupId))
+              .map((feed) => feed.id)
+              .toSet();
+        }
+      }
+
+      // Track current article IDs for efficient lookup
+      final currentArticleIds = _articles.map((a) => a.article.id).toSet();
+      
+      // Refresh all current articles from database
+      final updatedArticles = <ArticleWithFeed>[];
+      final articlesToRemove = <int>[];
+      
+      for (int i = 0; i < _articles.length; i++) {
+        final currentArticleWithFeed = _articles[i];
+        final articleId = currentArticleWithFeed.article.id;
+        
+        // Get latest state from database (this will have all updates from background sync)
+        final updatedArticle = await articleDao.getById(articleId);
+        
+        if (updatedArticle == null) {
+          // Article was deleted, mark for removal
+          articlesToRemove.add(i);
+          continue;
+        }
+        
+        // Check if article still matches current filter
+        final shouldShow = (_filter == 'all') ||
+            (_filter == 'unread' && updatedArticle.isUnread) ||
+            (_filter == 'starred' && updatedArticle.isStarred);
+        
+        // Check if article matches feed/group filters
+        final matchesFeedFilter = allowedFeedIds == null || 
+            allowedFeedIds.contains(updatedArticle.feedId);
+        
+        if (!shouldShow || !matchesFeedFilter) {
+          // Article no longer matches filters, mark for removal
+          articlesToRemove.add(i);
+          continue;
+        }
+        
+        // Get feed (might have changed)
+        final feed = await feedDao.getById(updatedArticle.feedId);
+        if (feed != null) {
+          updatedArticles.add(ArticleWithFeed(
+            article: updatedArticle,
+            feed: feed as dynamic,
+          ));
+        }
+      }
+      
+      // Check for new articles that should appear
+      // This includes:
+      // 1. Articles newer than the newest in our list
+      // 2. Articles that changed status and should now appear (e.g., marked unread when filter is "unread")
+      if (updatedArticles.length < 500) {
+        // Get a sample of recent articles to check for status changes
+        final newestArticle = _articles.isNotEmpty ? _articles.first.article : null;
+        final oldestArticle = _articles.isNotEmpty ? _articles.last.article : null;
+        
+        // Fetch recent articles that might have changed status
+        final recentArticles = await articleDao.getArticlesWithSort(
+          accountId: account.id!,
+          sortOption: _sortOption,
+          unread: _filter == 'unread' ? true : (_filter == 'starred' ? null : null),
+          starred: _filter == 'starred' ? true : null,
+          limit: 100, // Check more articles to catch status changes
+        );
+        
+        // Filter by visible feeds/groups
+        final filteredRecent = allowedFeedIds == null
+            ? recentArticles
+            : recentArticles.where((a) => allowedFeedIds!.contains(a.feedId)).toList();
+        
+        // Find articles that should appear but aren't in our current list
+        final newArticlesToAdd = <Article>[];
+        for (final article in filteredRecent) {
+          if (currentArticleIds.contains(article.id)) continue; // Already in list
+          
+          // Check if article should appear based on date range of current list
+          // or if it's a status change (article that should now be visible)
+          final shouldAdd = newestArticle == null || 
+              article.date.isAfter(newestArticle.date) ||
+              (article.date == newestArticle.date && article.id != newestArticle.id) ||
+              (oldestArticle != null && 
+               article.date.isAfter(oldestArticle.date.subtract(const Duration(days: 1)))); // Include articles from last day to catch status changes
+          
+          if (shouldAdd) {
+            newArticlesToAdd.add(article);
+            if (newArticlesToAdd.length >= 20) break; // Limit to avoid overwhelming
+          }
+        }
+        
+        // Get feeds for new articles and add them
+        for (final newArticle in newArticlesToAdd) {
+          final feed = await feedDao.getById(newArticle.feedId);
+          if (feed != null) {
+            updatedArticles.insert(0, ArticleWithFeed(
+              article: newArticle,
+              feed: feed as dynamic,
+            ));
+          }
+        }
+        
+        // Re-sort if needed (especially for feed-based sorting)
+        if (_sortOption == ArticleSortOption.feedAsc || 
+            _sortOption == ArticleSortOption.feedDesc) {
+          updatedArticles.sort((a, b) {
+            final feedA = a.feed as Feed;
+            final feedB = b.feed as Feed;
+            final comparison = feedA.name.compareTo(feedB.name);
+            return _sortOption == ArticleSortOption.feedAsc ? comparison : -comparison;
+          });
+        } else {
+          // Re-sort by the current sort option
+          updatedArticles.sort((a, b) {
+            switch (_sortOption) {
+              case ArticleSortOption.dateDesc:
+                return b.article.date.compareTo(a.article.date);
+              case ArticleSortOption.dateAsc:
+                return a.article.date.compareTo(b.article.date);
+              case ArticleSortOption.titleAsc:
+                return a.article.title.compareTo(b.article.title);
+              case ArticleSortOption.titleDesc:
+                return b.article.title.compareTo(a.article.title);
+              case ArticleSortOption.authorAsc:
+                final authorA = a.article.author ?? '';
+                final authorB = b.article.author ?? '';
+                return authorA.compareTo(authorB);
+              case ArticleSortOption.authorDesc:
+                final authorA = a.article.author ?? '';
+                final authorB = b.article.author ?? '';
+                return authorB.compareTo(authorA);
+              default:
+                return b.article.date.compareTo(a.article.date);
+            }
+          });
+        }
+      }
+      
+      // Update state without showing loading indicator
+      if (mounted) {
+        setState(() {
+          // Remove articles that were deleted or no longer match filters
+          for (int i = articlesToRemove.length - 1; i >= 0; i--) {
+            final index = articlesToRemove[i];
+            if (index < _articles.length) {
+              _articles.removeAt(index);
+            }
+          }
+          
+          // Update existing articles in place and add new ones
+          final currentIds = _articles.map((a) => a.article.id).toSet();
+          final updatedIds = updatedArticles.map((a) => a.article.id).toSet();
+          
+          // Update existing articles in place
+          for (int i = 0; i < _articles.length; i++) {
+            final currentId = _articles[i].article.id;
+            if (updatedIds.contains(currentId)) {
+              final updated = updatedArticles.firstWhere((a) => a.article.id == currentId);
+              _articles[i] = updated;
+            }
+          }
+          
+          // Add new articles
+          final newArticlesToAdd = updatedArticles
+              .where((a) => !currentIds.contains(a.article.id))
+              .toList();
+          
+          if (newArticlesToAdd.isNotEmpty) {
+            // Insert new articles in the correct sorted position
+            _articles.addAll(newArticlesToAdd);
+            // Re-sort the entire list to maintain sort order
+            _articles.sort((a, b) {
+              switch (_sortOption) {
+                case ArticleSortOption.dateDesc:
+                  return b.article.date.compareTo(a.article.date);
+                case ArticleSortOption.dateAsc:
+                  return a.article.date.compareTo(b.article.date);
+                case ArticleSortOption.titleAsc:
+                  return a.article.title.compareTo(b.article.title);
+                case ArticleSortOption.titleDesc:
+                  return b.article.title.compareTo(a.article.title);
+                case ArticleSortOption.authorAsc:
+                  final authorA = a.article.author ?? '';
+                  final authorB = b.article.author ?? '';
+                  return authorA.compareTo(authorB);
+                case ArticleSortOption.authorDesc:
+                  final authorA = a.article.author ?? '';
+                  final authorB = b.article.author ?? '';
+                  return authorB.compareTo(authorA);
+                case ArticleSortOption.feedAsc:
+                case ArticleSortOption.feedDesc:
+                  final feedA = a.feed as Feed;
+                  final feedB = b.feed as Feed;
+                  final comparison = feedA.name.compareTo(feedB.name);
+                  return _sortOption == ArticleSortOption.feedAsc ? comparison : -comparison;
+              }
+            });
+          }
+          
+          // Clear batch mode selections if any articles were removed
+          if (articlesToRemove.isNotEmpty && _isBatchMode) {
+            _selectedArticleIds.removeWhere((id) {
+              final stillExists = _articles.any((a) => a.article.id == id);
+              return !stillExists;
+            });
+          }
+        });
+      }
+    } catch (e) {
+      // If incremental update fails, fall back to full reload
+      print('Error in incremental refresh: $e');
+      _loadArticles();
     }
   }
 
