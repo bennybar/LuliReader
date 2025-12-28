@@ -80,12 +80,14 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> with Widg
       final listTitleFontScale = await _prefs.getDouble('listTitleFontScale') ?? 1.0;
       final listPreviewFontScale = await _prefs.getDouble('listPreviewFontScale') ?? 1.0;
       
-      setState(() {
-        _showPreviewText = showPreviewTextValue ?? true;
-        _showHeroImage = showHeroImageValue;
-        _listTitleFontScale = listTitleFontScale;
-        _listPreviewFontScale = listPreviewFontScale;
-      });
+      if (mounted) {
+        setState(() {
+          _showPreviewText = showPreviewTextValue ?? true;
+          _showHeroImage = showHeroImageValue;
+          _listTitleFontScale = listTitleFontScale;
+          _listPreviewFontScale = listPreviewFontScale;
+        });
+      }
     }
   }
 
@@ -107,32 +109,207 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> with Widg
 
       // Create a map of updated articles for quick lookup
       final updatedMap = {for (var article in updatedArticles) article.id: article};
+      final updatedIds = updatedMap.keys.toSet();
+      final existingIds = _articles.map((a) => a.id).toSet();
+      
+      bool hasChanges = false;
+      final articlesToRemove = <String>[];
+      final newArticlesList = <Article>[];
 
-      setState(() {
-        // Update existing articles in place
-        for (int i = 0; i < _articles.length; i++) {
-          final articleId = _articles[i].id;
-          if (updatedMap.containsKey(articleId)) {
-            _articles[i] = updatedMap[articleId]!;
+      // Check if any existing articles changed - update in place without creating new list
+      for (int i = 0; i < _articles.length; i++) {
+        final articleId = _articles[i].id;
+        if (updatedMap.containsKey(articleId)) {
+          final updated = updatedMap[articleId]!;
+          // Only update if something actually changed (check all relevant fields)
+          if (_articles[i].isUnread != updated.isUnread ||
+              _articles[i].isStarred != updated.isStarred ||
+              _articles[i].title != updated.title ||
+              _articles[i].shortDescription != updated.shortDescription ||
+              _articles[i].img != updated.img ||
+              _articles[i].date != updated.date) {
+            // Update in place - this maintains widget keys
+            _articles[i] = updated;
+            hasChanges = true;
           }
+        } else {
+          // Article no longer exists in updated list - mark for removal
+          articlesToRemove.add(articleId);
+          hasChanges = true;
         }
+      }
 
-        // Add new articles that weren't in the original list
-        final existingIds = _articles.map((a) => a.id).toSet();
-        final newArticles = updatedArticles.where((a) => !existingIds.contains(a.id)).toList();
-        if (newArticles.isNotEmpty) {
-          _articles.addAll(newArticles);
-          // Re-sort if needed (though they should already be sorted from the query)
-        }
+      // Add new articles that weren't in the original list
+      final newArticles = updatedArticles.where((a) => !existingIds.contains(a.id)).toList();
+      if (newArticles.isNotEmpty) {
+        newArticlesList.addAll(newArticles);
+        hasChanges = true;
+      }
 
-        // Remove articles that are no longer in the database (shouldn't happen often)
-        final updatedIds = updatedMap.keys.toSet();
-        _articles.removeWhere((a) => !updatedIds.contains(a.id));
-      });
+      // Only call setState if there are actual changes - this prevents unnecessary rebuilds
+      if (hasChanges && mounted) {
+        setState(() {
+          // Remove articles that are no longer in the database
+          if (articlesToRemove.isNotEmpty) {
+            _articles.removeWhere((a) => articlesToRemove.contains(a.id));
+          }
+          
+          // Add new articles
+          if (newArticlesList.isNotEmpty) {
+            _articles.addAll(newArticlesList);
+            // Re-sort to maintain sort order
+            _articles.sort((a, b) {
+              switch (_sortOption) {
+                case ArticleSortOption.dateDesc:
+                  return b.date.compareTo(a.date);
+                case ArticleSortOption.dateAsc:
+                  return a.date.compareTo(b.date);
+                case ArticleSortOption.titleAsc:
+                  return a.title.compareTo(b.title);
+                case ArticleSortOption.titleDesc:
+                  return b.title.compareTo(a.title);
+                case ArticleSortOption.feedAsc:
+                case ArticleSortOption.feedDesc:
+                  // Feed sorting doesn't apply to single feed list, fall back to date
+                  return b.date.compareTo(a.date);
+                case ArticleSortOption.authorAsc:
+                  return (a.author ?? '').compareTo(b.author ?? '');
+                case ArticleSortOption.authorDesc:
+                  return (b.author ?? '').compareTo(a.author ?? '');
+              }
+            });
+          }
+        });
+      }
     } catch (e) {
       // Silently fail - background refresh shouldn't disrupt user experience
       print('Background refresh error: $e');
     }
+  }
+
+  Future<void> _showFontSizeDialog(BuildContext context) async {
+    // Get base font sizes
+    final baseTitleSize = Theme.of(context).textTheme.titleMedium?.fontSize ?? 16.0;
+    final basePreviewSize = Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14.0;
+    
+    double tempListTitleFontSize = baseTitleSize * _listTitleFontScale;
+    double tempListPreviewFontSize = basePreviewSize * _listPreviewFontScale;
+    
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          Future<void> updateListTitleSize(double newSize) async {
+            setDialogState(() {
+              tempListTitleFontSize = newSize.clamp(10.0, 28.0);
+            });
+            final newScale = tempListTitleFontSize / baseTitleSize;
+            await _saveFontSize('listTitleFontScale', newScale);
+            if (mounted) {
+              setState(() {
+                _listTitleFontScale = newScale;
+              });
+            }
+          }
+          
+          Future<void> updateListPreviewSize(double newSize) async {
+            setDialogState(() {
+              tempListPreviewFontSize = newSize.clamp(8.0, 24.0);
+            });
+            final newScale = tempListPreviewFontSize / basePreviewSize;
+            await _saveFontSize('listPreviewFontScale', newScale);
+            if (mounted) {
+              setState(() {
+                _listPreviewFontScale = newScale;
+              });
+            }
+          }
+          
+          Future<void> resetFontSizes() async {
+            await updateListTitleSize(baseTitleSize);
+            await updateListPreviewSize(basePreviewSize);
+          }
+          
+          return AlertDialog(
+            title: const Text('List Font Size'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Title:'),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove),
+                          onPressed: () => updateListTitleSize(tempListTitleFontSize - 1),
+                        ),
+                        SizedBox(
+                          width: 60,
+                          child: Text(
+                            '${tempListTitleFontSize.toStringAsFixed(0)} px',
+                            style: Theme.of(context).textTheme.titleMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add),
+                          onPressed: () => updateListTitleSize(tempListTitleFontSize + 1),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Preview:'),
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove),
+                          onPressed: () => updateListPreviewSize(tempListPreviewFontSize - 1),
+                        ),
+                        SizedBox(
+                          width: 60,
+                          child: Text(
+                            '${tempListPreviewFontSize.toStringAsFixed(0)} px',
+                            style: Theme.of(context).textTheme.titleMedium,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add),
+                          onPressed: () => updateListPreviewSize(tempListPreviewFontSize + 1),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: resetFontSizes,
+                child: const Text('Reset'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _saveFontSize(String key, double value) async {
+    final prefs = SharedPreferencesService();
+    await prefs.init();
+    await prefs.setDouble(key, value);
   }
 
   Future<void> _loadSortPreference() async {
@@ -493,6 +670,16 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> with Widg
             PopupMenuButton(
               itemBuilder: (context) => [
                 const PopupMenuItem(
+                  value: 'font_size',
+                  child: Row(
+                    children: [
+                      Icon(Icons.text_fields, size: 20),
+                      SizedBox(width: 8),
+                      Text('Font Size'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
                   value: 'mark_all_read',
                   child: Row(
                     children: [
@@ -514,7 +701,9 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> with Widg
                 ),
               ],
               onSelected: (value) async {
-                if (value == 'mark_all_read') {
+                if (value == 'font_size') {
+                  await _showFontSizeDialog(context);
+                } else if (value == 'mark_all_read') {
                   await _markAllAsRead();
                 } else if (value == 'sync') {
                   await _syncFeed();
@@ -564,6 +753,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> with Widg
                   : ListView.builder(
                       controller: _scrollController,
                       itemCount: _articles.length,
+                      key: const ValueKey('article_list'),
                       itemBuilder: (context, index) {
                         final article = _articles[index];
                         return _buildArticleCard(article, index);
@@ -585,8 +775,10 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> with Widg
     // Use state variables for article view preferences
     final showPreviewText = _showPreviewText;
     
-    return Directionality(
-      textDirection: textDirection,
+    return KeyedSubtree(
+      key: ValueKey(article.id),
+      child: Directionality(
+        textDirection: textDirection,
       child: Card(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         shape: RoundedRectangleBorder(
@@ -637,145 +829,147 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> with Widg
                     ),
                     const SizedBox(width: 12),
                   ],
-              Expanded(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 80),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 80),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: Text(
-                              article.title,
-                              style: TextStyle(
-                                fontWeight: article.isUnread ? FontWeight.bold : FontWeight.normal,
-                                fontSize: (Theme.of(context).textTheme.titleMedium?.fontSize ?? 16) * _listTitleFontScale,
-                              ),
-                              textAlign: isRtl ? TextAlign.right : TextAlign.left,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (article.isStarred)
-                            Padding(
-                              padding: EdgeInsets.only(
-                                  left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
-                              child: Icon(
-                                Icons.star,
-                                size: 16,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                        ],
-                      ),
-                      if (showPreviewText) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          article.shortDescription,
-                          style: TextStyle(
-                            fontSize: (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * _listPreviewFontScale,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: isRtl ? TextAlign.right : TextAlign.left,
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment:
-                            isRtl ? AlignmentDirectional.centerEnd : Alignment.centerLeft,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Flexible(
-                              child: Text(
-                                widget.feed.name,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface
-                                          .withOpacity(0.6),
-                                    ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                textAlign: isRtl ? TextAlign.right : TextAlign.left,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.access_time,
-                                  size: 14,
-                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _formatDate(article.date),
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                  maxLines: 1,
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  article.title,
+                                  style: TextStyle(
+                                    fontWeight: article.isUnread ? FontWeight.bold : FontWeight.normal,
+                                    fontSize: (Theme.of(context).textTheme.titleMedium?.fontSize ?? 16) * _listTitleFontScale,
+                                  ),
+                                  textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                                  maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                              ),
+                              if (article.isStarred)
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                      left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
+                                  child: Icon(
+                                    Icons.star,
+                                    size: 16,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (showPreviewText) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              article.shortDescription,
+                              style: TextStyle(
+                                fontSize: (Theme.of(context).textTheme.bodyMedium?.fontSize ?? 14) * _listPreviewFontScale,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment:
+                                isRtl ? AlignmentDirectional.centerEnd : Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    widget.feed.name,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.6),
+                                        ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.access_time,
+                                      size: 14,
+                                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _formatDate(article.date),
+                                      style: Theme.of(context).textTheme.bodySmall,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                                if (article.isStarred)
+                                  Padding(
+                                    padding: EdgeInsets.only(left: isRtl ? 4 : 8),
+                                    child: Icon(
+                                      Icons.star,
+                                      size: 14,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
                               ],
                             ),
-                            if (article.isStarred)
-                              Padding(
-                                padding: EdgeInsets.only(left: isRtl ? 4 : 8),
-                                child: Icon(
-                                  Icons.star,
-                                  size: 14,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ),
                   if (!_isBatchMode &&
                       _showHeroImage &&
                       article.img != null &&
                       article.img!.isNotEmpty) ...[
                     const SizedBox(width: 12),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: article.img!,
-                      width: 80 + (20 * _listTitleFontScale).clamp(0, 40),
-                      height: 80 + (20 * _listTitleFontScale).clamp(0, 40),
-                      fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Icon(
-                        Icons.photo_outlined,
-                        color: Theme.of(context).colorScheme.outline,
-                      ),
-                      placeholder: (_, __) => Container(
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: CachedNetworkImage(
+                        key: ValueKey('hero_${article.id}_${article.img}'),
+                        imageUrl: article.img!,
                         width: 80 + (20 * _listTitleFontScale).clamp(0, 40),
                         height: 80 + (20 * _listTitleFontScale).clamp(0, 40),
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => Icon(
+                          Icons.photo_outlined,
+                          color: Theme.of(context).colorScheme.outline,
+                        ),
+                        placeholder: (_, __) => Container(
+                          width: 80 + (20 * _listTitleFontScale).clamp(0, 40),
+                          height: 80 + (20 * _listTitleFontScale).clamp(0, 40),
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                        ),
                       ),
                     ),
-                  ),
                   ],
-                if (!_isBatchMode &&
-                    (_showHeroImage == false || article.img == null || article.img!.isEmpty)) ...[
-                  const SizedBox(width: 12),
-                  Icon(
-                    Icons.photo_outlined,
-                    size: 40 + (10 * _listTitleFontScale).clamp(0, 20),
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-                  ),
-                ],
+                  if (!_isBatchMode &&
+                      (_showHeroImage == false || article.img == null || article.img!.isEmpty)) ...[
+                    const SizedBox(width: 12),
+                    Icon(
+                      Icons.photo_outlined,
+                      size: 40 + (10 * _listTitleFontScale).clamp(0, 20),
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
         ),
+      ),
       ),
     );
   }
