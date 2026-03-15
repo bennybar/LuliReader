@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,12 +9,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
-import '../database/article_dao.dart';
-import '../database/feed_dao.dart';
 import '../providers/app_provider.dart';
-import '../services/local_rss_service.dart';
 import '../services/rss_service.dart';
-import '../services/account_service.dart';
 import '../utils/rtl_helper.dart';
 import '../utils/reading_time.dart';
 import '../services/shared_preferences_service.dart';
@@ -42,12 +37,18 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   double _titleFontScale = 1.0;
   double _contentPadding = 16.0;
   bool _openLinksExternally = false; // false = in-app browser (default), true = external browser
+  String _readingTime = '';
+  html_dom.Element? _parsedFullContentBody;
+  bool _heroImageInFullContent = false;
 
   @override
   void initState() {
     super.initState();
     _isStarred = widget.article.isStarred;
     _isUnread = widget.article.isUnread;
+    _readingTime = _calculateReadingTime(
+      widget.article.fullContent ?? widget.article.rawDescription,
+    );
     _loadReadingPrefs();
     _loadFeed();
     _markAsRead();
@@ -96,7 +97,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   Future<void> _loadFullContent() async {
     // Check if we already have full content
     if (widget.article.fullContent != null && widget.article.fullContent!.isNotEmpty) {
-      setState(() => _fullContent = widget.article.fullContent);
+      setState(() {
+        _cacheFullContent(widget.article.fullContent);
+      });
       // Prefetch images even if content already exists
       RssService.prefetchImages(widget.article.fullContent!);
       return;
@@ -119,7 +122,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       }
       
       setState(() {
-        _fullContent = content;
+        _cacheFullContent(content);
         _isLoadingFullContent = false;
       });
     } catch (e) {
@@ -140,6 +143,32 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     if (_useFullContent) {
       _loadFullContent();
     }
+  }
+
+  String _calculateReadingTime(String? content) {
+    return ReadingTime.calculateAndFormat(content);
+  }
+
+  void _cacheFullContent(String? content) {
+    _fullContent = content;
+    _parsedFullContentBody = null;
+    _heroImageInFullContent = false;
+    _readingTime = _calculateReadingTime(
+      content ?? widget.article.fullContent ?? widget.article.rawDescription,
+    );
+
+    if (content == null || content.isEmpty) {
+      return;
+    }
+
+    final document = html_parser.parse(content);
+    final body = document.body ?? document.documentElement;
+    if (body == null) {
+      return;
+    }
+
+    _parsedFullContentBody = body;
+    _heroImageInFullContent = _bodyContainsHeroImage(body);
   }
 
   Future<void> _markAsRead() async {
@@ -455,7 +484,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         ),
         body: Builder(
           builder: (context) {
-            final finalIsRtl = _isRtl();
             final finalTextDir = _getTextDirection();
             
             return Directionality(
@@ -501,36 +529,27 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                           _formatDate(widget.article.date),
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
-                        Builder(
-                          builder: (context) {
-                            final readingTime = ReadingTime.calculateAndFormat(
-                              _fullContent ?? widget.article.fullContent ?? widget.article.rawDescription,
-                            );
-                            if (readingTime.isNotEmpty) {
-                              return Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    '•',
-                                    style: Theme.of(context).textTheme.bodyMedium,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Icon(
-                                    Icons.timer_outlined,
-                                    size: 16,
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    readingTime,
-                                    style: Theme.of(context).textTheme.bodyMedium,
-                                  ),
-                                ],
-                              );
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
+                        if (_readingTime.isNotEmpty)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '•',
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(
+                                Icons.timer_outlined,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _readingTime,
+                                style: Theme.of(context).textTheme.bodyMedium,
+                              ),
+                            ],
+                          ),
                       ],
                       ),
                     ),
@@ -544,37 +563,34 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                           ),
                         )
                       else if (_fullContent != null)
-                        Builder(
-                          builder: (context) {
-                            // First, check if hero image is in the content
-                            final heroInContent = _checkIfHeroImageInContent(_fullContent!);
-                            return Column(
-                              children: [
-                                // Show hero image below divider if it doesn't appear in article content
-                                if (widget.article.img != null && 
-                                    widget.article.img!.isNotEmpty && 
-                                    !heroInContent) ...[
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(12),
-                                    child: CachedNetworkImage(
-                                      imageUrl: widget.article.img!,
-                                      width: double.infinity,
-                                      height: 200,
-                                      fit: BoxFit.cover,
-                                      errorWidget: (context, url, error) => const SizedBox.shrink(),
-                                      placeholder: (context, url) => Container(
-                                        height: 200,
-                                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                        child: const Center(child: CircularProgressIndicator()),
-                                      ),
-                                    ),
+                        Column(
+                          children: [
+                            if (widget.article.img != null &&
+                                widget.article.img!.isNotEmpty &&
+                                !_heroImageInFullContent) ...[
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: CachedNetworkImage(
+                                  imageUrl: widget.article.img!,
+                                  width: double.infinity,
+                                  height: 200,
+                                  fit: BoxFit.cover,
+                                  memCacheWidth: _targetImageCacheWidth(
+                                    MediaQuery.of(context).size.width - (_contentPadding * 2),
                                   ),
-                                  const SizedBox(height: 16),
-                                ],
-                                _buildHtmlContent(_fullContent!),
-                              ],
-                            );
-                          },
+                                  maxWidthDiskCache: _targetImageCacheWidth(
+                                    MediaQuery.of(context).size.width - (_contentPadding * 2),
+                                  ),
+                                  fadeInDuration: Duration.zero,
+                                  fadeOutDuration: Duration.zero,
+                                  errorWidget: (context, url, error) => const SizedBox.shrink(),
+                                  placeholder: (context, url) => _buildImagePlaceholder(200),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                            ],
+                            _buildHtmlContent(_parsedFullContentBody),
+                          ],
                         )
                       else
                         _buildFallbackContent()
@@ -591,37 +607,32 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     );
   }
 
-  /// Check if hero image appears in the HTML content
-  bool _checkIfHeroImageInContent(String html) {
+  bool _bodyContainsHeroImage(html_dom.Element body) {
     if (widget.article.img == null || widget.article.img!.isEmpty) {
       return false;
     }
-    
-    final document = html_parser.parse(html);
-    final body = document.body ?? document.documentElement!;
-    
-    // Find all img elements
+
     final imgElements = body.querySelectorAll('img');
-    
+
     for (final img in imgElements) {
-      // Check multiple possible image source attributes
-      String? src = img.attributes['src'] ?? 
-                    img.attributes['data-src'] ??
-                    img.attributes['data-lazy-src'] ??
-                    img.attributes['data-original'] ??
-                    img.attributes['data-url'];
-      
-      // Also check srcset
+      String? src = img.attributes['src'] ??
+          img.attributes['data-src'] ??
+          img.attributes['data-lazy-src'] ??
+          img.attributes['data-original'] ??
+          img.attributes['data-url'];
+
       final srcset = img.attributes['srcset'];
       if (srcset != null && srcset.isNotEmpty) {
-        final srcsetUrls = srcset.split(',').map((s) => s.trim().split(RegExp(r'\s+')).first).where((url) => url.isNotEmpty);
+        final srcsetUrls = srcset
+            .split(',')
+            .map((s) => s.trim().split(RegExp(r'\s+')).first)
+            .where((url) => url.isNotEmpty);
         if (srcsetUrls.isNotEmpty) {
           src = srcsetUrls.first;
         }
       }
-      
+
       if (src != null && src.isNotEmpty) {
-        // Resolve relative URLs
         String imageUrl;
         try {
           if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
@@ -638,24 +649,23 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         } catch (e) {
           imageUrl = src;
         }
-        
-        // Check if this matches the hero image
+
         if (_isSameImage(imageUrl, widget.article.img!)) {
           return true;
         }
       }
     }
-    
+
     return false;
   }
 
-  Widget _buildHtmlContent(String html) {
+  Widget _buildHtmlContent(html_dom.Element? body) {
+    if (body == null) {
+      return const SizedBox.shrink();
+    }
     _seenContentImages = {};
-    final document = html_parser.parse(html);
-    final body = document.body ?? document.documentElement!;
 
     final widget = _buildHtmlElement(body);
-    // Process the widget to limit consecutive spacing
     return _limitConsecutiveSpacing(widget);
   }
 
@@ -1059,12 +1069,16 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               child: CachedNetworkImage(
                 imageUrl: imageUrl,
                 fit: BoxFit.cover,
-                errorWidget: (context, url, error) => const SizedBox.shrink(),
-                placeholder: (context, url) => Container(
-                  height: 200,
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  child: const Center(child: CircularProgressIndicator()),
+                memCacheWidth: _targetImageCacheWidth(
+                  MediaQuery.of(context).size.width - (_contentPadding * 2),
                 ),
+                maxWidthDiskCache: _targetImageCacheWidth(
+                  MediaQuery.of(context).size.width - (_contentPadding * 2),
+                ),
+                fadeInDuration: Duration.zero,
+                fadeOutDuration: Duration.zero,
+                errorWidget: (context, url, error) => const SizedBox.shrink(),
+                placeholder: (context, url) => _buildImagePlaceholder(200),
               ),
             ),
           );
@@ -1189,6 +1203,24 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         final processedChildren = _processChildrenForSpacing(children);
         return Column(children: processedChildren);
     }
+  }
+
+  Widget _buildImagePlaceholder(double height) {
+    return Container(
+      height: height,
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Center(
+        child: Icon(
+          Icons.photo_outlined,
+          color: Theme.of(context).colorScheme.outline,
+        ),
+      ),
+    );
+  }
+
+  int _targetImageCacheWidth(double logicalWidth) {
+    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+    return (logicalWidth * devicePixelRatio).round();
   }
 
   Widget _buildFallbackContent() {

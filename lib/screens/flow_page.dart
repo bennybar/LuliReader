@@ -1,17 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/article.dart';
 import '../models/feed.dart';
 import '../models/article_sort.dart';
-import '../database/article_dao.dart';
 import '../providers/app_provider.dart';
-import '../services/account_service.dart';
-import '../services/sync_coordinator.dart';
 import '../utils/rtl_helper.dart';
-import '../utils/reading_time.dart';
 import '../services/shared_preferences_service.dart';
 import 'article_reader_screen.dart';
 import 'settings_screen.dart';
@@ -29,6 +25,10 @@ class FlowPage extends ConsumerStatefulWidget {
 }
 
 class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver {
+  static const _swipeTriggerThreshold = 0.24;
+  static const _swipeMaxOffset = 0.32;
+  static const _swipeMovementDuration = Duration(milliseconds: 140);
+
   List<ArticleWithFeed> _articles = [];
   bool _isLoading = true;
   bool _isSyncing = false;
@@ -48,6 +48,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   bool _showPreviewText = true;
   bool _showHeroImage = true; // simple on/off
   double _listFontScale = 1.0;
+  int _swipeStartAction = 2;
+  int _swipeEndAction = 1;
 
   void refresh() {
     setState(() {
@@ -63,6 +65,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     _loadLastFilter();
     _loadSortPreference();
     _loadArticleViewPrefs();
+    _loadSwipeActions();
     _startAccountRefreshTimer();
     // Set up listeners after first frame to ensure ref is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -94,6 +97,15 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         _listFontScale = listFontScaleValue;
       });
     }
+  }
+
+  Future<void> _loadSwipeActions() async {
+    final account = await ref.read(accountServiceProvider).getCurrentAccount();
+    if (!mounted || account == null) return;
+    setState(() {
+      _swipeStartAction = account.swipeStartAction;
+      _swipeEndAction = account.swipeEndAction;
+    });
   }
 
   Future<void> _showListFontSizeDialog(BuildContext context) async {
@@ -228,6 +240,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       ref.invalidate(currentAccountProvider);
+      _loadSwipeActions();
       _loadArticles();
       _startAccountRefreshTimer(); // Restart timer when resumed
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
@@ -843,6 +856,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                               )
                             : ListView.builder(
                                 key: ValueKey(_refreshKey),
+                                controller: _scrollController,
+                                cacheExtent: 1200,
                                 padding: EdgeInsets.only(
                                   bottom: _isBatchMode && _selectedArticleIds.isNotEmpty ? 120 : 96,
                                 ),
@@ -867,233 +882,218 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   Widget _buildArticleCard(ArticleWithFeed articleWithFeed, int index) {
     final article = articleWithFeed.article;
     final feed = articleWithFeed.feed as Feed;
-    final contentText =
-        '${article.title} ${article.shortDescription} ${article.fullContent ?? ''}';
+    final contentText = '${article.title} ${article.shortDescription}';
     final textDirection =
         RtlHelper.getTextDirectionFromContent(contentText, feedRtl: feed.isRtl);
     final isRtl = textDirection == TextDirection.rtl;
     final alignRight = isRtl || Directionality.of(context) == TextDirection.rtl || (feed.isRtl ?? false);
     final isSelected = _selectedArticleIds.contains(article.id);
+    return Directionality(
+      textDirection: textDirection,
+      child: Swipeable(
+        key: ValueKey('${article.id}_${_refreshKey}'),
+        direction: SwipeDirection.horizontal,
+        dismissThresholds: const {
+          SwipeDirection.startToEnd: _swipeTriggerThreshold,
+          SwipeDirection.endToStart: _swipeTriggerThreshold,
+        },
+        maxOffset: _swipeMaxOffset,
+        movementDuration: _swipeMovementDuration,
+        dragStartBehavior: DragStartBehavior.down,
+        background: _buildSwipeBackground(
+          context,
+          textDirection,
+          _swipeStartAction,
+          article,
+          isStart: true,
+        ),
+        secondaryBackground: _buildSwipeBackground(
+          context,
+          textDirection,
+          _swipeEndAction,
+          article,
+          isStart: false,
+        ),
+        confirmSwipe: (dir) async {
+          if (!mounted) return false;
+          final action = dir == SwipeDirection.startToEnd ? _swipeStartAction : _swipeEndAction;
+          if (action == 0) return false;
+          return await _handleSwipeAction(action, article, fromSwipe: true);
+        },
+        onSwipe: (_) {
+          if (!mounted) return;
+        },
+        child: Card(
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: isSelected
+                ? BorderSide(
+                    color: Theme.of(context).colorScheme.primary,
+                    width: 2,
+                  )
+                : BorderSide.none,
+          ),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () {
+              if (_isBatchMode) {
+                _toggleArticleSelection(article.id);
+              } else {
+                if (!mounted) return;
+                final scrollPosition =
+                    _scrollController.hasClients ? _scrollController.position.pixels : 0.0;
+                final articleIndex = index;
 
-    return FutureBuilder(
-      future: ref.read(accountServiceProvider).getCurrentAccount(),
-      builder: (context, snapshot) {
-        final account = snapshot.data;
-        final swipeStartAction = account?.swipeStartAction ?? 2;
-        final swipeEndAction = account?.swipeEndAction ?? 1;
-
-        return Directionality(
-          textDirection: textDirection,
-          child: Swipeable(
-            key: ValueKey('${article.id}_${_refreshKey}'),
-            direction: SwipeDirection.horizontal,
-            background: _buildSwipeBackground(
-              context,
-              textDirection,
-              swipeStartAction,
-              article,
-              isStart: true,
-            ),
-            secondaryBackground: _buildSwipeBackground(
-              context,
-              textDirection,
-              swipeEndAction,
-              article,
-              isStart: false,
-            ),
-            confirmSwipe: (dir) async {
-              if (!mounted) return false;
-              final action = dir == SwipeDirection.startToEnd ? swipeStartAction : swipeEndAction;
-              if (action == 0) return false;
-              return await _handleSwipeAction(action, article, fromSwipe: true);
+                Navigator.of(context)
+                    .push(
+                      MaterialPageRoute(
+                        builder: (_) => ArticleReaderScreen(article: article),
+                      ),
+                    )
+                    .then((_) async {
+                      if (mounted) {
+                        await _updateArticleAfterReading(article.id, scrollPosition, articleIndex);
+                      }
+                    });
+              }
             },
-            onSwipe: (_) {
-              // Prevent updates if widget is disposed
-              if (!mounted) return;
+            onLongPress: () {
+              if (!_isBatchMode) {
+                _showLongPressMenu(context, article);
+              } else {
+                _toggleArticleSelection(article.id);
+              }
             },
-            child: Card(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-                side: isSelected
-                    ? BorderSide(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 2,
-                      )
-                    : BorderSide.none,
-              ),
-              child: InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: () {
-                  if (_isBatchMode) {
-                    _toggleArticleSelection(article.id);
-                  } else {
-                    if (!mounted) return;
-                    final scrollPosition = _scrollController.hasClients 
-                        ? _scrollController.position.pixels 
-                        : 0.0;
-                    final articleIndex = index;
-                    
-                    Navigator.of(context)
-                        .push(
-                          MaterialPageRoute(
-                            builder: (_) => ArticleReaderScreen(article: article),
-                          ),
-                        )
-                        .then((_) async {
-                          if (mounted) {
-                            // Incrementally update instead of full reload
-                            await _updateArticleAfterReading(article.id, scrollPosition, articleIndex);
-                          }
-                        });
-                  }
-                },
-                onLongPress: () {
-                  if (!_isBatchMode) {
-                    _showLongPressMenu(context, article);
-                  } else {
-                    _toggleArticleSelection(article.id);
-                  }
-                },
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: IntrinsicHeight(
-                    child: Row(
-                      textDirection: TextDirection.ltr, // keep hero image visually on the right
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_isBatchMode) ...[
-                          Checkbox(
-                            value: isSelected,
-                            onChanged: (_) => _toggleArticleSelection(article.id),
-                          ),
-                          const SizedBox(width: 8),
-                        ],
-                        Expanded(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 80),
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment:
-                                  alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        article.title,
-                                        style: TextStyle(
-                                          fontWeight:
-                                              article.isUnread ? FontWeight.bold : FontWeight.normal,
-                                          fontSize: 15,
-                                        ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        textAlign: alignRight ? TextAlign.right : TextAlign.left,
-                                      ),
-                                    ),
-                                    if (article.isStarred)
-                                      Padding(
-                                        padding: EdgeInsets.only(
-                                            left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
-                                        child: Icon(
-                                          Icons.star,
-                                          size: 16,
-                                          color: Theme.of(context).colorScheme.primary,
-                                        ),
-                                      ),
-                                  ],
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                textDirection: TextDirection.ltr, // keep hero image visually on the right
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_isBatchMode) ...[
+                    Checkbox(
+                      value: isSelected,
+                      onChanged: (_) => _toggleArticleSelection(article.id),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 80),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment:
+                            alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  article.title,
+                                  style: TextStyle(
+                                    fontWeight:
+                                        article.isUnread ? FontWeight.bold : FontWeight.normal,
+                                    fontSize: 15,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: alignRight ? TextAlign.right : TextAlign.left,
                                 ),
-                                if (_showPreviewText) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    article.shortDescription,
+                              ),
+                              if (article.isStarred)
+                                Padding(
+                                  padding:
+                                      EdgeInsets.only(left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
+                                  child: Icon(
+                                    Icons.star,
+                                    size: 16,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          if (_showPreviewText) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              article.shortDescription,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    fontSize: 13,
+                                    color:
+                                        Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: alignRight ? TextAlign.right : TextAlign.left,
+                            ),
+                          ],
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: alignRight
+                                ? AlignmentDirectional.centerEnd
+                                : Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    feed.name,
                                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                          fontSize: 13,
-                                          color:
-                                              Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withOpacity(0.5),
+                                          fontSize: 11,
                                         ),
-                                    maxLines: 2,
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                     textAlign: alignRight ? TextAlign.right : TextAlign.left,
                                   ),
-                                ],
-                                const SizedBox(height: 8),
-                                Align(
-                                  alignment: alignRight
-                                      ? AlignmentDirectional.centerEnd
-                                      : Alignment.centerLeft,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          feed.name,
-                                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurface
-                                                    .withOpacity(0.5),
-                                                fontSize: 11,
-                                              ),
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          textAlign:
-                                              alignRight ? TextAlign.right : TextAlign.left,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.access_time,
-                                            size: 11,
+                                ),
+                                const SizedBox(width: 8),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.access_time,
+                                      size: 11,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withOpacity(0.5),
+                                    ),
+                                    const SizedBox(width: 2),
+                                    Text(
+                                      _formatDate(article.date),
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            fontSize: 11,
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .onSurface
                                                 .withOpacity(0.5),
                                           ),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            _formatDate(article.date),
-                                            style: Theme.of(context)
-                                                .textTheme
-                                                .bodySmall
-                                                ?.copyWith(
-                                                  fontSize: 11,
-                                                  color: Theme.of(context)
-                                                      .colorScheme
-                                                      .onSurface
-                                                      .withOpacity(0.5),
-                                                ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                        if (_showHeroImage &&
-                            article.img != null &&
-                            article.img!.isNotEmpty) ...[
-                          const SizedBox(width: 12),
-                          _buildArticleImage(article),
                         ],
-                      ],
+                      ),
                     ),
                   ),
-                ),
+                  if (_showHeroImage && article.img != null && article.img!.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    _buildArticleImage(article),
+                  ],
+                ],
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -1220,29 +1220,29 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     final double heroSize = (100 * _listFontScale).clamp(72.0, 160.0).toDouble();
     final double placeholderIconSize =
         (40 * _listFontScale).clamp(28.0, 80.0).toDouble();
+    final targetCacheWidth = _targetImageCacheWidth(heroSize);
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: article.img != null && article.img!.isNotEmpty
-          ? Image.network(
-              article.img!,
+          ? CachedNetworkImage(
+              imageUrl: article.img!,
               width: heroSize,
               height: heroSize,
               fit: BoxFit.cover,
               alignment: Alignment.topLeft,
-              errorBuilder: (context, error, stackTrace) => _buildPlaceholderImage(
+              memCacheWidth: targetCacheWidth,
+              maxWidthDiskCache: targetCacheWidth,
+              fadeInDuration: Duration.zero,
+              fadeOutDuration: Duration.zero,
+              errorWidget: (context, url, error) => _buildPlaceholderImage(
                 size: heroSize,
                 iconSize: placeholderIconSize,
               ),
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return Container(
-                  width: heroSize,
-                  height: heroSize,
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
-                );
-              },
+              placeholder: (context, url) => _buildPlaceholderImage(
+                size: heroSize,
+                iconSize: placeholderIconSize,
+              ),
             )
           : _buildPlaceholderImage(
               size: heroSize,
@@ -1290,6 +1290,11 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
       ),
     );
+  }
+
+  int _targetImageCacheWidth(double logicalWidth) {
+    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+    return (logicalWidth * devicePixelRatio).round();
   }
 
   void _showLongPressMenu(BuildContext context, Article article) {

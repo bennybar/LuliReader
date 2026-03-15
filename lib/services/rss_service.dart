@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
-import '../models/article.dart';
-import '../models/feed.dart';
 import 'readability.dart';
 
 /// Service for downloading and parsing full article content
@@ -94,9 +92,16 @@ class RssService {
     try {
       final regex = RegExp('<img[^>]+src=["\']([^"\']+)["\']', caseSensitive: false);
       final matches = regex.allMatches(html);
+      final seenUrls = <String>{};
+      var prefetchedCount = 0;
+      const maxPrefetchImages = 6;
       for (final m in matches) {
         final url = m.group(1);
-        if (url != null && url.startsWith('http')) {
+        if (url != null &&
+            url.startsWith('http') &&
+            seenUrls.add(url) &&
+            prefetchedCount < maxPrefetchImages) {
+          prefetchedCount++;
           DefaultCacheManager().downloadFile(url).then((_) {}, onError: (_) {});
         }
       }

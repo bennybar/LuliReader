@@ -4,11 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/feed.dart';
 import '../models/article.dart';
 import '../models/article_sort.dart';
-import '../database/article_dao.dart';
 import '../providers/app_provider.dart';
-import '../services/local_rss_service.dart';
 import '../services/shared_preferences_service.dart';
-import '../utils/reading_time.dart';
 import 'article_reader_screen.dart';
 import '../widgets/filter_drawer.dart';
 import '../utils/rtl_helper.dart';
@@ -571,6 +568,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                     )
                   : ListView.builder(
                       controller: _scrollController,
+                      cacheExtent: 1200,
                       itemCount: _articles.length,
                       itemBuilder: (context, index) {
                         final article = _articles[index];
@@ -589,7 +587,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
         (40 * _listFontScale).clamp(28.0, 80.0).toDouble();
 
     // Derive text direction from content and feed settings (consistent with FlowPage)
-    final contentText = '${article.title} ${article.shortDescription} ${article.fullContent ?? ''}';
+    final contentText = '${article.title} ${article.shortDescription}';
     final textDirection =
         RtlHelper.getTextDirectionFromContent(contentText, feedRtl: widget.feed.isRtl);
     final isRtl = textDirection == TextDirection.rtl;
@@ -637,119 +635,119 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
           },
           child: Padding(
             padding: const EdgeInsets.all(16),
-            child: IntrinsicHeight(
-              child: Row(
-                textDirection: TextDirection.ltr, // keep hero image visually on the right
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (_isBatchMode) ...[
-                    Checkbox(
-                      value: isSelected,
-                      onChanged: (_) => _toggleArticleSelection(article.id),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-              Expanded(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 80),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              article.title,
-                              style: TextStyle(
-                                fontWeight: article.isUnread ? FontWeight.bold : FontWeight.normal,
-                              ),
-                              textAlign: isRtl ? TextAlign.right : TextAlign.left,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (article.isStarred)
-                            Padding(
-                              padding: EdgeInsets.only(
-                                  left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
-                              child: Icon(
-                                Icons.star,
-                                size: 16,
-                                color: Theme.of(context).colorScheme.primary,
-                              ),
-                            ),
-                        ],
-                      ),
-                      if (showPreviewText) ...[
-                        const SizedBox(height: 6),
-                        Text(
-                          article.shortDescription,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: isRtl ? TextAlign.right : TextAlign.left,
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment:
-                            isRtl ? AlignmentDirectional.centerEnd : Alignment.centerLeft,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
+            child: Row(
+              textDirection: TextDirection.ltr, // keep hero image visually on the right
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_isBatchMode) ...[
+                  Checkbox(
+                    value: isSelected,
+                    onChanged: (_) => _toggleArticleSelection(article.id),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 80),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Flexible(
+                            Expanded(
                               child: Text(
-                                widget.feed.name,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurface
-                                          .withOpacity(0.6),
-                                    ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                article.title,
+                                style: TextStyle(
+                                  fontWeight:
+                                      article.isUnread ? FontWeight.bold : FontWeight.normal,
+                                ),
                                 textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.access_time,
-                                  size: 14,
-                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _formatDate(article.date),
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
                             ),
                             if (article.isStarred)
                               Padding(
-                                padding: EdgeInsets.only(left: isRtl ? 4 : 8),
+                                padding:
+                                    EdgeInsets.only(left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
                                 child: Icon(
                                   Icons.star,
-                                  size: 14,
+                                  size: 16,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
                               ),
                           ],
                         ),
-                      ),
-                    ],
+                        if (showPreviewText) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            article.shortDescription,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment:
+                              isRtl ? AlignmentDirectional.centerEnd : Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.feed.name,
+                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onSurface
+                                            .withOpacity(0.6),
+                                      ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  textAlign: isRtl ? TextAlign.right : TextAlign.left,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.access_time,
+                                    size: 14,
+                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _formatDate(article.date),
+                                    style: Theme.of(context).textTheme.bodySmall,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                              if (article.isStarred)
+                                Padding(
+                                  padding: EdgeInsets.only(left: isRtl ? 4 : 8),
+                                  child: Icon(
+                                    Icons.star,
+                                    size: 14,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-                  if (!_isBatchMode &&
-                      _showHeroImage &&
-                      article.img != null &&
-                      article.img!.isNotEmpty) ...[
-                    const SizedBox(width: 12),
+                if (!_isBatchMode &&
+                    _showHeroImage &&
+                    article.img != null &&
+                    article.img!.isNotEmpty) ...[
+                  const SizedBox(width: 12),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
                     child: CachedNetworkImage(
@@ -757,34 +755,27 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                       width: heroSize,
                       height: heroSize,
                       fit: BoxFit.cover,
-                      errorWidget: (_, __, ___) => Icon(
-                        Icons.photo_outlined,
-                        color: Theme.of(context).colorScheme.outline,
+                      memCacheWidth: _targetImageCacheWidth(heroSize),
+                      maxWidthDiskCache: _targetImageCacheWidth(heroSize),
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      errorWidget: (_, __, ___) => _buildImagePlaceholder(
+                        heroSize,
+                        placeholderIconSize,
                       ),
-                      placeholder: (_, __) => Container(
-                        width: heroSize,
-                        height: heroSize,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                      placeholder: (_, __) => _buildImagePlaceholder(
+                        heroSize,
+                        placeholderIconSize,
                       ),
                     ),
                   ),
-                  ],
+                ],
                 if (!_isBatchMode &&
                     (_showHeroImage == false || article.img == null || article.img!.isEmpty)) ...[
                   const SizedBox(width: 12),
-                  SizedBox(
-                    width: heroSize,
-                    height: heroSize,
-                    child: Icon(
-                      Icons.photo_outlined,
-                      size: placeholderIconSize,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
-                    ),
-                  ),
+                  _buildImagePlaceholder(heroSize, placeholderIconSize),
                 ],
-                ],
-              ),
+              ],
             ),
           ),
         ),
@@ -810,6 +801,23 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     } else {
       return '${date.day}/${date.month}/${date.year}';
     }
+  }
+
+  Widget _buildImagePlaceholder(double heroSize, double placeholderIconSize) {
+    return SizedBox(
+      width: heroSize,
+      height: heroSize,
+      child: Icon(
+        Icons.photo_outlined,
+        size: placeholderIconSize,
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+      ),
+    );
+  }
+
+  int _targetImageCacheWidth(double logicalWidth) {
+    final devicePixelRatio = MediaQuery.of(context).devicePixelRatio;
+    return (logicalWidth * devicePixelRatio).round();
   }
 
   Future<void> _updateArticleAfterReading(String articleId, double scrollPosition, int articleIndex) async {

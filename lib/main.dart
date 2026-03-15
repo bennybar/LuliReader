@@ -12,10 +12,26 @@ import 'providers/app_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  await Workmanager().initialize(backgroundSyncDispatcher, isInDebugMode: false);
-  final analytics = FirebaseAnalytics.instance;
-  final observer = FirebaseAnalyticsObserver(analytics: analytics);
+  
+  // Initialize Firebase (gracefully handle if GoogleService-Info.plist is missing)
+  FirebaseAnalytics? analytics;
+  FirebaseAnalyticsObserver? observer;
+  try {
+    await Firebase.initializeApp();
+    analytics = FirebaseAnalytics.instance;
+    observer = FirebaseAnalyticsObserver(analytics: analytics);
+  } catch (e) {
+    print('Firebase initialization failed: $e');
+    print('Note: GoogleService-Info.plist may be missing. App will continue without Firebase.');
+  }
+  
+  // Initialize WorkManager (background sync)
+  try {
+    await Workmanager().initialize(backgroundSyncDispatcher, isInDebugMode: false);
+  } catch (e) {
+    print('WorkManager initialization failed: $e');
+  }
+  
   runApp(ProviderScope(child: LuliReaderApp(analytics: analytics, observer: observer)));
 }
 
