@@ -808,7 +808,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
               color: scheme.surface,
               borderRadius: BorderRadius.circular(999),
