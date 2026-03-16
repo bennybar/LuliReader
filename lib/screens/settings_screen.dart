@@ -6,11 +6,12 @@ import '../database/database_helper.dart';
 import '../background/background_sync.dart';
 import '../services/shared_preferences_service.dart';
 import '../models/account.dart';
-import '../services/sync_log_service.dart';
 import 'opml_import_export_screen.dart';
+import 'sync_log_screen.dart';
 import 'startup_screen.dart';
 import 'blacklist_screen.dart';
 import '../theme/app_symbols.dart';
+import '../widgets/settings_components.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -25,7 +26,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _titleFontScale = 1.0;
   double _articlePadding = 16.0;
   double _articleListFontScale = 1.0;
-  String _themeLabel = 'System';
   bool _openLinksExternally = false;
   int _keepReadItemsDays = 3;
   int _feedTimeoutSeconds = 10;
@@ -41,21 +41,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _loadReadingPrefs() async {
-    final prefs = SharedPreferencesService();
-    await prefs.init();
-    final font = await prefs.getDouble('articleFontScale') ?? 1.0;
-    final titleFont = await prefs.getDouble('titleFontScale') ?? 1.0;
-    final pad = await prefs.getDouble('articlePadding') ?? 16.0;
-    final listFont = await prefs.getDouble('articleListFontScale') ?? 1.0;
-    final theme = await prefs.getString('themeMode');
-    final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
-    final keepReadItemsDays = await prefs.getInt('keepReadItemsDays') ?? 3;
-    final feedTimeoutSeconds = await prefs.getInt('feedTimeoutSeconds') ?? 10;
-    final showPreviewText = await prefs.getBool('showPreviewText') ?? true;
-    final backgroundSyncEnabled = await prefs.getBool('backgroundSyncEnabled') ?? true;
+    await _prefs.init();
+    final font = await _prefs.getDouble('articleFontScale') ?? 1.0;
+    final titleFont = await _prefs.getDouble('titleFontScale') ?? 1.0;
+    final pad = await _prefs.getDouble('articlePadding') ?? 16.0;
+    final listFont = await _prefs.getDouble('articleListFontScale') ?? 1.0;
+    final openLinksExternally = await _prefs.getBool('openLinksExternally') ?? false;
+    final keepReadItemsDays = await _prefs.getInt('keepReadItemsDays') ?? 3;
+    final feedTimeoutSeconds = await _prefs.getInt('feedTimeoutSeconds') ?? 10;
+    final showPreviewText = await _prefs.getBool('showPreviewText') ?? true;
+    final backgroundSyncEnabled = await _prefs.getBool('backgroundSyncEnabled') ?? true;
     // New: showHeroImage on/off. Backward compatibility: map old heroImagePosition.
-    final legacyHeroPosition = await prefs.getString('heroImagePosition');
-    final showHeroImage = await prefs.getBool('showHeroImage') ??
+    final legacyHeroPosition = await _prefs.getString('heroImagePosition');
+    final showHeroImage = await _prefs.getBool('showHeroImage') ??
         (legacyHeroPosition == 'none'
             ? false
             : true); // any non-none legacy value means on
@@ -65,7 +63,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         _titleFontScale = titleFont;
         _articlePadding = pad;
         _articleListFontScale = listFont;
-        _themeLabel = _labelFromTheme(theme);
         _openLinksExternally = openLinksExternally;
         _keepReadItemsDays = keepReadItemsDays;
         _feedTimeoutSeconds = feedTimeoutSeconds;
@@ -77,21 +74,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _saveReadingPref(String key, double value) async {
-    final prefs = SharedPreferencesService();
-    await prefs.init();
-    await prefs.setDouble(key, value);
+    await _prefs.init();
+    await _prefs.setDouble(key, value);
   }
 
   Future<void> _saveBoolPref(String key, bool value) async {
-    final prefs = SharedPreferencesService();
-    await prefs.init();
-    await prefs.setBool(key, value);
+    await _prefs.init();
+    await _prefs.setBool(key, value);
   }
 
   Future<void> _saveIntPref(String key, int value) async {
-    final prefs = SharedPreferencesService();
-    await prefs.init();
-    await prefs.setInt(key, value);
+    await _prefs.init();
+    await _prefs.setInt(key, value);
   }
 
   double _titleFontPx(BuildContext context) =>
@@ -142,20 +136,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: scheme.secondaryContainer.withValues(alpha: 0.8),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  valueLabel,
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: scheme.onSecondaryContainer,
-                      ),
-                ),
-              ),
+              SettingsValueChip(label: valueLabel),
             ],
           ),
           Slider(
@@ -221,17 +202,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  String _labelFromTheme(String? stored) {
-    switch (stored) {
-      case 'light':
-        return 'Light';
-      case 'dark':
-        return 'Dark';
-      default:
-        return 'System';
-    }
-  }
-
   String _themeSubtitle(WidgetRef ref) {
     final mode = ref.watch(themeModeNotifierProvider);
     switch (mode) {
@@ -246,71 +216,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _showThemeDialog(BuildContext context) async {
     final mode = ref.read(themeModeNotifierProvider);
-    final selected = await showDialog<ThemeMode>(
+    final selected = await _showChoiceSheet<ThemeMode>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Theme'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<ThemeMode>(
-              title: const Text('System'),
-              value: ThemeMode.system,
-              groupValue: mode,
-              onChanged: (v) => Navigator.of(context).pop(v),
-            ),
-            RadioListTile<ThemeMode>(
-              title: const Text('Light'),
-              value: ThemeMode.light,
-              groupValue: mode,
-              onChanged: (v) => Navigator.of(context).pop(v),
-            ),
-            RadioListTile<ThemeMode>(
-              title: const Text('Dark'),
-              value: ThemeMode.dark,
-              groupValue: mode,
-              onChanged: (v) => Navigator.of(context).pop(v),
-            ),
-          ],
+      title: 'Theme',
+      currentValue: mode,
+      options: const [
+        _SettingsChoiceOption(
+          value: ThemeMode.system,
+          title: 'Use system setting',
+          subtitle: 'Match your device theme automatically',
         ),
-      ),
+        _SettingsChoiceOption(
+          value: ThemeMode.light,
+          title: 'Light',
+        ),
+        _SettingsChoiceOption(
+          value: ThemeMode.dark,
+          title: 'Dark',
+        ),
+      ],
     );
 
     if (selected != null) {
       await ref.read(themeModeNotifierProvider.notifier).setThemeMode(selected);
-      if (mounted) {
-        setState(() {
-          _themeLabel = _themeSubtitle(ref);
-        });
-      }
+      if (mounted) setState(() {});
     }
   }
 
   Future<void> _showOpenLinksDialog(BuildContext context) async {
-    final selected = await showDialog<bool>(
+    final selected = await _showChoiceSheet<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Open Links In'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<bool>(
-              title: const Text('In-app Browser'),
-              subtitle: const Text('Open links within the app'),
-              value: false,
-              groupValue: _openLinksExternally,
-              onChanged: (v) => Navigator.of(context).pop(v),
-            ),
-            RadioListTile<bool>(
-              title: const Text('External Browser'),
-              subtitle: const Text('Open links in your default browser'),
-              value: true,
-              groupValue: _openLinksExternally,
-              onChanged: (v) => Navigator.of(context).pop(v),
-            ),
-          ],
+      title: 'Open links in',
+      currentValue: _openLinksExternally,
+      options: const [
+        _SettingsChoiceOption(
+          value: false,
+          title: 'In-app browser',
+          subtitle: 'Keep reading inside the app',
         ),
-      ),
+        _SettingsChoiceOption(
+          value: true,
+          title: 'External browser',
+          subtitle: 'Open links in your default browser',
+        ),
+      ],
     );
 
     if (selected != null) {
@@ -325,22 +274,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _showKeepReadItemsDialog(BuildContext context) async {
     const options = [1, 3, 5, 7, 10, 30];
-    final selected = await showDialog<int>(
+    final selected = await _showChoiceSheet<int>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Keep Read Items'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options
-              .map((days) => RadioListTile<int>(
-                    title: Text('$days ${days == 1 ? 'day' : 'days'}'),
-                    value: days,
-                    groupValue: _keepReadItemsDays,
-                    onChanged: (value) => Navigator.of(context).pop(value),
-                  ))
-              .toList(),
-        ),
-      ),
+      title: 'Auto-delete read articles',
+      currentValue: _keepReadItemsDays,
+      options: options
+          .map(
+            (days) => _SettingsChoiceOption<int>(
+              value: days,
+              title: '$days ${days == 1 ? 'day' : 'days'}',
+              subtitle: 'Delete read articles older than this',
+            ),
+          )
+          .toList(),
     );
 
     if (selected != null) {
@@ -355,22 +301,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _showFeedTimeoutDialog(BuildContext context) async {
     const options = [5, 10, 15, 30, 60];
-    final selected = await showDialog<int>(
+    final selected = await _showChoiceSheet<int>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Feed Timeout'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options
-              .map((seconds) => RadioListTile<int>(
-                    title: Text('$seconds seconds'),
-                    value: seconds,
-                    groupValue: _feedTimeoutSeconds,
-                    onChanged: (value) => Navigator.of(context).pop(value),
-                  ))
-              .toList(),
-        ),
-      ),
+      title: 'Network timeout',
+      currentValue: _feedTimeoutSeconds,
+      options: options
+          .map(
+            (seconds) => _SettingsChoiceOption<int>(
+              value: seconds,
+              title: '$seconds seconds',
+              subtitle: 'Stop waiting for a feed after this long',
+            ),
+          )
+          .toList(),
     );
 
     if (selected != null) {
@@ -464,509 +407,298 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             return const Center(child: Text('No account found'));
           }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
-              // Account Info
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.account_circle),
-                  title: const Text('Account'),
-                  subtitle: Text(account.name),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                ),
+              SettingsSectionHeader(
+                title: 'Account',
+                subtitle: 'This device is currently using one reader account',
               ),
-              const SizedBox(height: 8),
-              Card(
-                color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.15),
-                child: ListTile(
-                  leading: Icon(
-                    AppSymbols.delete_forever,
-                    color: Theme.of(context).colorScheme.error,
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'Current account',
+                    subtitle: account.name,
+                    leading: const Icon(AppSymbols.account_circle),
+                    trailing: const SettingsValueChip(label: 'Active', highlight: true),
                   ),
-                  title: Text(
-                    'Delete Account',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  SettingsNavTile(
+                    title: 'Start screen',
+                    subtitle: _defaultScreenSubtitle(account.defaultScreen),
+                    leading: const Icon(AppSymbols.home),
+                    onTap: () => _showDefaultScreenDialog(context, account),
                   ),
-                  subtitle: const Text('Removes this account and all its data on this device'),
-                  onTap: () => _confirmDeleteAccount(account),
-                ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Card(
-                color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.1),
-                child: ListTile(
-                  leading: const Icon(AppSymbols.delete_sweep),
-                  title: const Text('Clear Downloaded Articles'),
-                  subtitle: const Text('Delete all stored articles and reset sync markers'),
-                  onTap: _confirmClearArticles,
-                ),
+              SettingsSectionHeader(
+                title: 'Appearance',
+                subtitle: 'Theme, list density, thumbnails, and preview text',
               ),
-              const SizedBox(height: 16),
-
-              // App Settings
-              Text(
-                'App Settings',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.home),
-                  title: const Text('Default Screen'),
-                  subtitle: Text(
-                    account.defaultScreen == 0
-                        ? 'Feeds (opens on the folder view)'
-                        : 'Articles (Flow stream)',
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'Theme',
+                    subtitle: _themeSubtitle(ref),
+                    leading: const Icon(AppSymbols.brightness_6),
+                    onTap: () => _showThemeDialog(context),
                   ),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showDefaultScreenDialog(context, account),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.brightness_6),
-                  title: const Text('Theme'),
-                  subtitle: Text(_themeSubtitle(ref)),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showThemeDialog(context),
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Article Appearance
-              Text(
-                'Article Appearance',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Live Preview',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildReadingPreviewCard(context),
-                      const SizedBox(height: 18),
-                      _buildScaleSlider(
-                        context: context,
-                        title: 'Title Font Size',
-                        valueLabel: '${_titleFontPx(context).toStringAsFixed(0)} px',
-                        value: _titleFontScale,
-                        min: 0.8,
-                        max: 1.8,
-                        divisions: 10,
-                        onChanged: (value) async {
-                          setState(() => _titleFontScale = value);
-                          await _saveReadingPref('titleFontScale', value);
-                        },
-                      ),
-                      _buildScaleSlider(
-                        context: context,
-                        title: 'Article Font Size',
-                        valueLabel: '${_articleFontPx(context).toStringAsFixed(0)} px',
-                        value: _articleFontScale,
-                        min: 0.85,
-                        max: 1.7,
-                        divisions: 17,
-                        onChanged: (value) async {
-                          setState(() => _articleFontScale = value);
-                          await _saveReadingPref('articleFontScale', value);
-                        },
-                      ),
-                      _buildScaleSlider(
-                        context: context,
-                        title: 'Content Padding',
-                        subtitle: 'Controls reading mode margins',
-                        valueLabel: '${_articlePadding.toStringAsFixed(0)} px',
-                        value: _articlePadding,
-                        min: 8,
-                        max: 32,
-                        divisions: 24,
-                        onChanged: (value) async {
-                          setState(() => _articlePadding = value);
-                          await _saveReadingPref('articlePadding', value);
-                        },
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          icon: const Icon(AppSymbols.refresh),
-                          label: const Text('Reset Reading'),
-                          onPressed: () async {
-                            setState(() {
-                              _titleFontScale = 1.0;
-                              _articleFontScale = 1.0;
-                              _articlePadding = 16.0;
-                            });
-                            await _saveReadingPref('titleFontScale', 1.0);
-                            await _saveReadingPref('articleFontScale', 1.0);
-                            await _saveReadingPref('articlePadding', 16.0);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Article List View Settings
-              Text(
-                'Article List View',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildScaleSlider(
-                        context: context,
-                        title: 'List Font Size',
-                        subtitle: 'Optimized for fast article scanning',
-                        valueLabel: '${_listFontPx(context).toStringAsFixed(0)} px',
-                        value: _articleListFontScale,
-                        min: 0.85,
-                        max: 1.4,
-                        divisions: 11,
-                        onChanged: (value) async {
+                  SettingsNavTile(
+                    title: 'Reading & layout',
+                    subtitle: 'Adjust typography, thumbnails, preview text, and list density',
+                    onTap: () => _openSubPage(
+                      _AppearanceSettingsPage(
+                        listFontScale: _articleListFontScale,
+                        listFontPx: _listFontPx(context),
+                        showHeroImage: _showHeroImage,
+                        showPreviewText: _showPreviewText,
+                        buildScaleSlider: _buildScaleSlider,
+                        onListFontChanged: (value) async {
                           setState(() => _articleListFontScale = value);
                           await _saveReadingPref('articleListFontScale', value);
                         },
+                        onResetListFont: () async {
+                          setState(() => _articleListFontScale = 1.0);
+                          await _saveReadingPref('articleListFontScale', 1.0);
+                        },
+                        onShowHeroImageChanged: (value) async {
+                          await _saveBoolPref('showHeroImage', value);
+                          if (!mounted) return;
+                          setState(() => _showHeroImage = value);
+                        },
+                        onShowPreviewTextChanged: (value) async {
+                          await _saveBoolPref('showPreviewText', value);
+                          if (!mounted) return;
+                          setState(() => _showPreviewText = value);
+                        },
                       ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          icon: const Icon(AppSymbols.refresh),
-                          label: const Text('Reset'),
-                          onPressed: () async {
-                            setState(() => _articleListFontScale = 1.0);
-                            await _saveReadingPref('articleListFontScale', 1.0);
-                          },
+                    ),
+                  ),
+                ],
+              ),
+              SettingsSectionHeader(
+                title: 'Reading',
+                subtitle: 'Reader comfort, article content, and link behavior',
+              ),
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'Reader options',
+                    subtitle: 'Live preview, text size, article padding, link handling, and cleanup',
+                    leading: const Icon(AppSymbols.article_outlined),
+                    onTap: () => _openSubPage(
+                      _ReadingSettingsPage(
+                        titleFontScale: _titleFontScale,
+                        articleFontScale: _articleFontScale,
+                        articlePadding: _articlePadding,
+                        titleFontPx: _titleFontPx(context),
+                        articleFontPx: _articleFontPx(context),
+                        openLinksExternally: _openLinksExternally,
+                        keepReadItemsDays: _keepReadItemsDays,
+                        feedTimeoutSeconds: _feedTimeoutSeconds,
+                        fullContentEnabled: account.isFullContent,
+                        buildScaleSlider: _buildScaleSlider,
+                        buildPreviewCard: _buildReadingPreviewCard,
+                        onTitleFontChanged: (value) async {
+                          setState(() => _titleFontScale = value);
+                          await _saveReadingPref('titleFontScale', value);
+                        },
+                        onArticleFontChanged: (value) async {
+                          setState(() => _articleFontScale = value);
+                          await _saveReadingPref('articleFontScale', value);
+                        },
+                        onArticlePaddingChanged: (value) async {
+                          setState(() => _articlePadding = value);
+                          await _saveReadingPref('articlePadding', value);
+                        },
+                        onResetReading: () async {
+                          setState(() {
+                            _titleFontScale = 1.0;
+                            _articleFontScale = 1.0;
+                            _articlePadding = 16.0;
+                          });
+                          await _saveReadingPref('titleFontScale', 1.0);
+                          await _saveReadingPref('articleFontScale', 1.0);
+                          await _saveReadingPref('articlePadding', 16.0);
+                        },
+                        onFullContentChanged: (value) =>
+                            _updateAccountSetting('isFullContent', value),
+                        onOpenLinksTap: () => _showOpenLinksDialog(context),
+                        onKeepReadItemsTap: () => _showKeepReadItemsDialog(context),
+                        onFeedTimeoutTap: () => _showFeedTimeoutDialog(context),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SettingsSectionHeader(
+                title: 'Sync',
+                subtitle: 'Schedules, network limits, and background behavior',
+              ),
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'Sync & network',
+                    subtitle: _syncSummary(account),
+                    leading: const Icon(AppSymbols.sync),
+                    onTap: () => _openSubPage(
+                      _SyncSettingsPage(
+                        account: account,
+                        backgroundSyncEnabled: _backgroundSyncEnabled,
+                        onSyncIntervalTap: () => _showSyncIntervalDialog(context, account),
+                        onBackgroundSyncChanged: (value) async {
+                          await _prefs.init();
+                          await _prefs.setBool('backgroundSyncEnabled', value);
+                          if (!value) {
+                            await cancelBackgroundSync();
+                          } else {
+                            await _applyBackgroundSyncSetting(account);
+                          }
+                          if (!mounted) return;
+                          setState(() => _backgroundSyncEnabled = value);
+                        },
+                        onSyncOnStartChanged: (value) =>
+                            _updateAccountSetting('syncOnStart', value),
+                        onMaxPastDaysTap: () => _showMaxPastDaysDialog(context, account),
+                        onSyncOnlyWifiChanged: (value) =>
+                            _updateAccountSetting('syncOnlyOnWiFi', value),
+                        onSyncOnlyWhenChargingChanged: (value) =>
+                            _updateAccountSetting('syncOnlyWhenCharging', value),
+                        onSyncHistoryTap: () => _showSyncLog(context),
+                      ),
+                    ),
+                  ),
+                  SettingsNavTile(
+                    title: 'Sync history',
+                    subtitle: 'View recent manual and background sync activity',
+                    leading: const Icon(AppSymbols.history),
+                    onTap: () => _showSyncLog(context),
+                  ),
+                ],
+              ),
+              SettingsSectionHeader(
+                title: 'Gestures',
+                subtitle: 'Choose what article swipes do in the list',
+              ),
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'Article swipe actions',
+                    subtitle:
+                        'Right: ${_getSwipeActionDescription(account.swipeStartAction)} • Left: ${_getSwipeActionDescription(account.swipeEndAction)}',
+                    leading: const Icon(AppSymbols.swipe_right),
+                    onTap: () => _openSubPage(
+                      _GestureSettingsPage(
+                        swipeRightDescription:
+                            _getSwipeActionDescription(account.swipeStartAction),
+                        swipeLeftDescription:
+                            _getSwipeActionDescription(account.swipeEndAction),
+                        onSwipeRightTap: () =>
+                            _showSwipeActionDialog(context, account, true),
+                        onSwipeLeftTap: () =>
+                            _showSwipeActionDialog(context, account, false),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              SettingsSectionHeader(
+                title: 'Content Filtering',
+                subtitle: 'Hide articles you never want to see',
+              ),
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'Blocked titles',
+                    subtitle: 'Hide articles that match blacklist keywords',
+                    leading: const Icon(AppSymbols.block),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const BlacklistScreen(),
                         ),
-                      ),
-                    ],
+                      );
+                    },
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Card(
-                child: SwitchListTile(
-                  secondary: const Icon(AppSymbols.image),
-                  title: const Text('Show Hero Image'),
-                  subtitle: const Text('Toggle article thumbnail in lists'),
-                  value: _showHeroImage,
-                  onChanged: (value) async {
-                    await _saveBoolPref('showHeroImage', value);
-                    if (mounted) {
-                      setState(() {
-                        _showHeroImage = value;
-                      });
-                    }
-                  },
-                ),
+              SettingsSectionHeader(
+                title: 'Import / Export',
+                subtitle: 'Move subscriptions in or out with OPML',
               ),
-              const SizedBox(height: 8),
-              Card(
-                child: SwitchListTile(
-                  secondary: const Icon(AppSymbols.text_fields),
-                  title: const Text('Show Preview Text'),
-                  subtitle: const Text('Display 2 rows of article preview text'),
-                  value: _showPreviewText,
-                  onChanged: (value) async {
-                    await _saveBoolPref('showPreviewText', value);
-                    if (mounted) {
-                      setState(() {
-                        _showPreviewText = value;
-                      });
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Reading Settings
-              Text(
-                'Reading Settings',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: SwitchListTile(
-                  secondary: const Icon(AppSymbols.article_outlined),
-                  title: const Text('Parse Full Content'),
-                  subtitle: const Text(
-                    'Automatically download and parse full article content for ALL feeds in the background during sync',
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'OPML import / export',
+                    subtitle: 'Import feeds or back them up to an OPML file',
+                    leading: const Icon(AppSymbols.import_export),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const OpmlImportExportScreen(),
+                        ),
+                      );
+                    },
                   ),
-                  value: account.isFullContent,
-                  onChanged: (value) => _updateAccountSetting('isFullContent', value),
-                ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.open_in_browser),
-                  title: const Text('Open Links In'),
-                  subtitle: Text(_openLinksExternally ? 'External Browser' : 'In-app Browser'),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showOpenLinksDialog(context),
-                ),
+              SettingsSectionHeader(
+                title: 'Help & About',
+                subtitle: 'Support links and app details',
               ),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.history),
-                  title: const Text('Keep Read Items'),
-                  subtitle: Text('$_keepReadItemsDays ${_keepReadItemsDays == 1 ? 'day' : 'days'} • Read articles older than this will be deleted'),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showKeepReadItemsDialog(context),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.timer),
-                  title: const Text('Feed Timeout'),
-                  subtitle: Text('$_feedTimeoutSeconds seconds • Timeout for fetching feeds'),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showFeedTimeoutDialog(context),
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Gesture Settings
-              Text(
-                'Gesture Settings',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.swipe_left),
-                  title: const Text('Swipe to Start'),
-                  subtitle: Text(_getSwipeActionDescription(account.swipeStartAction)),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showSwipeActionDialog(context, account, true),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.swipe_right),
-                  title: const Text('Swipe to End'),
-                  subtitle: Text(_getSwipeActionDescription(account.swipeEndAction)),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showSwipeActionDialog(context, account, false),
-                ),
-              ),
-              const SizedBox(height: 24),
-              
-              // Sync Settings
-              Text(
-                'Sync Settings',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.sync),
-                  title: const Text('Sync Interval'),
-                  subtitle: Text('${account.syncInterval} minutes'),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showSyncIntervalDialog(context, account),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                child: SwitchListTile(
-                  secondary: const Icon(AppSymbols.sync_lock),
-                  title: const Text('Background Sync'),
-                  subtitle: const Text('Allow background worker to run sync'),
-                  value: _backgroundSyncEnabled,
-                  onChanged: (value) async {
-                    await _prefs.init();
-                    await _prefs.setBool('backgroundSyncEnabled', value);
-                    if (!value) {
-                      await cancelBackgroundSync();
-                    } else {
-                      await _applyBackgroundSyncSetting(account);
-                    }
-                    if (mounted) {
-                      setState(() {
-                        _backgroundSyncEnabled = value;
-                      });
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                child: SwitchListTile(
-                  secondary: const Icon(AppSymbols.play_circle_outline),
-                  title: const Text('Sync on App Start'),
-                  subtitle: const Text('Automatically sync when the app starts'),
-                  value: account.syncOnStart,
-                  onChanged: (value) => _updateAccountSetting('syncOnStart', value),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.history),
-                  title: const Text('Max Past Days to Sync'),
-                  subtitle: Text(
-                    '${account.maxPastDays} days • Older items will be skipped on sync',
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'Help & support',
+                    subtitle: 'Report issues or get help',
+                    leading: const Icon(AppSymbols.help_outline),
+                    onTap: _openHelp,
                   ),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showMaxPastDaysDialog(context, account),
-                ),
+                  SettingsNavTile(
+                    title: 'About',
+                    subtitle: 'Luli Reader v1.1.80',
+                    leading: const Icon(AppSymbols.info),
+                    onTap: _showAbout,
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Card(
-                child: SwitchListTile(
-                  secondary: const Icon(AppSymbols.wifi),
-                  title: const Text('Sync Only on Wi-Fi'),
-                  subtitle: const Text('Only sync when connected to Wi-Fi'),
-                  value: account.syncOnlyOnWiFi,
-                  onChanged: (value) => _updateAccountSetting('syncOnlyOnWiFi', value),
-                ),
+              SettingsSectionHeader(
+                title: 'Storage & Data',
+                subtitle: 'Local article storage and data refresh tools',
               ),
-              const SizedBox(height: 8),
-              Card(
-                child: SwitchListTile(
-                  secondary: const Icon(AppSymbols.battery_charging_full),
-                  title: const Text('Sync Only When Charging'),
-                  subtitle: const Text('Only sync when device is charging'),
-                  value: account.syncOnlyWhenCharging,
-                  onChanged: (value) => _updateAccountSetting('syncOnlyWhenCharging', value),
-                ),
+              SettingsGroup(
+                children: [
+                  SettingsNavTile(
+                    title: 'Re-download articles',
+                    subtitle: 'Clear local article data, then fetch everything again',
+                    leading: const Icon(AppSymbols.restart_alt),
+                    trailing: _isResyncing
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : null,
+                    onTap: _isResyncing ? null : () => _confirmResync(context, account),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.restart_alt),
-                  title: const Text('Resync All Articles'),
-                  subtitle: const Text('Clear local articles and re-download everything'),
-                  trailing: _isResyncing
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(AppSymbols.chevron_right),
-                  onTap: _isResyncing ? null : () => _confirmResync(context, account),
-                ),
+              const SizedBox(height: 10),
+              SettingsDangerTile(
+                title: 'Clear downloaded articles',
+                subtitle:
+                    'Delete stored articles and reset sync markers. Feeds and account settings stay intact.',
+                leading: const Icon(AppSymbols.delete_sweep),
+                onTap: _confirmClearArticles,
               ),
-              const SizedBox(height: 8),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.history),
-                  title: const Text('Sync Log'),
-                  subtitle: const Text('View background sync history'),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () => _showSyncLog(context),
-                ),
+              SettingsSectionHeader(
+                title: 'Danger Zone',
+                subtitle: 'This permanently removes the current account from this device',
               ),
-              const SizedBox(height: 24),
-              
-              // Blacklist Settings
-              Text(
-                'Content Filtering',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
-                    ),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                child: ListTile(
-                  leading: const Icon(AppSymbols.block),
-                  title: const Text('Blacklist'),
-                  subtitle: const Text('Block articles by title patterns'),
-                  trailing: const Icon(AppSymbols.chevron_right),
-                  onTap: () async {
-                    await Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const BlacklistScreen(),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 24),
-              ListTile(
-                leading: const Icon(AppSymbols.import_export),
-                title: const Text('OPML Import/Export'),
-                subtitle: const Text('Import or export feeds'),
-                trailing: const Icon(AppSymbols.chevron_right),
-                onTap: () async {
-                  final result = await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const OpmlImportExportScreen(),
-                    ),
-                  );
-                  // Refresh if import was successful
-                  if (result == true) {
-                    // The home screen will refresh automatically
-                  }
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const Icon(AppSymbols.help_outline),
-                title: const Text('Help & Support'),
-                subtitle: const Text('Report issues or get help'),
-                trailing: const Icon(AppSymbols.chevron_right),
-                onTap: () async {
-                  final uri = Uri.parse('https://github.com/bennybar/LuliReader/issues');
-                  if (await canLaunchUrl(uri)) {
-                    try {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Could not open help page: $e')),
-                        );
-                      }
-                    }
-                  }
-                },
-              ),
-              ListTile(
-                leading: const Icon(AppSymbols.info),
-                title: const Text('About'),
-                subtitle: const Text('Luli Reader v1.1.80'),
-                trailing: const Icon(AppSymbols.chevron_right),
+              SettingsDangerTile(
+                title: 'Delete account',
+                subtitle: 'Remove this account, all feeds, and all downloaded articles from this device.',
+                leading: const Icon(AppSymbols.delete_forever),
+                severe: true,
+                onTap: () => _confirmDeleteAccount(account),
               ),
             ],
           );
@@ -982,9 +714,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       case 0:
         return 'None';
       case 1:
-        return 'Toggle Read';
+        return 'Mark read / unread';
       case 2:
-        return 'Toggle Starred';
+        return 'Star / unstar';
       default:
         return 'None';
     }
@@ -992,22 +724,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _showMaxPastDaysDialog(BuildContext context, Account account) async {
     const options = [3, 5, 10, 30, 90];
-    final selected = await showDialog<int>(
+    final selected = await _showChoiceSheet<int>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Max Past Days to Sync'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options
-              .map((days) => RadioListTile<int>(
-                    title: Text('$days days'),
-                    value: days,
-                    groupValue: account.maxPastDays,
-                    onChanged: (value) => Navigator.of(context).pop(value),
-                  ))
-              .toList(),
-        ),
-      ),
+      title: 'How far back to sync',
+      currentValue: account.maxPastDays,
+      options: options
+          .map(
+            (days) => _SettingsChoiceOption<int>(
+              value: days,
+              title: '$days days',
+              subtitle: 'Skip older items when syncing feeds',
+            ),
+          )
+          .toList(),
     );
 
     if (selected != null) {
@@ -1063,7 +792,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear all downloaded articles?'),
+        title: const Text('Clear downloaded articles?'),
         content: const Text(
           'This deletes every stored article and resets sync markers for all accounts. '
           'Feeds and accounts remain. Continue?',
@@ -1075,7 +804,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Clear'),
+            child: const Text('Clear articles'),
           ),
         ],
       ),
@@ -1099,34 +828,28 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showSwipeActionDialog(BuildContext context, Account account, bool isStart) async {
-    final action = await showDialog<int>(
+    final currentValue = isStart ? account.swipeStartAction : account.swipeEndAction;
+    final action = await _showChoiceSheet<int>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(isStart ? 'Swipe to Start' : 'Swipe to End'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<int>(
-              title: const Text('None'),
-              value: 0,
-              groupValue: isStart ? account.swipeStartAction : account.swipeEndAction,
-              onChanged: (value) => Navigator.of(context).pop(value),
-            ),
-            RadioListTile<int>(
-              title: const Text('Toggle Read'),
-              value: 1,
-              groupValue: isStart ? account.swipeStartAction : account.swipeEndAction,
-              onChanged: (value) => Navigator.of(context).pop(value),
-            ),
-            RadioListTile<int>(
-              title: const Text('Toggle Starred'),
-              value: 2,
-              groupValue: isStart ? account.swipeStartAction : account.swipeEndAction,
-              onChanged: (value) => Navigator.of(context).pop(value),
-            ),
-          ],
+      title: isStart ? 'Swipe right action' : 'Swipe left action',
+      currentValue: currentValue,
+      options: const [
+        _SettingsChoiceOption(
+          value: 0,
+          title: 'None',
+          subtitle: 'Do nothing when swiping',
         ),
-      ),
+        _SettingsChoiceOption(
+          value: 1,
+          title: 'Mark read / unread',
+          subtitle: 'Toggle the read state of the article',
+        ),
+        _SettingsChoiceOption(
+          value: 2,
+          title: 'Star / unstar',
+          subtitle: 'Toggle the saved state of the article',
+        ),
+      ],
     );
 
     if (action != null) {
@@ -1138,28 +861,22 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showDefaultScreenDialog(BuildContext context, Account account) async {
-    final screen = await showDialog<int>(
+    final screen = await _showChoiceSheet<int>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Default Screen'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            RadioListTile<int>(
-              title: const Text('Feeds'),
-              value: 0,
-              groupValue: account.defaultScreen,
-              onChanged: (value) => Navigator.of(context).pop(value),
-            ),
-            RadioListTile<int>(
-              title: const Text('Flow'),
-              value: 1,
-              groupValue: account.defaultScreen,
-              onChanged: (value) => Navigator.of(context).pop(value),
-            ),
-          ],
+      title: 'Start screen',
+      currentValue: account.defaultScreen,
+      options: const [
+        _SettingsChoiceOption(
+          value: 0,
+          title: 'Feeds',
+          subtitle: 'Open the feed and folder view first',
         ),
-      ),
+        _SettingsChoiceOption(
+          value: 1,
+          title: 'Articles',
+          subtitle: 'Open the article stream first',
+        ),
+      ],
     );
 
     if (screen != null) {
@@ -1169,22 +886,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _showSyncIntervalDialog(BuildContext context, Account account) async {
     const options = [15, 30, 60, 120];
-    final selected = await showDialog<int>(
+    final selected = await _showChoiceSheet<int>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sync Interval'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: options
-              .map((mins) => RadioListTile<int>(
-                    title: Text('$mins minutes'),
-                    value: mins,
-                    groupValue: account.syncInterval,
-                    onChanged: (value) => Navigator.of(context).pop(value),
-                  ))
-              .toList(),
-        ),
-      ),
+      title: 'Sync interval',
+      currentValue: account.syncInterval,
+      options: options
+          .map(
+            (mins) => _SettingsChoiceOption<int>(
+              value: mins,
+              title: '$mins minutes',
+              subtitle: 'Run automatic sync on this schedule',
+            ),
+          )
+          .toList(),
     );
 
     if (selected != null && selected != account.syncInterval) {
@@ -1201,7 +915,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Resync All Articles'),
+        title: const Text('Re-download articles?'),
         content: const Text(
           'This will delete all locally stored articles and reset sync markers. '
           'Feeds and settings stay intact. Continue?',
@@ -1213,7 +927,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Resync'),
+            child: const Text('Re-download'),
           ),
         ],
       ),
@@ -1237,17 +951,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       final syncCoordinator = ref.read(syncCoordinatorProvider);
       await syncCoordinator.syncAccount(account.id!);
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Resync started')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        const SnackBar(content: Text('Re-download started')),
+      );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error starting resync: $e')),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(this.context).showSnackBar(
+        SnackBar(content: Text('Error starting resync: $e')),
+      );
     } finally {
       if (mounted) {
         setState(() => _isResyncing = false);
@@ -1256,156 +968,508 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _showSyncLog(BuildContext context) async {
-    if (!context.mounted) return;
-    
-    await showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setState) {
-          return Dialog(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 600),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Sync Log',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(AppSymbols.refresh, size: 20),
-                          onPressed: () async {
-                            setState(() {});
-                          },
-                          tooltip: 'Refresh',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Flexible(
-                      child: FutureBuilder<List<SyncLogEntry>>(
-                        future: SyncLogService().getLogEntries(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16),
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          }
-                          
-                          final entries = snapshot.data ?? [];
-                          
-                          if (entries.isEmpty) {
-                            return const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text(
-                                'No sync history yet',
-                                style: TextStyle(fontSize: 12),
-                                textAlign: TextAlign.center,
-                              ),
-                            );
-                          }
-                          
-                          return ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: entries.length,
-                            itemBuilder: (context, index) {
-                              final entry = entries[index];
-                              final timeAgo = _formatTimeAgo(entry.timestamp);
-                              return ListTile(
-                                dense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                leading: Icon(
-                                  entry.success ? AppSymbols.check_circle : AppSymbols.error,
-                                  color: entry.success ? Colors.green : Colors.red,
-                                  size: 18,
-                                ),
-                                title: Text(
-                                  '${entry.type.toUpperCase()} - $timeAgo',
-                                  style: const TextStyle(fontSize: 12),
-                                ),
-                                subtitle: Text(
-                                  entry.success
-                                      ? '${entry.articlesSynced ?? 0} articles synced${entry.note != null ? '\n${entry.note}' : ''}'
-                                      : 'Error: ${entry.error ?? "Unknown"}${entry.note != null ? '\n${entry.note}' : ''}',
-                                  style: const TextStyle(fontSize: 10, height: 1.25),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        FutureBuilder<List<SyncLogEntry>>(
-                          future: SyncLogService().getLogEntries(),
-                          builder: (context, snapshot) {
-                            final entries = snapshot.data ?? [];
-                            if (entries.isEmpty) {
-                              return const SizedBox.shrink();
-                            }
-                            return TextButton(
-                              onPressed: () async {
-                                await SyncLogService().clearLogs();
-                                if (context.mounted) {
-                                  setState(() {});
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Sync log cleared')),
-                                  );
-                                }
-                              },
-                              child: const Text('Clear Log', style: TextStyle(fontSize: 12)),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        TextButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Close', style: TextStyle(fontSize: 12)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SyncLogScreen(),
       ),
     );
   }
 
-  String _formatTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-    
-    if (difference.inDays > 0) {
-      return '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} hour${difference.inHours > 1 ? 's' : ''} ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''} ago';
-    } else {
-      return 'Just now';
+  Future<void> _openSubPage(Widget page) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => page),
+    );
+  }
+
+  String _defaultScreenSubtitle(int screen) {
+    return screen == 0
+        ? 'Open on Feeds first'
+        : 'Open on Articles first';
+  }
+
+  String _syncSummary(Account account) {
+    return '${account.syncInterval} min interval'
+        ' • ${_backgroundSyncEnabled ? 'Background on' : 'Background off'}';
+  }
+
+  Future<void> _openHelp() async {
+    final uri = Uri.parse('https://github.com/bennybar/LuliReader/issues');
+    if (!await canLaunchUrl(uri)) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open help page: $e')),
+      );
     }
+  }
+
+  void _showAbout() {
+    showAboutDialog(
+      context: context,
+      applicationName: 'Luli Reader',
+      applicationVersion: '1.1.80',
+      applicationIcon: const Icon(AppSymbols.article_outlined),
+    );
+  }
+
+  Future<T?> _showChoiceSheet<T>({
+    required BuildContext context,
+    required String title,
+    required T currentValue,
+    required List<_SettingsChoiceOption<T>> options,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 10),
+                child: Text(
+                  title,
+                  style: theme.textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              SettingsGroup(
+                children: [
+                  for (final option in options)
+                    ListTile(
+                      dense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 4,
+                      ),
+                      title: Text(
+                        option.title,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                      subtitle: option.subtitle == null ? null : Text(option.subtitle!),
+                      trailing: option.value == currentValue
+                          ? const Icon(AppSymbols.check)
+                          : null,
+                      onTap: () => Navigator.of(context).pop(option.value),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+typedef _SliderBuilder = Widget Function({
+  required BuildContext context,
+  required String title,
+  required String valueLabel,
+  required double value,
+  required double min,
+  required double max,
+  required int divisions,
+  required ValueChanged<double> onChanged,
+  String? subtitle,
+});
+
+class _SettingsChoiceOption<T> {
+  const _SettingsChoiceOption({
+    required this.value,
+    required this.title,
+    this.subtitle,
+  });
+
+  final T value;
+  final String title;
+  final String? subtitle;
+}
+
+class _AppearanceSettingsPage extends StatelessWidget {
+  const _AppearanceSettingsPage({
+    required this.listFontScale,
+    required this.listFontPx,
+    required this.showHeroImage,
+    required this.showPreviewText,
+    required this.buildScaleSlider,
+    required this.onListFontChanged,
+    required this.onResetListFont,
+    required this.onShowHeroImageChanged,
+    required this.onShowPreviewTextChanged,
+  });
+
+  final double listFontScale;
+  final double listFontPx;
+  final bool showHeroImage;
+  final bool showPreviewText;
+  final _SliderBuilder buildScaleSlider;
+  final ValueChanged<double> onListFontChanged;
+  final Future<void> Function() onResetListFont;
+  final ValueChanged<bool> onShowHeroImageChanged;
+  final ValueChanged<bool> onShowPreviewTextChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Appearance')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          SettingsSectionHeader(
+            title: 'Article list',
+            subtitle: 'Tune density and scanning speed in the article feed',
+            action: TextButton(
+              onPressed: onResetListFont,
+              child: const Text('Reset'),
+            ),
+          ),
+          SettingsGroup(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                child: buildScaleSlider(
+                  context: context,
+                  title: 'List text size',
+                  subtitle: 'Optimized for fast article scanning',
+                  valueLabel: '${listFontPx.toStringAsFixed(0)} px',
+                  value: listFontScale,
+                  min: 0.85,
+                  max: 1.4,
+                  divisions: 11,
+                  onChanged: onListFontChanged,
+                ),
+              ),
+            ],
+          ),
+          SettingsSectionHeader(
+            title: 'Article cards',
+            subtitle: 'Control how much visual detail appears in lists',
+          ),
+          SettingsGroup(
+            children: [
+              SettingsSwitchTile(
+                title: 'Show thumbnails',
+                subtitle: 'Display article images in lists',
+                leading: const Icon(AppSymbols.image),
+                value: showHeroImage,
+                onChanged: onShowHeroImageChanged,
+              ),
+              SettingsSwitchTile(
+                title: 'Show article preview',
+                subtitle: 'Display a short text preview under each title',
+                value: showPreviewText,
+                onChanged: onShowPreviewTextChanged,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReadingSettingsPage extends StatelessWidget {
+  const _ReadingSettingsPage({
+    required this.titleFontScale,
+    required this.articleFontScale,
+    required this.articlePadding,
+    required this.titleFontPx,
+    required this.articleFontPx,
+    required this.openLinksExternally,
+    required this.keepReadItemsDays,
+    required this.feedTimeoutSeconds,
+    required this.fullContentEnabled,
+    required this.buildScaleSlider,
+    required this.buildPreviewCard,
+    required this.onTitleFontChanged,
+    required this.onArticleFontChanged,
+    required this.onArticlePaddingChanged,
+    required this.onResetReading,
+    required this.onFullContentChanged,
+    required this.onOpenLinksTap,
+    required this.onKeepReadItemsTap,
+    required this.onFeedTimeoutTap,
+  });
+
+  final double titleFontScale;
+  final double articleFontScale;
+  final double articlePadding;
+  final double titleFontPx;
+  final double articleFontPx;
+  final bool openLinksExternally;
+  final int keepReadItemsDays;
+  final int feedTimeoutSeconds;
+  final bool fullContentEnabled;
+  final _SliderBuilder buildScaleSlider;
+  final WidgetBuilder buildPreviewCard;
+  final ValueChanged<double> onTitleFontChanged;
+  final ValueChanged<double> onArticleFontChanged;
+  final ValueChanged<double> onArticlePaddingChanged;
+  final Future<void> Function() onResetReading;
+  final ValueChanged<bool> onFullContentChanged;
+  final VoidCallback onOpenLinksTap;
+  final VoidCallback onKeepReadItemsTap;
+  final VoidCallback onFeedTimeoutTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final dayLabel = keepReadItemsDays == 1 ? 'day' : 'days';
+    return Scaffold(
+      appBar: AppBar(title: const Text('Reading')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          SettingsSectionHeader(
+            title: 'Live preview',
+            subtitle: 'See your reading settings update instantly',
+            action: TextButton(
+              onPressed: onResetReading,
+              child: const Text('Reset'),
+            ),
+          ),
+          SettingsGroup(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                child: buildPreviewCard(context),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+                child: Column(
+                  children: [
+                    buildScaleSlider(
+                      context: context,
+                      title: 'Title size',
+                      valueLabel: '${titleFontPx.toStringAsFixed(0)} px',
+                      value: titleFontScale,
+                      min: 0.8,
+                      max: 1.8,
+                      divisions: 10,
+                      onChanged: onTitleFontChanged,
+                    ),
+                    buildScaleSlider(
+                      context: context,
+                      title: 'Article text size',
+                      valueLabel: '${articleFontPx.toStringAsFixed(0)} px',
+                      value: articleFontScale,
+                      min: 0.85,
+                      max: 1.7,
+                      divisions: 17,
+                      onChanged: onArticleFontChanged,
+                    ),
+                    buildScaleSlider(
+                      context: context,
+                      title: 'Reading padding',
+                      subtitle: 'Controls the side margins in the reader',
+                      valueLabel: '${articlePadding.toStringAsFixed(0)} px',
+                      value: articlePadding,
+                      min: 8,
+                      max: 32,
+                      divisions: 24,
+                      onChanged: onArticlePaddingChanged,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          SettingsSectionHeader(
+            title: 'Article behavior',
+            subtitle: 'Control how articles open, download, and clean up',
+          ),
+          SettingsGroup(
+            children: [
+              SettingsSwitchTile(
+                title: 'Download full article text',
+                subtitle:
+                    'Fetch complete article content in the background when feeds sync',
+                leading: const Icon(AppSymbols.article_outlined),
+                value: fullContentEnabled,
+                onChanged: onFullContentChanged,
+              ),
+              SettingsNavTile(
+                title: 'Open links in',
+                subtitle: openLinksExternally ? 'External browser' : 'In-app browser',
+                leading: const Icon(AppSymbols.open_in_browser),
+                onTap: onOpenLinksTap,
+              ),
+              SettingsNavTile(
+                title: 'Auto-delete read articles',
+                subtitle: 'Delete read articles after $keepReadItemsDays $dayLabel',
+                onTap: onKeepReadItemsTap,
+              ),
+              SettingsNavTile(
+                title: 'Network timeout',
+                subtitle: 'Stop loading a feed after $feedTimeoutSeconds seconds',
+                leading: const Icon(AppSymbols.timer),
+                onTap: onFeedTimeoutTap,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SyncSettingsPage extends StatelessWidget {
+  const _SyncSettingsPage({
+    required this.account,
+    required this.backgroundSyncEnabled,
+    required this.onSyncIntervalTap,
+    required this.onBackgroundSyncChanged,
+    required this.onSyncOnStartChanged,
+    required this.onMaxPastDaysTap,
+    required this.onSyncOnlyWifiChanged,
+    required this.onSyncOnlyWhenChargingChanged,
+    required this.onSyncHistoryTap,
+  });
+
+  final Account account;
+  final bool backgroundSyncEnabled;
+  final VoidCallback onSyncIntervalTap;
+  final ValueChanged<bool> onBackgroundSyncChanged;
+  final ValueChanged<bool> onSyncOnStartChanged;
+  final VoidCallback onMaxPastDaysTap;
+  final ValueChanged<bool> onSyncOnlyWifiChanged;
+  final ValueChanged<bool> onSyncOnlyWhenChargingChanged;
+  final VoidCallback onSyncHistoryTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Sync')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          SettingsSectionHeader(
+            title: 'Schedule',
+            subtitle: 'Automatic syncing and app startup behavior',
+          ),
+          SettingsGroup(
+            children: [
+              SettingsNavTile(
+                title: 'Sync interval',
+                subtitle: '${account.syncInterval} minutes',
+                leading: const Icon(AppSymbols.sync),
+                onTap: onSyncIntervalTap,
+              ),
+              SettingsSwitchTile(
+                title: 'Background sync',
+                subtitle: 'Allow sync to run even when the app is not open',
+                leading: const Icon(AppSymbols.sync_lock),
+                value: backgroundSyncEnabled,
+                onChanged: onBackgroundSyncChanged,
+              ),
+              SettingsSwitchTile(
+                title: 'Sync on app start',
+                subtitle: 'Refresh feeds automatically when the app opens',
+                leading: const Icon(AppSymbols.play_circle_outline),
+                value: account.syncOnStart,
+                onChanged: onSyncOnStartChanged,
+              ),
+            ],
+          ),
+          SettingsSectionHeader(
+            title: 'Network & battery',
+            subtitle: 'Limit syncing based on time, Wi-Fi, and charging',
+          ),
+          SettingsGroup(
+            children: [
+              SettingsNavTile(
+                title: 'How far back to sync',
+                subtitle: '${account.maxPastDays} days',
+                onTap: onMaxPastDaysTap,
+              ),
+              SettingsSwitchTile(
+                title: 'Sync only on Wi-Fi',
+                subtitle: 'Avoid syncing on mobile data',
+                leading: const Icon(AppSymbols.wifi),
+                value: account.syncOnlyOnWiFi,
+                onChanged: onSyncOnlyWifiChanged,
+              ),
+              SettingsSwitchTile(
+                title: 'Sync only when charging',
+                subtitle: 'Reduce battery use during automatic sync',
+                leading: const Icon(AppSymbols.battery_charging_full),
+                value: account.syncOnlyWhenCharging,
+                onChanged: onSyncOnlyWhenChargingChanged,
+              ),
+            ],
+          ),
+          SettingsSectionHeader(
+            title: 'History',
+            subtitle: 'Review recent sync activity',
+          ),
+          SettingsGroup(
+            children: [
+              SettingsNavTile(
+                title: 'Sync history',
+                subtitle: 'View recent manual and background sync activity',
+                leading: const Icon(AppSymbols.history),
+                onTap: onSyncHistoryTap,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GestureSettingsPage extends StatelessWidget {
+  const _GestureSettingsPage({
+    required this.swipeRightDescription,
+    required this.swipeLeftDescription,
+    required this.onSwipeRightTap,
+    required this.onSwipeLeftTap,
+  });
+
+  final String swipeRightDescription;
+  final String swipeLeftDescription;
+  final VoidCallback onSwipeRightTap;
+  final VoidCallback onSwipeLeftTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Gestures')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        children: [
+          SettingsSectionHeader(
+            title: 'Article list gestures',
+            subtitle: 'Choose what happens when you swipe an article',
+          ),
+          SettingsGroup(
+            children: [
+              SettingsNavTile(
+                title: 'Swipe right action',
+                subtitle: swipeRightDescription,
+                leading: const Icon(AppSymbols.swipe_right),
+                onTap: onSwipeRightTap,
+              ),
+              SettingsNavTile(
+                title: 'Swipe left action',
+                subtitle: swipeLeftDescription,
+                leading: const Icon(AppSymbols.swipe_left),
+                onTap: onSwipeLeftTap,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
 
