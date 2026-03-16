@@ -732,6 +732,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                                   AppSymbols.star,
                                   size: 16,
                                   color: _starredColor,
+                                  fill: 1,
                                 ),
                               ),
                           ],

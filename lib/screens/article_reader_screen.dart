@@ -495,6 +495,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                         icon: Icon(
                           _isStarred ? AppSymbols.star : AppSymbols.star_border,
                           color: _isStarred ? _starredColor : null,
+                          fill: _isStarred ? 1 : 0,
                         ),
                         tooltip: _isStarred ? 'Remove star' : 'Star article',
                         onPressed: _toggleStarred,

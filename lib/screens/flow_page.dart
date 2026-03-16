@@ -873,7 +873,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                           ),
                                           const SizedBox(height: 8),
                                           Text(
-                                            'Sync feeds to load articles',
+                                            'Pull down to refresh articles',
                                             style: Theme.of(context).textTheme.bodyMedium,
                                           ),
                                         ],
@@ -1039,6 +1039,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                     AppSymbols.star,
                                     size: 16,
                                     color: _starredColor,
+                                    fill: 1,
                                   ),
                                 ),
                             ],
