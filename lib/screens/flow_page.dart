@@ -31,6 +31,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   static const _swipeMaxOffset = 0.32;
   static const _swipeMovementDuration = Duration(milliseconds: 140);
   static const Color _starredColor = Color(0xFFFFC107);
+  static const double _pullToRefreshTrigger = 90;
 
   List<ArticleWithFeed> _articles = [];
   bool _isLoading = true;
@@ -53,6 +54,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   double _listFontScale = 1.0;
   int _swipeStartAction = 2;
   int _swipeEndAction = 1;
+  double _pullToRefreshOffset = 0.0;
 
   void refresh() {
     setState(() {
@@ -519,6 +521,32 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     }
   }
 
+  bool _handlePullToRefreshNotification(ScrollNotification notification) {
+    if (_isSyncing || _isLoading || _isBatchMode) {
+      _pullToRefreshOffset = 0.0;
+      return false;
+    }
+    if (notification.metrics.axis != Axis.vertical) {
+      return false;
+    }
+
+    if (notification is OverscrollNotification &&
+        notification.overscroll < 0 &&
+        notification.metrics.pixels <= 0) {
+      _pullToRefreshOffset += -notification.overscroll;
+      if (_pullToRefreshOffset >= _pullToRefreshTrigger) {
+        _pullToRefreshOffset = 0.0;
+        _syncAll();
+      }
+    } else if (notification is ScrollEndNotification ||
+        (notification is ScrollUpdateNotification &&
+            notification.metrics.pixels > 0)) {
+      _pullToRefreshOffset = 0.0;
+    }
+
+    return false;
+  }
+
   Future<void> _markAllAsRead() async {
     try {
       final account = await ref.read(accountServiceProvider).getCurrentAccount();
@@ -581,6 +609,18 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     'Articles',
                     style: Theme.of(context).appBarTheme.titleTextStyle,
                   ),
+                  if (_isSyncing) ...[
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        value: _syncProgress > 0 ? _syncProgress : null,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
                 ],
               ),
         bottom: _isBatchMode
@@ -847,13 +887,14 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               : Column(
                   children: [
                     _buildSyncInfo(),
-                    if (_isSyncing && _syncProgress > 0.0) _buildSyncProgress(),
                     Expanded(
-                      child: RefreshIndicator(
-                        onRefresh: _syncAll,
+                      child: NotificationListener<ScrollNotification>(
+                        onNotification: _handlePullToRefreshNotification,
                         child: _articles.isEmpty
                             ? ListView(
-                                physics: const AlwaysScrollableScrollPhysics(),
+                                physics: const AlwaysScrollableScrollPhysics(
+                                  parent: ClampingScrollPhysics(),
+                                ),
                                 children: [
                                   SizedBox(
                                     height: MediaQuery.of(context).size.height * 0.6,
@@ -873,7 +914,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                           ),
                                           const SizedBox(height: 8),
                                           Text(
-                                            'Pull down to refresh articles',
+                                            'Pull down to sync articles',
                                             style: Theme.of(context).textTheme.bodyMedium,
                                           ),
                                         ],
@@ -885,6 +926,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                             : ListView.builder(
                                 key: ValueKey(_refreshKey),
                                 controller: _scrollController,
+                                physics: const AlwaysScrollableScrollPhysics(
+                                  parent: ClampingScrollPhysics(),
+                                ),
                                 cacheExtent: 1200,
                                 padding: EdgeInsets.only(
                                   bottom: _isBatchMode && _selectedArticleIds.isNotEmpty ? 120 : 96,
@@ -1643,43 +1687,6 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       },
       loading: () => const SizedBox.shrink(),
       error: (_, __) => const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildSyncProgress() {
-    final percentage = (_syncProgress * 100).toStringAsFixed(0);
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: 12,
-            height: 12,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              value: _syncProgress,
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.primary,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '$percentage%',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              fontSize: 11,
-              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-            ),
-          ),
-        ],
-      ),
     );
   }
 
