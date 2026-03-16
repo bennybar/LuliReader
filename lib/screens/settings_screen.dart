@@ -2,9 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../providers/app_provider.dart';
-import '../services/account_service.dart';
-import '../services/local_rss_service.dart';
-import '../services/sync_coordinator.dart';
 import '../database/database_helper.dart';
 import '../background/background_sync.dart';
 import '../services/shared_preferences_service.dart';
@@ -13,7 +10,6 @@ import '../services/sync_log_service.dart';
 import 'opml_import_export_screen.dart';
 import 'startup_screen.dart';
 import 'blacklist_screen.dart';
-import '../database/database_helper.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -95,6 +91,133 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final prefs = SharedPreferencesService();
     await prefs.init();
     await prefs.setInt(key, value);
+  }
+
+  double _titleFontPx(BuildContext context) =>
+      (Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0) * _titleFontScale;
+
+  double _articleFontPx(BuildContext context) =>
+      (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0) * _articleFontScale;
+
+  double _listFontPx(BuildContext context) =>
+      (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0) * _articleListFontScale;
+
+  Widget _buildScaleSlider({
+    required BuildContext context,
+    required String title,
+    required String valueLabel,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required ValueChanged<double> onChanged,
+    String? subtitle,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                    if (subtitle != null)
+                      Text(
+                        subtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                      ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: scheme.secondaryContainer.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  valueLabel,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: scheme.onSecondaryContainer,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: divisions,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadingPreviewCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(_articlePadding.clamp(12.0, 24.0)),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Preview article title',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontSize: _titleFontPx(context),
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              Text(
+                'Feed name',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+              ),
+              Text(
+                '5 min ago',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'This preview updates live so you can tune reading comfort and list density before leaving settings.',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontSize: _articleFontPx(context),
+                  height: 1.45,
+                ),
+          ),
+        ],
+      ),
+    );
   }
 
   String _labelFromTheme(String? stored) {
@@ -426,130 +549,75 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 12),
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title Font Size
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Title Font Size',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove),
-                                onPressed: () async {
-                                  final baseSize = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
-                                  final currentSize = baseSize * _titleFontScale;
-                                  final newSize = (currentSize - 1).clamp(12.0, 48.0);
-                                  final newScale = newSize / baseSize;
-                                  setState(() => _titleFontScale = newScale);
-                                  await _saveReadingPref('titleFontScale', newScale);
-                                },
-                              ),
-                              SizedBox(
-                                width: 60,
-                                child: Text(
-                                  '${((Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0) * _titleFontScale).toStringAsFixed(0)} px',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add),
-                                onPressed: () async {
-                                  final baseSize = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
-                                  final currentSize = baseSize * _titleFontScale;
-                                  final newSize = (currentSize + 1).clamp(12.0, 48.0);
-                                  final newScale = newSize / baseSize;
-                                  setState(() => _titleFontScale = newScale);
-                                  await _saveReadingPref('titleFontScale', newScale);
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Article Font Size
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'Article Font Size',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove),
-                                onPressed: () async {
-                                  final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
-                                  final currentSize = baseSize * _articleFontScale;
-                                  final newSize = (currentSize - 1).clamp(10.0, 32.0);
-                                  final newScale = newSize / baseSize;
-                                  setState(() => _articleFontScale = newScale);
-                                  await _saveReadingPref('articleFontScale', newScale);
-                                },
-                              ),
-                              SizedBox(
-                                width: 60,
-                                child: Text(
-                                  '${((Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0) * _articleFontScale).toStringAsFixed(0)} px',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add),
-                                onPressed: () async {
-                                  final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
-                                  final currentSize = baseSize * _articleFontScale;
-                                  final newSize = (currentSize + 1).clamp(10.0, 32.0);
-                                  final newScale = newSize / baseSize;
-                                  setState(() => _articleFontScale = newScale);
-                                  await _saveReadingPref('articleFontScale', newScale);
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
+                      Text(
+                        'Live Preview',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
                       ),
                       const SizedBox(height: 16),
-                      // Reset button
-                      Center(
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Reset to Default'),
-                          onPressed: () async {
-                            setState(() {
-                              _titleFontScale = 1.0;
-                              _articleFontScale = 1.0;
-                            });
-                            await _saveReadingPref('titleFontScale', 1.0);
-                            await _saveReadingPref('articleFontScale', 1.0);
-                          },
-                        ),
+                      _buildReadingPreviewCard(context),
+                      const SizedBox(height: 18),
+                      _buildScaleSlider(
+                        context: context,
+                        title: 'Title Font Size',
+                        valueLabel: '${_titleFontPx(context).toStringAsFixed(0)} px',
+                        value: _titleFontScale,
+                        min: 0.8,
+                        max: 1.8,
+                        divisions: 10,
+                        onChanged: (value) async {
+                          setState(() => _titleFontScale = value);
+                          await _saveReadingPref('titleFontScale', value);
+                        },
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Content Padding',
-                        style: Theme.of(context).textTheme.titleSmall,
+                      _buildScaleSlider(
+                        context: context,
+                        title: 'Article Font Size',
+                        valueLabel: '${_articleFontPx(context).toStringAsFixed(0)} px',
+                        value: _articleFontScale,
+                        min: 0.85,
+                        max: 1.7,
+                        divisions: 17,
+                        onChanged: (value) async {
+                          setState(() => _articleFontScale = value);
+                          await _saveReadingPref('articleFontScale', value);
+                        },
                       ),
-                      Slider(
+                      _buildScaleSlider(
+                        context: context,
+                        title: 'Content Padding',
+                        subtitle: 'Controls reading mode margins',
+                        valueLabel: '${_articlePadding.toStringAsFixed(0)} px',
                         value: _articlePadding,
                         min: 8,
                         max: 32,
                         divisions: 24,
-                        label: '${_articlePadding.toStringAsFixed(0)} px',
-                        onChanged: (v) async {
-                          setState(() => _articlePadding = v);
-                          await _saveReadingPref('articlePadding', v);
+                        onChanged: (value) async {
+                          setState(() => _articlePadding = value);
+                          await _saveReadingPref('articlePadding', value);
                         },
+                      ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Reset Reading'),
+                          onPressed: () async {
+                            setState(() {
+                              _titleFontScale = 1.0;
+                              _articleFontScale = 1.0;
+                              _articlePadding = 16.0;
+                            });
+                            await _saveReadingPref('titleFontScale', 1.0);
+                            await _saveReadingPref('articleFontScale', 1.0);
+                            await _saveReadingPref('articlePadding', 16.0);
+                          },
+                        ),
                       ),
                     ],
                   ),
@@ -568,52 +636,23 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 12),
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'List Font Size',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove),
-                                onPressed: () async {
-                                  final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
-                                  final currentSize = baseSize * _articleListFontScale;
-                                  final newSize = (currentSize - 1).clamp(10.0, 32.0);
-                                  final newScale = newSize / baseSize;
-                                  setState(() => _articleListFontScale = newScale);
-                                  await _saveReadingPref('articleListFontScale', newScale);
-                                },
-                              ),
-                              SizedBox(
-                                width: 60,
-                                child: Text(
-                                  '${((Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0) * _articleListFontScale).toStringAsFixed(0)} px',
-                                  style: Theme.of(context).textTheme.bodyMedium,
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add),
-                                onPressed: () async {
-                                  final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
-                                  final currentSize = baseSize * _articleListFontScale;
-                                  final newSize = (currentSize + 1).clamp(10.0, 32.0);
-                                  final newScale = newSize / baseSize;
-                                  setState(() => _articleListFontScale = newScale);
-                                  await _saveReadingPref('articleListFontScale', newScale);
-                                },
-                              ),
-                            ],
-                          ),
-                        ],
+                      _buildScaleSlider(
+                        context: context,
+                        title: 'List Font Size',
+                        subtitle: 'Optimized for fast article scanning',
+                        valueLabel: '${_listFontPx(context).toStringAsFixed(0)} px',
+                        value: _articleListFontScale,
+                        min: 0.85,
+                        max: 1.4,
+                        divisions: 11,
+                        onChanged: (value) async {
+                          setState(() => _articleListFontScale = value);
+                          await _saveReadingPref('articleListFontScale', value);
+                        },
                       ),
                       Align(
                         alignment: Alignment.centerRight,

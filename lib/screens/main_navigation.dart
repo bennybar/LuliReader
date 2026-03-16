@@ -1,17 +1,12 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
-import '../services/account_service.dart';
-import '../services/sync_coordinator.dart';
 import '../background/background_sync.dart';
 import '../services/sync_log_service.dart';
-import '../database/article_dao.dart';
 import '../services/shared_preferences_service.dart';
 import 'feeds_page.dart';
 import 'flow_page.dart';
-import 'settings_screen.dart';
 
 class MainNavigation extends ConsumerStatefulWidget {
   const MainNavigation({super.key});
@@ -199,124 +194,38 @@ class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBin
     }
     
     return Scaffold(
-      extendBody: true,
-      body: Stack(
+      body: IndexedStack(
+        index: _selectedIndex,
         children: [
-          IndexedStack(
-            index: _selectedIndex,
-            children: [
-              FeedsPage(key: _feedsPageKey, onSync: _syncAll),
-              FlowPage(key: _flowPageKey, onSync: _syncAll),
-            ],
-          ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 12,
-            child: SafeArea(
-              minimum: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
-              child: _buildGlassNavBar(context),
-            ),
-          ),
+          FeedsPage(key: _feedsPageKey, onSync: _syncAll),
+          FlowPage(key: _flowPageKey, onSync: _syncAll),
         ],
       ),
-    );
-  }
-
-  Widget _buildGlassNavBar(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final glassColor = scheme.surface.withOpacity(0.01);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          height: 62,
-          decoration: BoxDecoration(
-            color: glassColor,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(
-              color: scheme.onSurface.withOpacity(0.06),
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildNavButton(
-                context,
-                index: 0,
-                label: 'Feeds',
-                icon: Icons.folder,
-              ),
-              const SizedBox(width: 12),
-              _buildNavButton(
-                context,
-                index: 1,
-                label: 'Articles',
-                icon: Icons.article,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildNavButton(BuildContext context,
-      {required int index, required String label, required IconData icon}) {
-    final isSelected = _selectedIndex == index;
-    final colorScheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2),
-        child: Material(
-          color:
-              isSelected ? colorScheme.primary.withOpacity(0.16) : Colors.transparent,
-          borderRadius: BorderRadius.circular(20),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(20),
-            onTap: () {
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: NavigationBar(
+            selectedIndex: _selectedIndex,
+            labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+            onDestinationSelected: (index) {
               setState(() {
                 _selectedIndex = index;
               });
               _saveDefaultScreen(index);
             },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: isSelected
-                      ? colorScheme.primary.withOpacity(0.3)
-                      : Colors.transparent,
-                ),
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.folder_outlined),
+                selectedIcon: Icon(Icons.folder_rounded),
+                label: 'Feeds',
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    icon,
-                    size: 22,
-                    color: isSelected
-                        ? colorScheme.primary
-                        : colorScheme.onSurface.withOpacity(0.75),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: isSelected
-                          ? colorScheme.primary
-                          : colorScheme.onSurface.withOpacity(0.85),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
+              NavigationDestination(
+                icon: Icon(Icons.article_outlined),
+                selectedIcon: Icon(Icons.article_rounded),
+                label: 'Articles',
               ),
-            ),
+            ],
           ),
         ),
       ),

@@ -276,6 +276,24 @@ class ArticleDao {
     return articles;
   }
 
+  Future<Map<String, int>> getUnreadCountsByFeed(int accountId) async {
+    final db = await _dbHelper.database;
+    final rows = await db.rawQuery(
+      '''
+      SELECT feedId, COUNT(*) AS unreadCount
+      FROM article
+      WHERE accountId = ? AND isUnread = 1
+      GROUP BY feedId
+      ''',
+      [accountId],
+    );
+
+    return {
+      for (final row in rows)
+        (row['feedId'] as String): (row['unreadCount'] as int? ?? 0),
+    };
+  }
+
   Future<List<Article>> getStarred(int accountId, {int limit = 100}) async {
     print('[ARTICLE_DAO] getStarred called: accountId=$accountId, limit=$limit');
     final db = await _dbHelper.database;

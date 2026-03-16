@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
-import '../database/group_dao.dart';
 import '../models/group.dart';
 import '../models/feed.dart';
 import '../utils/rtl_helper.dart';
-import '../services/sync_coordinator.dart';
 import 'add_freshrss_account_screen.dart';
 import 'add_miniflux_account_screen.dart';
 import 'article_list_screen.dart';
@@ -14,6 +11,7 @@ import 'add_feed_screen.dart';
 import 'feed_options_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/filter_drawer.dart';
+import '../widgets/app_count_badge.dart';
 
 class FeedsPage extends ConsumerStatefulWidget {
   final Future<void> Function()? onSync;
@@ -108,32 +106,51 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                   },
           ),
           IconButton(
-            icon: const Icon(Icons.create_new_folder),
-            tooltip: 'New Folder',
-            onPressed: () => _createNewFolder(context),
-          ),
-          IconButton(
-            icon: const Icon(Icons.cloud),
-            tooltip: 'Add Cloud Account',
-            onPressed: _showCloudAccountPicker,
-          ),
-          IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'Add Feed',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AddFeedScreen()),
-              ).then((_) => _refresh());
-            },
+            onPressed: _openAddFeed,
           ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-              _refresh();
+          PopupMenuButton<String>(
+            tooltip: 'More',
+            onSelected: (value) async {
+              switch (value) {
+                case 'new_folder':
+                  await _createNewFolder(context);
+                  break;
+                case 'cloud_account':
+                  await _showCloudAccountPicker();
+                  break;
+                case 'settings':
+                  await _openSettings();
+                  break;
+              }
             },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'new_folder',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.create_new_folder),
+                  title: Text('New Folder'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'cloud_account',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.cloud_outlined),
+                  title: Text('Add Cloud Account'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'settings',
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.settings_outlined),
+                  title: Text('Settings'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -199,9 +216,9 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
   }
 
   Widget _buildFeedsList(int accountId) {
-    return FutureBuilder<List<GroupWithFeed>>(
+    return FutureBuilder<_FeedsPageData>(
       key: ValueKey(_refreshKey),
-      future: _loadGroupsWithFeeds(accountId),
+      future: _loadFeedsPageData(accountId),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -211,7 +228,9 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
           return Center(child: Text('Error: ${snapshot.error}'));
         }
 
-        final groups = snapshot.data ?? [];
+        final feedTree = snapshot.data ??
+            const _FeedsPageData(groups: [], unreadCountsByFeed: {});
+        final groups = feedTree.groups;
 
         // Filter groups based on filter
         final visibleGroupIds = ref.watch(groupFilterProvider(accountId));
@@ -247,48 +266,101 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.only(bottom: 96),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 96),
           itemCount: filteredGroups.length,
           itemBuilder: (context, index) {
             final groupWithFeed = filteredGroups[index];
-            return _buildGroupCard(groupWithFeed);
+            return _buildGroupCard(
+              groupWithFeed,
+              feedTree.unreadCountsByFeed,
+            );
           },
         );
       },
     );
   }
 
-  Widget _buildGroupCard(GroupWithFeed groupWithFeed) {
+  Widget _buildGroupCard(
+    GroupWithFeed groupWithFeed,
+    Map<String, int> unreadCountsByFeed,
+  ) {
     final group = groupWithFeed.group;
+    final groupUnreadCount = _groupUnreadCount(groupWithFeed, unreadCountsByFeed);
+    final scheme = Theme.of(context).colorScheme;
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ExpansionTile(
-        leading: Icon(
-          Icons.folder,
-          color: Theme.of(context).colorScheme.primary,
-        ),
-        title: Row(
-          children: [
-            Expanded(child: Text(group.name)),
-            IconButton(
-              icon: const Icon(Icons.delete_outline),
-              tooltip: 'Delete folder',
-              onPressed: () => _confirmDeleteGroup(group),
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+          childrenPadding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+          leading: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: scheme.primaryContainer.withValues(alpha: 0.9),
+              borderRadius: BorderRadius.circular(14),
             ),
-          ],
-        ),
-        subtitle: Text('${groupWithFeed.feeds.length} feeds'),
+            child: Icon(
+              Icons.folder_rounded,
+              size: 20,
+              color: scheme.onPrimaryContainer,
+            ),
+          ),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  group.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              AppCountBadge(
+                count: groupUnreadCount,
+                compact: true,
+                highlight: groupUnreadCount > 0,
+              ),
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_horiz),
+                tooltip: 'Folder actions',
+                onSelected: (value) {
+                  if (value == 'delete') {
+                    _confirmDeleteGroup(group);
+                  }
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.delete_outline),
+                      title: Text('Delete Folder'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         children: groupWithFeed.feeds.map((feed) {
           final feedObj = feed as Feed;
           final hasError = feedObj.lastSyncErrorAt != null;
+          final unreadCount = unreadCountsByFeed[feedObj.id] ?? 0;
           return ListTile(
+            dense: true,
+            visualDensity: const VisualDensity(horizontal: 0, vertical: -2),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
             leading: Stack(
               children: [
                 feedObj.icon != null && feedObj.icon!.isNotEmpty
                     ? CircleAvatar(
                         backgroundImage: NetworkImage(feedObj.icon!),
-                        radius: 16,
+                        radius: 15,
                         onBackgroundImageError: (_, __) {},
                         child: feedObj.icon == null || feedObj.icon!.isEmpty
                             ? Text(feedObj.name[0].toUpperCase())
@@ -296,7 +368,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                       )
                     : CircleAvatar(
                         child: Text(feedObj.name[0].toUpperCase()),
-                        radius: 16,
+                        radius: 15,
                       ),
                 if (hasError)
                   Positioned(
@@ -323,6 +395,11 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
             ),
             title: Text(
               feedObj.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    fontWeight: unreadCount > 0 ? FontWeight.w700 : FontWeight.w600,
+                  ),
               textAlign: Directionality.of(context) == TextDirection.rtl
                   ? TextAlign.right
                   : TextAlign.left,
@@ -343,28 +420,70 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                 ),
               );
             },
-            trailing: IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () async {
-                final result = await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => FeedOptionsScreen(feed: feedObj),
-                  ),
-                );
-                if (result == true && mounted) {
-                  _refresh();
-                }
-              },
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppCountBadge(
+                  count: unreadCount,
+                  compact: true,
+                  highlight: unreadCount > 0,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.more_horiz),
+                  visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
+                  onPressed: () async {
+                    final result = await Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => FeedOptionsScreen(feed: feedObj),
+                      ),
+                    );
+                    if (result == true && mounted) {
+                      _refresh();
+                    }
+                  },
+                ),
+              ],
             ),
           );
         }).toList(),
+        ),
       ),
     );
   }
 
-  Future<List<GroupWithFeed>> _loadGroupsWithFeeds(int accountId) async {
+  Future<_FeedsPageData> _loadFeedsPageData(int accountId) async {
     final groupDao = ref.read(groupDaoProvider);
-    return await groupDao.getAllWithFeeds(accountId);
+    final articleDao = ref.read(articleDaoProvider);
+    final groups = await groupDao.getAllWithFeeds(accountId);
+    final unreadCountsByFeed = await articleDao.getUnreadCountsByFeed(accountId);
+    return _FeedsPageData(
+      groups: groups,
+      unreadCountsByFeed: unreadCountsByFeed,
+    );
+  }
+
+  int _groupUnreadCount(
+    GroupWithFeed groupWithFeed,
+    Map<String, int> unreadCountsByFeed,
+  ) {
+    var count = 0;
+    for (final feed in groupWithFeed.feeds) {
+      count += unreadCountsByFeed[(feed as Feed).id] ?? 0;
+    }
+    return count;
+  }
+
+  void _openAddFeed() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const AddFeedScreen()),
+    ).then((_) => _refresh());
+  }
+
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+    _refresh();
   }
 
   Future<void> _createNewFolder(BuildContext context) async {
@@ -495,5 +614,15 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
       }
     }
   }
+}
+
+class _FeedsPageData {
+  const _FeedsPageData({
+    required this.groups,
+    required this.unreadCountsByFeed,
+  });
+
+  final List<GroupWithFeed> groups;
+  final Map<String, int> unreadCountsByFeed;
 }
 

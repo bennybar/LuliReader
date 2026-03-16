@@ -3,9 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/group.dart';
 import '../models/feed.dart';
 import '../providers/app_provider.dart';
-import '../services/account_service.dart';
-import '../database/group_dao.dart';
-import '../database/feed_dao.dart';
+import 'app_count_badge.dart';
 
 class FilterDrawer extends ConsumerStatefulWidget {
   final VoidCallback? onFiltersChanged;
@@ -20,6 +18,7 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
   List<GroupWithFeed> _groupsWithFeeds = [];
   Set<String> _selectedGroups = {};
   Set<String> _selectedFeeds = {};
+  Map<String, int> _unreadCountsByFeed = {};
   bool _isLoading = true;
   bool _showAll = true;
 
@@ -38,8 +37,10 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
 
     final groupDao = ref.read(groupDaoProvider);
     final feedDao = ref.read(feedDaoProvider);
+    final articleDao = ref.read(articleDaoProvider);
     
     final groups = await groupDao.getAll(account.id!);
+    final unreadCountsByFeed = await articleDao.getUnreadCountsByFeed(account.id!);
     final groupsWithFeeds = <GroupWithFeed>[];
     
     for (final group in groups) {
@@ -56,6 +57,7 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
     
     setState(() {
       _groupsWithFeeds = groupsWithFeeds;
+      _unreadCountsByFeed = unreadCountsByFeed;
       _showAll = currentGroupFilter.isEmpty && currentFeedFilter.isEmpty;
       if (_showAll) {
         // If show all, select all groups and feeds
@@ -308,6 +310,10 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
 
   Widget _buildGroupTile(GroupWithFeed groupWithFeed, ThemeData theme, ColorScheme colorScheme) {
     final group = groupWithFeed.group;
+    final unreadCount = groupWithFeed.feeds.fold<int>(
+      0,
+      (sum, feed) => sum + (_unreadCountsByFeed[(feed as Feed).id] ?? 0),
+    );
     final allFeedsSelected = groupWithFeed.feeds.every((feed) {
       final feedObj = feed as Feed;
       return _selectedFeeds.contains(feedObj.id);
@@ -323,12 +329,12 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
         elevation: 0,
         color: colorScheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
         ),
         child: Theme(
           data: theme.copyWith(dividerColor: Colors.transparent),
           child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
             childrenPadding: const EdgeInsets.only(bottom: 8),
             leading: Checkbox(
               value: allFeedsSelected ? true : (someFeedsSelected ? null : false),
@@ -344,14 +350,22 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
                 color: colorScheme.onSurface,
               ),
             ),
-            subtitle: Text(
-              '${groupWithFeed.feeds.length} ${groupWithFeed.feeds.length == 1 ? 'feed' : 'feeds'}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppCountBadge(
+                  count: unreadCount,
+                  compact: true,
+                  highlight: unreadCount > 0,
+                ),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.expand_more,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ],
             ),
-            iconColor: colorScheme.onSurfaceVariant,
-            collapsedIconColor: colorScheme.onSurfaceVariant,
+            showTrailingIcon: false,
             children: groupWithFeed.feeds.map((feed) {
               final feedObj = feed as Feed;
               final isFeedSelected = _selectedFeeds.contains(feedObj.id);
@@ -364,12 +378,13 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
   }
 
   Widget _buildFeedTile(Feed feed, bool isSelected, ThemeData theme, ColorScheme colorScheme) {
+    final unreadCount = _unreadCountsByFeed[feed.id] ?? 0;
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: () => _toggleFeed(feed.id, feed.groupId),
         child: Padding(
-          padding: const EdgeInsets.only(left: 56, right: 16, top: 4, bottom: 4),
+          padding: const EdgeInsets.only(left: 56, right: 14, top: 3, bottom: 3),
           child: Row(
             children: [
               Checkbox(
@@ -382,10 +397,18 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
               Expanded(
                 child: Text(
                   feed.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurface,
                   ),
                 ),
+              ),
+              const SizedBox(width: 8),
+              AppCountBadge(
+                count: unreadCount,
+                compact: true,
+                highlight: unreadCount > 0,
               ),
             ],
           ),

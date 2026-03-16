@@ -128,6 +128,36 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
     );
   }
 
+  void _showSortBottomSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: ArticleSortOption.values.map((option) {
+              return ListTile(
+                leading: Icon(
+                  _sortOption == option ? Icons.radio_button_checked : Icons.radio_button_off,
+                ),
+                title: Text(option.displayName),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  setState(() {
+                    _sortOption = option;
+                  });
+                  _saveSortPreference();
+                  _loadArticles();
+                },
+              );
+            }).toList(),
+          ),
+        );
+      },
+    );
+  }
+
   Future<void> _loadSortPreference() async {
     await _prefs.init();
     final account = await ref.read(accountServiceProvider).getCurrentAccount();
@@ -427,99 +457,118 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                 });
               },
             ),
-            if (_selectedArticleIds.isNotEmpty) ...[
-              IconButton(
-                icon: const Icon(Icons.delete),
-                tooltip: 'Delete Selected',
-                onPressed: _batchDelete,
-              ),
-              IconButton(
-                icon: const Icon(Icons.star),
-                tooltip: 'Star Selected',
-                onPressed: _batchStar,
-              ),
-              IconButton(
-                icon: const Icon(Icons.star_border),
-                tooltip: 'Unstar Selected',
-                onPressed: _batchUnstar,
-              ),
-              IconButton(
-                icon: const Icon(Icons.done_all),
-                tooltip: 'Mark Selected as Read',
-                onPressed: _batchMarkAsRead,
-              ),
-              IconButton(
-                icon: const Icon(Icons.mark_email_unread),
-                tooltip: 'Mark Selected as Unread',
-                onPressed: _batchMarkAsUnread,
-              ),
-            ],
-          ] else ...[
-            IconButton(
-              icon: const Icon(Icons.text_fields),
-              tooltip: 'List Font Size',
-              onPressed: () => _showListFontSizeDialog(context),
-            ),
-            PopupMenuButton<ArticleSortOption>(
-              icon: const Icon(Icons.sort),
-              tooltip: 'Sort',
-              onSelected: (option) {
-                setState(() {
-                  _sortOption = option;
-                });
-                _saveSortPreference();
-                _loadArticles();
-              },
-              itemBuilder: (context) => ArticleSortOption.values.map((option) {
-                return PopupMenuItem(
-                  value: option,
-                  child: Row(
-                    children: [
-                      if (_sortOption == option)
-                        const Icon(Icons.check, size: 20)
-                      else
-                        const SizedBox(width: 20),
-                      const SizedBox(width: 8),
-                      Text(option.displayName),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.select_all),
-              tooltip: 'Select Articles',
-              onPressed: () {
-                setState(() {
-                  _isBatchMode = true;
-                });
-              },
-            ),
-            PopupMenuButton(
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'mark_all_read',
-                  child: Row(
-                    children: [
-                      Icon(Icons.done_all, size: 20),
-                      SizedBox(width: 8),
-                      Text('Mark All as Read'),
-                    ],
+            PopupMenuButton<String>(
+              itemBuilder: (context) => const [
+                PopupMenuItem(
+                  value: 'delete',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.delete_outline),
+                    title: Text('Delete Selected'),
                   ),
                 ),
-                const PopupMenuItem(
-                  value: 'sync',
-                  child: Row(
-                    children: [
-                      Icon(Icons.sync, size: 20),
-                      SizedBox(width: 8),
-                      Text('Sync Feed'),
-                    ],
+                PopupMenuItem(
+                  value: 'star',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.star_outline),
+                    title: Text('Star Selected'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'unstar',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.star_border),
+                    title: Text('Unstar Selected'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'read',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.done_all),
+                    title: Text('Mark Selected Read'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'unread',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.mark_email_unread),
+                    title: Text('Mark Selected Unread'),
                   ),
                 ),
               ],
               onSelected: (value) async {
-                if (value == 'mark_all_read') {
+                switch (value) {
+                  case 'delete':
+                    await _batchDelete();
+                    break;
+                  case 'star':
+                    await _batchStar();
+                    break;
+                  case 'unstar':
+                    await _batchUnstar();
+                    break;
+                  case 'read':
+                    await _batchMarkAsRead();
+                    break;
+                  case 'unread':
+                    await _batchMarkAsUnread();
+                    break;
+                }
+              },
+            ),
+          ] else ...[
+            IconButton(
+              icon: const Icon(Icons.sort),
+              tooltip: 'Sort',
+              onPressed: _showSortBottomSheet,
+            ),
+            PopupMenuButton(
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'font_size',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.text_fields),
+                    title: Text('List Font Size'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'select',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.select_all),
+                    title: Text('Select Articles'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'mark_all_read',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.done_all),
+                    title: Text('Mark All as Read'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'sync',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.sync),
+                    title: Text('Sync Feed'),
+                  ),
+                ),
+              ],
+              onSelected: (value) async {
+                if (value == 'font_size') {
+                  await _showListFontSizeDialog(context);
+                } else if (value == 'select') {
+                  setState(() {
+                    _isBatchMode = true;
+                  });
+                } else if (value == 'mark_all_read') {
                   await _markAllAsRead();
                 } else if (value == 'sync') {
                   await _syncFeed();
@@ -582,7 +631,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
 
   Widget _buildArticleCard(Article article, int index) {
     final isSelected = _selectedArticleIds.contains(article.id);
-    final double heroSize = (100 * _listFontScale).clamp(72.0, 160.0).toDouble();
+    final double heroSize = (76 * _listFontScale).clamp(68.0, 88.0).toDouble();
     final double placeholderIconSize =
         (40 * _listFontScale).clamp(28.0, 80.0).toDouble();
 
@@ -594,17 +643,21 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
 
     // Use state variables for article view preferences
     final showPreviewText = _showPreviewText;
+    final hasThumbnail = !_isBatchMode &&
+        _showHeroImage &&
+        article.img != null &&
+        article.img!.isNotEmpty;
     
     return Directionality(
       textDirection: textDirection,
       child: Card(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(20),
           side: isSelected
               ? BorderSide(
                   color: Theme.of(context).colorScheme.primary,
-                  width: 2,
+                  width: 1.5,
                 )
               : BorderSide.none,
         ),
@@ -634,7 +687,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
             }
           },
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               textDirection: TextDirection.ltr, // keep hero image visually on the right
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -648,7 +701,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                 ],
                 Expanded(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 80),
+                    constraints: BoxConstraints(minHeight: hasThumbnail ? 72 : 0),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: isRtl ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -661,6 +714,8 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                                 style: TextStyle(
                                   fontWeight:
                                       article.isUnread ? FontWeight.bold : FontWeight.normal,
+                                  fontSize: 14,
+                                  height: 1.22,
                                 ),
                                 textAlign: isRtl ? TextAlign.right : TextAlign.left,
                                 maxLines: 2,
@@ -680,15 +735,22 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                           ],
                         ),
                         if (showPreviewText) ...[
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 3),
                           Text(
                             article.shortDescription,
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  fontSize: 12,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onSurface
+                                      .withValues(alpha: 0.7),
+                                ),
                             textAlign: isRtl ? TextAlign.right : TextAlign.left,
                           ),
                         ],
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         Align(
                           alignment:
                               isRtl ? AlignmentDirectional.centerEnd : Alignment.centerLeft,
@@ -702,7 +764,8 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                                         color: Theme.of(context)
                                             .colorScheme
                                             .onSurface
-                                            .withOpacity(0.6),
+                                            .withValues(alpha: 0.56),
+                                        fontSize: 10.5,
                                       ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -715,27 +778,27 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                                 children: [
                                   Icon(
                                     Icons.access_time,
-                                    size: 14,
-                                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                    size: 12,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurface
+                                        .withValues(alpha: 0.56),
                                   ),
-                                  const SizedBox(width: 4),
+                                  const SizedBox(width: 3),
                                   Text(
                                     _formatDate(article.date),
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          fontSize: 10.5,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .onSurface
+                                              .withValues(alpha: 0.56),
+                                        ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ],
                               ),
-                              if (article.isStarred)
-                                Padding(
-                                  padding: EdgeInsets.only(left: isRtl ? 4 : 8),
-                                  child: Icon(
-                                    Icons.star,
-                                    size: 14,
-                                    color: Theme.of(context).colorScheme.primary,
-                                  ),
-                                ),
                             ],
                           ),
                         ),
@@ -743,13 +806,10 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                     ),
                   ),
                 ),
-                if (!_isBatchMode &&
-                    _showHeroImage &&
-                    article.img != null &&
-                    article.img!.isNotEmpty) ...[
-                  const SizedBox(width: 12),
+                if (hasThumbnail) ...[
+                  const SizedBox(width: 10),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(16),
                     child: CachedNetworkImage(
                       imageUrl: article.img!,
                       width: heroSize,
@@ -769,11 +829,6 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                       ),
                     ),
                   ),
-                ],
-                if (!_isBatchMode &&
-                    (_showHeroImage == false || article.img == null || article.img!.isEmpty)) ...[
-                  const SizedBox(width: 12),
-                  _buildImagePlaceholder(heroSize, placeholderIconSize),
                 ],
               ],
             ),

@@ -109,6 +109,39 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     });
   }
 
+  void _setFilter(String value) {
+    setState(() {
+      _filter = value;
+      _refreshKey++;
+    });
+    _saveFilter();
+    _loadArticles();
+  }
+
+  Future<void> _openFlowSettings() async {
+    await Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (_) => const SettingsScreen(),
+          ),
+        )
+        .then((_) async {
+      await _loadArticleViewPrefs();
+      if (mounted) {
+        setState(() => _refreshKey++);
+        _loadArticles();
+      }
+    });
+  }
+
+  void _openSearch() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const SearchScreen(),
+      ),
+    );
+  }
+
   Future<void> _showListFontSizeDialog(BuildContext context) async {
     await _prefs.init();
     final baseSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
@@ -169,6 +202,36 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
           );
         },
       ),
+    );
+  }
+
+  void _showSortBottomSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: ArticleSortOption.values.map((option) {
+              return ListTile(
+                leading: Icon(
+                  _sortOption == option ? Icons.radio_button_checked : Icons.radio_button_off,
+                ),
+                title: Text(option.displayName),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  setState(() {
+                    _sortOption = option;
+                  });
+                  _saveSortPreference();
+                  _loadArticles();
+                },
+              );
+            }).toList(),
+          ),
+        );
+      },
     );
   }
 
@@ -499,83 +562,35 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     final scaledMedia = media.copyWith(
       textScaler: TextScaler.linear(_listFontScale),
     );
-    final screenWidth = scaledMedia.size.width;
-    final isSmallScreen = screenWidth < 600;
-
     return MediaQuery(
       data: scaledMedia,
       child: Scaffold(
       drawer: FilterDrawer(onFiltersChanged: _loadArticles),
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Builder(
-              builder: (context) => IconButton(
-                icon: const Icon(Icons.tune),
-                tooltip: 'Filters',
-                onPressed: () => Scaffold.of(context).openDrawer(),
+        title: Text(_isBatchMode ? '${_selectedArticleIds.length} selected' : 'Articles'),
+        bottom: _isBatchMode
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(56),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: SegmentedButton<String>(
+                      multiSelectionEnabled: false,
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(value: 'all', label: Text('All')),
+                        ButtonSegment(value: 'unread', label: Text('Unread')),
+                        ButtonSegment(value: 'starred', label: Text('Starred')),
+                      ],
+                      selected: {_filter},
+                      onSelectionChanged: (selection) => _setFilter(selection.first),
+                    ),
+                  ),
+                ),
               ),
-            ),
-            // Filter icons in app bar
-            IconButton(
-              icon: Icon(
-                _filter == 'all' ? Icons.article : Icons.article_outlined,
-                color: _filter == 'all' 
-                    ? Theme.of(context).colorScheme.primary 
-                    : Theme.of(context).colorScheme.onSurface,
-              ),
-              tooltip: 'All',
-              onPressed: () {
-                setState(() {
-                  _filter = 'all';
-                  _refreshKey++;
-                });
-                _saveFilter();
-                _loadArticles();
-              },
-            ),
-            IconButton(
-              icon: Icon(
-                _filter == 'unread' ? Icons.visibility : Icons.visibility_outlined,
-                color: _filter == 'unread' 
-                    ? Theme.of(context).colorScheme.primary 
-                    : Theme.of(context).colorScheme.onSurface,
-              ),
-              tooltip: 'Unread',
-              onPressed: () {
-                setState(() {
-                  _filter = 'unread';
-                  _refreshKey++;
-                });
-                _saveFilter();
-                _loadArticles();
-              },
-            ),
-            IconButton(
-              icon: Icon(
-                _filter == 'starred' ? Icons.star : Icons.star_outline,
-                color: _filter == 'starred' 
-                    ? Theme.of(context).colorScheme.primary 
-                    : Theme.of(context).colorScheme.onSurface,
-              ),
-              tooltip: 'Starred',
-              onPressed: () {
-                setState(() {
-                  _filter = 'starred';
-                  _refreshKey++;
-                });
-                _saveFilter();
-                _loadArticles();
-              },
-            ),
-            if (!isSmallScreen) ...[
-              const SizedBox(width: 8),
-              const Text('Articles'),
-            ],
-          ],
-        ),
         actions: [
           if (_isBatchMode) ...[
             IconButton(
@@ -588,92 +603,86 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                 });
               },
             ),
-          ] else if (isSmallScreen) ...[
-            IconButton(
-              icon: const Icon(Icons.text_fields),
-              tooltip: 'List Font Size',
-              onPressed: () => _showListFontSizeDialog(context),
+          ] else ...[
+            Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.tune),
+                tooltip: 'Filters',
+                onPressed: () => Scaffold.of(context).openDrawer(),
+              ),
             ),
-            // On small screens, put most actions in a menu
-            PopupMenuButton<ArticleSortOption>(
-              icon: const Icon(Icons.sort),
-              tooltip: 'Sort',
-              onSelected: (option) {
-                setState(() {
-                  _sortOption = option;
-                });
-                _saveSortPreference();
-                _loadArticles();
-              },
-              itemBuilder: (context) => ArticleSortOption.values.map((option) {
-                return PopupMenuItem(
-                  value: option,
-                  child: Row(
-                    children: [
-                      if (_sortOption == option)
-                        const Icon(Icons.check, size: 20)
-                      else
-                        const SizedBox(width: 20),
-                      const SizedBox(width: 8),
-                      Text(option.displayName),
-                    ],
-                  ),
-                );
-              }).toList(),
+            IconButton(
+              icon: const Icon(Icons.search),
+              tooltip: 'Search',
+              onPressed: _openSearch,
             ),
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
               tooltip: 'More',
               itemBuilder: (context) => [
                 const PopupMenuItem(
-                  value: 'search',
-                  child: Row(
-                    children: [
-                      Icon(Icons.search, size: 20),
-                      SizedBox(width: 8),
-                      Text('Search'),
-                    ],
+                  value: 'sort',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.sort),
+                    title: Text('Change Sort'),
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'font_size',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.text_fields),
+                    title: Text('List Font Size'),
                   ),
                 ),
                 const PopupMenuItem(
                   value: 'select_all',
-                  child: Row(
-                    children: [
-                      Icon(Icons.select_all, size: 20),
-                      SizedBox(width: 8),
-                      Text('Select Articles'),
-                    ],
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.select_all),
+                    title: Text('Select Articles'),
                   ),
                 ),
                 const PopupMenuItem(
                   value: 'mark_all_read',
-                  child: Row(
-                    children: [
-                      Icon(Icons.done_all, size: 20),
-                      SizedBox(width: 8),
-                      Text('Mark All as Read'),
-                    ],
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.done_all),
+                    title: Text('Mark All as Read'),
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'sync',
+                  enabled: !_isSyncing,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: _isSyncing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.sync),
+                    title: const Text('Sync'),
                   ),
                 ),
                 const PopupMenuItem(
                   value: 'settings',
-                  child: Row(
-                    children: [
-                      Icon(Icons.settings, size: 20),
-                      SizedBox(width: 8),
-                      Text('Settings'),
-                    ],
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.settings_outlined),
+                    title: Text('Settings'),
                   ),
                 ),
               ],
-              onSelected: (value) {
+              onSelected: (value) async {
                 switch (value) {
-                  case 'search':
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const SearchScreen(),
-                      ),
-                    );
+                  case 'sort':
+                    _showSortBottomSheet();
+                    break;
+                  case 'font_size':
+                    _showListFontSizeDialog(context);
                     break;
                   case 'select_all':
                     setState(() {
@@ -681,136 +690,140 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     });
                     break;
                   case 'mark_all_read':
-                    _markAllAsRead();
+                    await _markAllAsRead();
+                    break;
+                  case 'sync':
+                    await _syncAll();
                     break;
                   case 'settings':
-                    Navigator.of(context)
-                        .push(
-                          MaterialPageRoute(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        )
-                        .then((_) async {
-                          await _loadArticleViewPrefs();
-                          if (mounted) {
-                            setState(() => _refreshKey++);
-                            _loadArticles();
-                          }
-                        });
+                    await _openFlowSettings();
                     break;
                 }
               },
             ),
-            IconButton(
-              icon: _isSyncing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync),
-              tooltip: 'Sync All Feeds',
-              onPressed: _isSyncing
-                  ? null
-                  : () async {
-                      // Use _syncAll which has progress tracking
-                      await _syncAll();
-                    },
-            ),
-          ] else ...[
-            // On larger screens, show all actions as icon buttons
-            IconButton(
-              icon: const Icon(Icons.search),
-              tooltip: 'Search',
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const SearchScreen(),
-                  ),
-                );
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.text_fields),
-              tooltip: 'List Font Size',
-              onPressed: () => _showListFontSizeDialog(context),
-            ),
-            PopupMenuButton<ArticleSortOption>(
-              icon: const Icon(Icons.sort),
-              tooltip: 'Sort',
-              onSelected: (option) {
-                setState(() {
-                  _sortOption = option;
-                });
-                _saveSortPreference();
-                _loadArticles();
-              },
-              itemBuilder: (context) => ArticleSortOption.values.map((option) {
-                return PopupMenuItem(
-                  value: option,
-                  child: Row(
-                    children: [
-                      if (_sortOption == option)
-                        const Icon(Icons.check, size: 20)
-                      else
-                        const SizedBox(width: 20),
-                      const SizedBox(width: 8),
-                      Text(option.displayName),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-            IconButton(
-              icon: const Icon(Icons.select_all),
-              tooltip: 'Select Articles',
-              onPressed: () {
-                setState(() {
-                  _isBatchMode = true;
-                });
-              },
-            ),
-            IconButton(
-              icon: const Icon(Icons.done_all),
-              tooltip: 'Mark All as Read',
-              onPressed: _markAllAsRead,
-            ),
-            IconButton(
-              icon: const Icon(Icons.settings),
-              tooltip: 'Settings',
-              onPressed: () {
-                Navigator.of(context)
-                    .push(
-                      MaterialPageRoute(
-                        builder: (_) => const SettingsScreen(),
-                      ),
-                    )
-                    .then((_) async {
-                      await _loadArticleViewPrefs();
-                      if (mounted) {
-                        setState(() => _refreshKey++);
-                        _loadArticles();
-                      }
-                    });
-              },
-            ),
-            IconButton(
-              icon: _isSyncing
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.sync),
-              tooltip: 'Sync All Feeds',
-              onPressed: _isSyncing
-                  ? null
-                  : () async {
-                      // Use _syncAll which has progress tracking
-                      await _syncAll();
-                    },
-            ),
           ],
+          if (_isBatchMode)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              tooltip: 'More',
+              itemBuilder: (context) => [
+                if (_selectedArticleIds.isNotEmpty && _isBatchMode) ...const [
+                  PopupMenuItem(
+                    value: 'mark_selected_read',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.done_all),
+                      title: Text('Mark Selected Read'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'mark_selected_unread',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.mark_email_unread),
+                      title: Text('Mark Selected Unread'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'star_selected',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.star_outline),
+                      title: Text('Star Selected'),
+                    ),
+                  ),
+                ] else ...[
+                  const PopupMenuItem(
+                    value: 'sort',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.sort),
+                      title: Text('Change Sort'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'font_size',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.text_fields),
+                      title: Text('List Font Size'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'select_all',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.select_all),
+                      title: Text('Select Articles'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'mark_all_read',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.done_all),
+                      title: Text('Mark All as Read'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'sync',
+                    enabled: !_isSyncing,
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: _isSyncing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync),
+                      title: const Text('Sync'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'settings',
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.settings_outlined),
+                      title: Text('Settings'),
+                    ),
+                  ),
+                ],
+              ],
+              onSelected: (value) async {
+                switch (value) {
+                  case 'mark_selected_read':
+                    await _batchMarkAsRead();
+                    break;
+                  case 'mark_selected_unread':
+                    await _batchMarkAsUnread();
+                    break;
+                  case 'star_selected':
+                    await _batchStar();
+                    break;
+                  case 'sort':
+                    _showSortBottomSheet();
+                    break;
+                  case 'font_size':
+                    _showListFontSizeDialog(context);
+                    break;
+                  case 'select_all':
+                    setState(() {
+                      _isBatchMode = true;
+                    });
+                    break;
+                  case 'mark_all_read':
+                    await _markAllAsRead();
+                    break;
+                  case 'sync':
+                    await _syncAll();
+                    break;
+                  case 'settings':
+                    await _openFlowSettings();
+                    break;
+                }
+              },
+            ),
         ],
       ),
       body: Stack(
@@ -889,6 +902,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
     final isRtl = textDirection == TextDirection.rtl;
     final alignRight = isRtl || Directionality.of(context) == TextDirection.rtl || (feed.isRtl ?? false);
     final isSelected = _selectedArticleIds.contains(article.id);
+    final hasThumbnail = _showHeroImage && article.img != null && article.img!.isNotEmpty;
     return Directionality(
       textDirection: textDirection,
       child: Swipeable(
@@ -925,18 +939,18 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
           if (!mounted) return;
         },
         child: Card(
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             side: isSelected
                 ? BorderSide(
                     color: Theme.of(context).colorScheme.primary,
-                    width: 2,
+                    width: 1.5,
                   )
                 : BorderSide.none,
           ),
           child: InkWell(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
             onTap: () {
               if (_isBatchMode) {
                 _toggleArticleSelection(article.id);
@@ -967,7 +981,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               }
             },
             child: Padding(
-              padding: const EdgeInsets.all(12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: Row(
                 textDirection: TextDirection.ltr, // keep hero image visually on the right
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -981,7 +995,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   ],
                   Expanded(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(minHeight: 80),
+                      constraints: BoxConstraints(minHeight: hasThumbnail ? 72 : 0),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment:
@@ -995,7 +1009,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                   style: TextStyle(
                                     fontWeight:
                                         article.isUnread ? FontWeight.bold : FontWeight.normal,
-                                    fontSize: 15,
+                                    fontSize: 14,
+                                    height: 1.22,
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -1015,20 +1030,20 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                             ],
                           ),
                           if (_showPreviewText) ...[
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 3),
                             Text(
                               article.shortDescription,
                               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    fontSize: 13,
+                                    fontSize: 12,
                                     color:
-                                        Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                                   ),
-                              maxLines: 2,
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               textAlign: alignRight ? TextAlign.right : TextAlign.left,
                             ),
                           ],
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 6),
                           Align(
                             alignment: alignRight
                                 ? AlignmentDirectional.centerEnd
@@ -1043,8 +1058,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                           color: Theme.of(context)
                                               .colorScheme
                                               .onSurface
-                                              .withOpacity(0.5),
-                                          fontSize: 11,
+                                              .withValues(alpha: 0.52),
+                                          fontSize: 10.5,
                                         ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -1057,21 +1072,21 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                   children: [
                                     Icon(
                                       Icons.access_time,
-                                      size: 11,
+                                      size: 12,
                                       color: Theme.of(context)
                                           .colorScheme
                                           .onSurface
-                                          .withOpacity(0.5),
+                                          .withValues(alpha: 0.52),
                                     ),
-                                    const SizedBox(width: 2),
+                                    const SizedBox(width: 3),
                                     Text(
                                       _formatDate(article.date),
                                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                            fontSize: 11,
+                                            fontSize: 10.5,
                                             color: Theme.of(context)
                                                 .colorScheme
                                                 .onSurface
-                                                .withOpacity(0.5),
+                                                .withValues(alpha: 0.52),
                                           ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -1085,8 +1100,8 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                       ),
                     ),
                   ),
-                  if (_showHeroImage && article.img != null && article.img!.isNotEmpty) ...[
-                    const SizedBox(width: 12),
+                  if (hasThumbnail) ...[
+                    const SizedBox(width: 10),
                     _buildArticleImage(article),
                   ],
                 ],
@@ -1218,7 +1233,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   }
 
   Widget _buildArticleImage(Article article) {
-    final double heroSize = (100 * _listFontScale).clamp(72.0, 160.0).toDouble();
+    final double heroSize = (76 * _listFontScale).clamp(68.0, 88.0).toDouble();
     final double placeholderIconSize =
         (40 * _listFontScale).clamp(28.0, 80.0).toDouble();
     final targetCacheWidth = _targetImageCacheWidth(heroSize);
