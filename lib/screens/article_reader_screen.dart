@@ -805,28 +805,29 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     final scheme = Theme.of(context).colorScheme;
     return Directionality(
       textDirection: textDirection,
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
+      child: Row(
         children: [
-          ChoiceChip(
-            label: const Text('Summary'),
-            selected: !_useFullContent,
-            onSelected: (selected) {
-              if (selected) {
-                _setReaderMode(false);
-              }
-            },
-          ),
-          ChoiceChip(
-            label: Text(
-              _isLoadingFullContent
-                  ? 'Loading full article...'
-                  : (_hasFullArticleContent ? 'Full article' : 'Load full article'),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: scheme.surface,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(
+                color: scheme.outlineVariant.withValues(alpha: 0.7),
+              ),
             ),
-            selected: _useFullContent,
-            avatar: _isLoadingFullContent
-                ? SizedBox(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Full article',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                const SizedBox(width: 8),
+                if (_isLoadingFullContent)
+                  SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(
@@ -834,42 +835,53 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                       color: scheme.primary,
                     ),
                   )
-                : Icon(
-                    AppSymbols.article_outlined,
-                    size: 18,
-                    color: _useFullContent ? scheme.primary : scheme.onSurfaceVariant,
+                else
+                  Switch.adaptive(
+                    value: _useFullContent,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    onChanged: _setReaderMode,
                   ),
-            onSelected: (selected) {
-              if (selected) {
-                _setReaderMode(true);
-              }
-            },
+              ],
+            ),
+          ),
+          const Spacer(),
+          _buildQuickActionIcon(
+            context,
+            icon: AppSymbols.text_fields,
+            tooltip: 'Reading appearance',
+            onPressed: () => _showReaderAppearanceSheet(context),
+          ),
+          const SizedBox(width: 8),
+          _buildQuickActionIcon(
+            context,
+            icon: AppSymbols.open_in_browser,
+            tooltip: 'Open original',
+            onPressed: _openInBrowser,
           ),
         ],
       ),
     );
   }
 
-  Widget _buildReaderQuickActions(BuildContext context, TextDirection textDirection) {
-    return Directionality(
-      textDirection: textDirection,
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          FilledButton.tonalIcon(
-            onPressed: () => _showReaderAppearanceSheet(context),
-            icon: const Icon(AppSymbols.text_fields),
-            label: const Text('Reading appearance'),
-          ),
-          OutlinedButton.icon(
-            onPressed: _openInBrowser,
-            icon: const Icon(AppSymbols.open_in_browser),
-            label: const Text('Open original'),
-          ),
-        ],
+  Widget _buildQuickActionIcon(
+    BuildContext context, {
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onPressed,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton.filledTonal(
+        visualDensity: VisualDensity.compact,
+        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
       ),
     );
+  }
+
+  Widget _buildReaderQuickActions(BuildContext context, TextDirection textDirection) {
+    return const SizedBox.shrink();
   }
 
   Widget _buildHeroImage(BuildContext context) {
