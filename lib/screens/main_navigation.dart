@@ -244,7 +244,7 @@ class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBin
                 context,
                 index: 0,
                 label: 'Feeds',
-                icon: AppSymbols.folder_outlined,
+                icon: AppSymbols.rss_feed,
               ),
               const SizedBox(width: 12),
               _buildNavButton(

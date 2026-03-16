@@ -569,7 +569,19 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
       drawer: FilterDrawer(onFiltersChanged: _loadArticles),
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: Text(_isBatchMode ? '${_selectedArticleIds.length} selected' : 'Articles'),
+        title: _isBatchMode
+            ? Text('${_selectedArticleIds.length} selected')
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(AppSymbols.article_outlined, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Articles',
+                    style: Theme.of(context).appBarTheme.titleTextStyle,
+                  ),
+                ],
+              ),
         bottom: _isBatchMode
             ? null
             : PreferredSize(

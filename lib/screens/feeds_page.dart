@@ -52,7 +52,17 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
       drawer: FilterDrawer(onFiltersChanged: _refresh),
       appBar: AppBar(
         automaticallyImplyLeading: false,
-        title: const Text('Feeds'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(AppSymbols.rss_feed, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Feeds',
+              style: Theme.of(context).appBarTheme.titleTextStyle,
+            ),
+          ],
+        ),
         actions: [
           Builder(
             builder: (context) => IconButton(
