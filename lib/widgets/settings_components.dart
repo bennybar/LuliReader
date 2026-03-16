@@ -64,11 +64,10 @@ class SettingsGroup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(24),
-      ),
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
           for (var i = 0; i < children.length; i++) ...[
@@ -140,31 +139,34 @@ class SettingsNavTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return ListTile(
-      dense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-      minLeadingWidth: 20,
-      leading: leading,
-      title: Text(
-        title,
-        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
+    return InkWell(
+      onTap: onTap,
+      child: ListTile(
+        enabled: onTap != null,
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+        minLeadingWidth: 20,
+        leading: leading,
+        title: Text(
+          title,
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+        ),
+        subtitle: subtitle == null
+            ? null
+            : Text(
+                subtitle!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+              ),
+        trailing: trailing ??
+            Icon(
+              AppSymbols.chevron_right,
+              color: scheme.onSurfaceVariant,
             ),
       ),
-      subtitle: subtitle == null
-          ? null
-          : Text(
-              subtitle!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-            ),
-      trailing: trailing ??
-          Icon(
-            AppSymbols.chevron_right,
-            color: scheme.onSurfaceVariant,
-          ),
-      onTap: onTap,
     );
   }
 }
@@ -235,33 +237,34 @@ class SettingsDangerTile extends StatelessWidget {
     final background = severe
         ? scheme.errorContainer.withValues(alpha: 0.4)
         : scheme.errorContainer.withValues(alpha: 0.18);
-    return Container(
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: ListTile(
-        dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        minLeadingWidth: 20,
-        leading: IconTheme(
-          data: IconThemeData(color: foreground),
-          child: leading ?? const SizedBox.shrink(),
-        ),
-        title: Text(
-          title,
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                color: foreground,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: foreground.withValues(alpha: 0.8),
-              ),
-        ),
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
         onTap: onTap,
+        child: ListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          minLeadingWidth: 20,
+          leading: IconTheme(
+            data: IconThemeData(color: foreground),
+            child: leading ?? const SizedBox.shrink(),
+          ),
+          title: Text(
+            title,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          subtitle: Text(
+            subtitle,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: foreground.withValues(alpha: 0.8),
+                ),
+          ),
+        ),
       ),
     );
   }

@@ -94,9 +94,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   double _articleFontPx(BuildContext context) =>
       (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0) * _articleFontScale;
 
-  double _listFontPx(BuildContext context) =>
-      (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0) * _articleListFontScale;
-
   Widget _buildScaleSlider({
     required BuildContext context,
     required String title,
@@ -151,57 +148,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     );
   }
 
-  Widget _buildReadingPreviewCard(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(_articlePadding.clamp(12.0, 24.0)),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Preview article title',
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontSize: _titleFontPx(context),
-                  fontWeight: FontWeight.w700,
-                ),
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 6,
-            children: [
-              Text(
-                'Feed name',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-              ),
-              Text(
-                '5 min ago',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'This preview updates live so you can tune reading comfort and list density before leaving settings.',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  fontSize: _articleFontPx(context),
-                  height: 1.45,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-
   String _themeSubtitle(WidgetRef ref) {
     final mode = ref.watch(themeModeNotifierProvider);
     switch (mode) {
@@ -243,7 +189,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _showOpenLinksDialog(BuildContext context) async {
+  Future<bool?> _showOpenLinksDialog(BuildContext context) async {
     final selected = await _showChoiceSheet<bool>(
       context: context,
       title: 'Open links in',
@@ -270,9 +216,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
       }
     }
+    return selected;
   }
 
-  Future<void> _showKeepReadItemsDialog(BuildContext context) async {
+  Future<int?> _showKeepReadItemsDialog(BuildContext context) async {
     const options = [1, 3, 5, 7, 10, 30];
     final selected = await _showChoiceSheet<int>(
       context: context,
@@ -297,9 +244,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
       }
     }
+    return selected;
   }
 
-  Future<void> _showFeedTimeoutDialog(BuildContext context) async {
+  Future<int?> _showFeedTimeoutDialog(BuildContext context) async {
     const options = [5, 10, 15, 30, 60];
     final selected = await _showChoiceSheet<int>(
       context: context,
@@ -324,6 +272,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         });
       }
     }
+    return selected;
   }
 
   Future<void> _updateAccountSetting(String field, dynamic value) async {
@@ -447,7 +396,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     onTap: () => _openSubPage(
                       _AppearanceSettingsPage(
                         listFontScale: _articleListFontScale,
-                        listFontPx: _listFontPx(context),
                         showHeroImage: _showHeroImage,
                         showPreviewText: _showPreviewText,
                         buildScaleSlider: _buildScaleSlider,
@@ -496,7 +444,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                         feedTimeoutSeconds: _feedTimeoutSeconds,
                         fullContentEnabled: account.isFullContent,
                         buildScaleSlider: _buildScaleSlider,
-                        buildPreviewCard: _buildReadingPreviewCard,
                         onTitleFontChanged: (value) async {
                           setState(() => _titleFontScale = value);
                           await _saveReadingPref('titleFontScale', value);
@@ -722,7 +669,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _showMaxPastDaysDialog(BuildContext context, Account account) async {
+  Future<int?> _showMaxPastDaysDialog(BuildContext context, Account account) async {
     const options = [3, 5, 10, 30, 90];
     final selected = await _showChoiceSheet<int>(
       context: context,
@@ -742,6 +689,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (selected != null) {
       await _updateAccountSetting('maxPastDays', selected);
     }
+    return selected;
   }
 
   Future<void> _confirmDeleteAccount(Account account) async {
@@ -827,7 +775,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
-  Future<void> _showSwipeActionDialog(BuildContext context, Account account, bool isStart) async {
+  Future<int?> _showSwipeActionDialog(BuildContext context, Account account, bool isStart) async {
     final currentValue = isStart ? account.swipeStartAction : account.swipeEndAction;
     final action = await _showChoiceSheet<int>(
       context: context,
@@ -858,9 +806,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         action,
       );
     }
+    return action;
   }
 
-  Future<void> _showDefaultScreenDialog(BuildContext context, Account account) async {
+  Future<int?> _showDefaultScreenDialog(BuildContext context, Account account) async {
     final screen = await _showChoiceSheet<int>(
       context: context,
       title: 'Start screen',
@@ -882,9 +831,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (screen != null) {
       await _updateAccountSetting('defaultScreen', screen);
     }
+    return screen;
   }
 
-  Future<void> _showSyncIntervalDialog(BuildContext context, Account account) async {
+  Future<int?> _showSyncIntervalDialog(BuildContext context, Account account) async {
     const options = [15, 30, 60, 120];
     final selected = await _showChoiceSheet<int>(
       context: context,
@@ -909,6 +859,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         requiresWiFi: account.syncOnlyOnWiFi,
       );
     }
+    return selected;
   }
 
   Future<void> _confirmResync(BuildContext context, Account account) async {
@@ -1095,10 +1046,9 @@ class _SettingsChoiceOption<T> {
   final String? subtitle;
 }
 
-class _AppearanceSettingsPage extends StatelessWidget {
+class _AppearanceSettingsPage extends StatefulWidget {
   const _AppearanceSettingsPage({
     required this.listFontScale,
-    required this.listFontPx,
     required this.showHeroImage,
     required this.showPreviewText,
     required this.buildScaleSlider,
@@ -1109,17 +1059,35 @@ class _AppearanceSettingsPage extends StatelessWidget {
   });
 
   final double listFontScale;
-  final double listFontPx;
   final bool showHeroImage;
   final bool showPreviewText;
   final _SliderBuilder buildScaleSlider;
-  final ValueChanged<double> onListFontChanged;
+  final Future<void> Function(double) onListFontChanged;
   final Future<void> Function() onResetListFont;
-  final ValueChanged<bool> onShowHeroImageChanged;
-  final ValueChanged<bool> onShowPreviewTextChanged;
+  final Future<void> Function(bool) onShowHeroImageChanged;
+  final Future<void> Function(bool) onShowPreviewTextChanged;
+
+  @override
+  State<_AppearanceSettingsPage> createState() => _AppearanceSettingsPageState();
+}
+
+class _AppearanceSettingsPageState extends State<_AppearanceSettingsPage> {
+  late double _listFontScale;
+  late bool _showHeroImage;
+  late bool _showPreviewText;
+
+  @override
+  void initState() {
+    super.initState();
+    _listFontScale = widget.listFontScale;
+    _showHeroImage = widget.showHeroImage;
+    _showPreviewText = widget.showPreviewText;
+  }
 
   @override
   Widget build(BuildContext context) {
+    final baseFont = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+    final listFontPx = baseFont * _listFontScale;
     return Scaffold(
       appBar: AppBar(title: const Text('Appearance')),
       body: ListView(
@@ -1129,7 +1097,10 @@ class _AppearanceSettingsPage extends StatelessWidget {
             title: 'Article list',
             subtitle: 'Tune density and scanning speed in the article feed',
             action: TextButton(
-              onPressed: onResetListFont,
+              onPressed: () async {
+                setState(() => _listFontScale = 1.0);
+                await widget.onResetListFont();
+              },
               child: const Text('Reset'),
             ),
           ),
@@ -1137,16 +1108,19 @@ class _AppearanceSettingsPage extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-                child: buildScaleSlider(
+                child: widget.buildScaleSlider(
                   context: context,
                   title: 'List text size',
                   subtitle: 'Optimized for fast article scanning',
                   valueLabel: '${listFontPx.toStringAsFixed(0)} px',
-                  value: listFontScale,
+                  value: _listFontScale,
                   min: 0.85,
                   max: 1.4,
                   divisions: 11,
-                  onChanged: onListFontChanged,
+                  onChanged: (value) async {
+                    setState(() => _listFontScale = value);
+                    await widget.onListFontChanged(value);
+                  },
                 ),
               ),
             ],
@@ -1161,14 +1135,20 @@ class _AppearanceSettingsPage extends StatelessWidget {
                 title: 'Show thumbnails',
                 subtitle: 'Display article images in lists',
                 leading: const Icon(AppSymbols.image),
-                value: showHeroImage,
-                onChanged: onShowHeroImageChanged,
+                value: _showHeroImage,
+                onChanged: (value) async {
+                  setState(() => _showHeroImage = value);
+                  await widget.onShowHeroImageChanged(value);
+                },
               ),
               SettingsSwitchTile(
                 title: 'Show article preview',
                 subtitle: 'Display a short text preview under each title',
-                value: showPreviewText,
-                onChanged: onShowPreviewTextChanged,
+                value: _showPreviewText,
+                onChanged: (value) async {
+                  setState(() => _showPreviewText = value);
+                  await widget.onShowPreviewTextChanged(value);
+                },
               ),
             ],
           ),
@@ -1178,7 +1158,7 @@ class _AppearanceSettingsPage extends StatelessWidget {
   }
 }
 
-class _ReadingSettingsPage extends StatelessWidget {
+class _ReadingSettingsPage extends StatefulWidget {
   const _ReadingSettingsPage({
     required this.titleFontScale,
     required this.articleFontScale,
@@ -1190,7 +1170,6 @@ class _ReadingSettingsPage extends StatelessWidget {
     required this.feedTimeoutSeconds,
     required this.fullContentEnabled,
     required this.buildScaleSlider,
-    required this.buildPreviewCard,
     required this.onTitleFontChanged,
     required this.onArticleFontChanged,
     required this.onArticlePaddingChanged,
@@ -1211,19 +1190,88 @@ class _ReadingSettingsPage extends StatelessWidget {
   final int feedTimeoutSeconds;
   final bool fullContentEnabled;
   final _SliderBuilder buildScaleSlider;
-  final WidgetBuilder buildPreviewCard;
-  final ValueChanged<double> onTitleFontChanged;
-  final ValueChanged<double> onArticleFontChanged;
-  final ValueChanged<double> onArticlePaddingChanged;
+  final Future<void> Function(double) onTitleFontChanged;
+  final Future<void> Function(double) onArticleFontChanged;
+  final Future<void> Function(double) onArticlePaddingChanged;
   final Future<void> Function() onResetReading;
-  final ValueChanged<bool> onFullContentChanged;
-  final VoidCallback onOpenLinksTap;
-  final VoidCallback onKeepReadItemsTap;
-  final VoidCallback onFeedTimeoutTap;
+  final Future<void> Function(bool) onFullContentChanged;
+  final Future<bool?> Function() onOpenLinksTap;
+  final Future<int?> Function() onKeepReadItemsTap;
+  final Future<int?> Function() onFeedTimeoutTap;
+
+  @override
+  State<_ReadingSettingsPage> createState() => _ReadingSettingsPageState();
+}
+
+class _ReadingSettingsPageState extends State<_ReadingSettingsPage> {
+  late double _titleFontScale;
+  late double _articleFontScale;
+  late double _articlePadding;
+  late bool _openLinksExternally;
+  late int _keepReadItemsDays;
+  late int _feedTimeoutSeconds;
+  late bool _fullContentEnabled;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleFontScale = widget.titleFontScale;
+    _articleFontScale = widget.articleFontScale;
+    _articlePadding = widget.articlePadding;
+    _openLinksExternally = widget.openLinksExternally;
+    _keepReadItemsDays = widget.keepReadItemsDays;
+    _feedTimeoutSeconds = widget.feedTimeoutSeconds;
+    _fullContentEnabled = widget.fullContentEnabled;
+  }
+
+  Widget _buildLocalPreviewCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final baseTitle = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
+    final baseBody = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(_articlePadding.clamp(12.0, 24.0)),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Preview article title',
+            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontSize: baseTitle * _titleFontScale,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Feed name  •  5 min ago',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'This preview updates live so you can tune reading comfort before leaving settings.',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  fontSize: baseBody * _articleFontScale,
+                  height: 1.45,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final dayLabel = keepReadItemsDays == 1 ? 'day' : 'days';
+    final baseTitle = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
+    final baseBody = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
+    final titleFontPx = baseTitle * _titleFontScale;
+    final articleFontPx = baseBody * _articleFontScale;
+    final dayLabel = _keepReadItemsDays == 1 ? 'day' : 'days';
     return Scaffold(
       appBar: AppBar(title: const Text('Reading')),
       body: ListView(
@@ -1233,7 +1281,14 @@ class _ReadingSettingsPage extends StatelessWidget {
             title: 'Live preview',
             subtitle: 'See your reading settings update instantly',
             action: TextButton(
-              onPressed: onResetReading,
+              onPressed: () async {
+                setState(() {
+                  _titleFontScale = 1.0;
+                  _articleFontScale = 1.0;
+                  _articlePadding = 16.0;
+                });
+                await widget.onResetReading();
+              },
               child: const Text('Reset'),
             ),
           ),
@@ -1241,42 +1296,51 @@ class _ReadingSettingsPage extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                child: buildPreviewCard(context),
+                child: _buildLocalPreviewCard(context),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
                 child: Column(
                   children: [
-                    buildScaleSlider(
+                    widget.buildScaleSlider(
                       context: context,
                       title: 'Title size',
                       valueLabel: '${titleFontPx.toStringAsFixed(0)} px',
-                      value: titleFontScale,
+                      value: _titleFontScale,
                       min: 0.8,
                       max: 1.8,
                       divisions: 10,
-                      onChanged: onTitleFontChanged,
+                      onChanged: (value) async {
+                        setState(() => _titleFontScale = value);
+                        await widget.onTitleFontChanged(value);
+                      },
                     ),
-                    buildScaleSlider(
+                    widget.buildScaleSlider(
                       context: context,
                       title: 'Article text size',
                       valueLabel: '${articleFontPx.toStringAsFixed(0)} px',
-                      value: articleFontScale,
+                      value: _articleFontScale,
                       min: 0.85,
                       max: 1.7,
                       divisions: 17,
-                      onChanged: onArticleFontChanged,
+                      onChanged: (value) async {
+                        setState(() => _articleFontScale = value);
+                        await widget.onArticleFontChanged(value);
+                      },
                     ),
-                    buildScaleSlider(
+                    widget.buildScaleSlider(
                       context: context,
                       title: 'Reading padding',
                       subtitle: 'Controls the side margins in the reader',
-                      valueLabel: '${articlePadding.toStringAsFixed(0)} px',
-                      value: articlePadding,
+                      valueLabel: '${_articlePadding.toStringAsFixed(0)} px',
+                      value: _articlePadding,
                       min: 8,
                       max: 32,
                       divisions: 24,
-                      onChanged: onArticlePaddingChanged,
+                      onChanged: (value) async {
+                        setState(() => _articlePadding = value);
+                        await widget.onArticlePaddingChanged(value);
+                      },
                     ),
                   ],
                 ),
@@ -1294,25 +1358,43 @@ class _ReadingSettingsPage extends StatelessWidget {
                 subtitle:
                     'Fetch complete article content in the background when feeds sync',
                 leading: const Icon(AppSymbols.article_outlined),
-                value: fullContentEnabled,
-                onChanged: onFullContentChanged,
+                value: _fullContentEnabled,
+                onChanged: (value) async {
+                  setState(() => _fullContentEnabled = value);
+                  await widget.onFullContentChanged(value);
+                },
               ),
               SettingsNavTile(
                 title: 'Open links in',
-                subtitle: openLinksExternally ? 'External browser' : 'In-app browser',
+                subtitle: _openLinksExternally ? 'External browser' : 'In-app browser',
                 leading: const Icon(AppSymbols.open_in_browser),
-                onTap: onOpenLinksTap,
+                onTap: () async {
+                  final selected = await widget.onOpenLinksTap();
+                  if (selected != null && mounted) {
+                    setState(() => _openLinksExternally = selected);
+                  }
+                },
               ),
               SettingsNavTile(
                 title: 'Auto-delete read articles',
-                subtitle: 'Delete read articles after $keepReadItemsDays $dayLabel',
-                onTap: onKeepReadItemsTap,
+                subtitle: 'Delete read articles after $_keepReadItemsDays $dayLabel',
+                onTap: () async {
+                  final selected = await widget.onKeepReadItemsTap();
+                  if (selected != null && mounted) {
+                    setState(() => _keepReadItemsDays = selected);
+                  }
+                },
               ),
               SettingsNavTile(
                 title: 'Network timeout',
-                subtitle: 'Stop loading a feed after $feedTimeoutSeconds seconds',
+                subtitle: 'Stop loading a feed after $_feedTimeoutSeconds seconds',
                 leading: const Icon(AppSymbols.timer),
-                onTap: onFeedTimeoutTap,
+                onTap: () async {
+                  final selected = await widget.onFeedTimeoutTap();
+                  if (selected != null && mounted) {
+                    setState(() => _feedTimeoutSeconds = selected);
+                  }
+                },
               ),
             ],
           ),
@@ -1322,7 +1404,7 @@ class _ReadingSettingsPage extends StatelessWidget {
   }
 }
 
-class _SyncSettingsPage extends StatelessWidget {
+class _SyncSettingsPage extends StatefulWidget {
   const _SyncSettingsPage({
     required this.account,
     required this.backgroundSyncEnabled,
@@ -1337,13 +1419,36 @@ class _SyncSettingsPage extends StatelessWidget {
 
   final Account account;
   final bool backgroundSyncEnabled;
-  final VoidCallback onSyncIntervalTap;
-  final ValueChanged<bool> onBackgroundSyncChanged;
-  final ValueChanged<bool> onSyncOnStartChanged;
-  final VoidCallback onMaxPastDaysTap;
-  final ValueChanged<bool> onSyncOnlyWifiChanged;
-  final ValueChanged<bool> onSyncOnlyWhenChargingChanged;
+  final Future<int?> Function() onSyncIntervalTap;
+  final Future<void> Function(bool) onBackgroundSyncChanged;
+  final Future<void> Function(bool) onSyncOnStartChanged;
+  final Future<int?> Function() onMaxPastDaysTap;
+  final Future<void> Function(bool) onSyncOnlyWifiChanged;
+  final Future<void> Function(bool) onSyncOnlyWhenChargingChanged;
   final VoidCallback onSyncHistoryTap;
+
+  @override
+  State<_SyncSettingsPage> createState() => _SyncSettingsPageState();
+}
+
+class _SyncSettingsPageState extends State<_SyncSettingsPage> {
+  late int _syncInterval;
+  late bool _backgroundSyncEnabled;
+  late bool _syncOnStart;
+  late int _maxPastDays;
+  late bool _syncOnlyOnWiFi;
+  late bool _syncOnlyWhenCharging;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncInterval = widget.account.syncInterval;
+    _backgroundSyncEnabled = widget.backgroundSyncEnabled;
+    _syncOnStart = widget.account.syncOnStart;
+    _maxPastDays = widget.account.maxPastDays;
+    _syncOnlyOnWiFi = widget.account.syncOnlyOnWiFi;
+    _syncOnlyWhenCharging = widget.account.syncOnlyWhenCharging;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1360,23 +1465,34 @@ class _SyncSettingsPage extends StatelessWidget {
             children: [
               SettingsNavTile(
                 title: 'Sync interval',
-                subtitle: '${account.syncInterval} minutes',
+                subtitle: '$_syncInterval minutes',
                 leading: const Icon(AppSymbols.sync),
-                onTap: onSyncIntervalTap,
+                onTap: () async {
+                  final selected = await widget.onSyncIntervalTap();
+                  if (selected != null && mounted) {
+                    setState(() => _syncInterval = selected);
+                  }
+                },
               ),
               SettingsSwitchTile(
                 title: 'Background sync',
                 subtitle: 'Allow sync to run even when the app is not open',
                 leading: const Icon(AppSymbols.sync_lock),
-                value: backgroundSyncEnabled,
-                onChanged: onBackgroundSyncChanged,
+                value: _backgroundSyncEnabled,
+                onChanged: (value) async {
+                  setState(() => _backgroundSyncEnabled = value);
+                  await widget.onBackgroundSyncChanged(value);
+                },
               ),
               SettingsSwitchTile(
                 title: 'Sync on app start',
                 subtitle: 'Refresh feeds automatically when the app opens',
                 leading: const Icon(AppSymbols.play_circle_outline),
-                value: account.syncOnStart,
-                onChanged: onSyncOnStartChanged,
+                value: _syncOnStart,
+                onChanged: (value) async {
+                  setState(() => _syncOnStart = value);
+                  await widget.onSyncOnStartChanged(value);
+                },
               ),
             ],
           ),
@@ -1388,22 +1504,33 @@ class _SyncSettingsPage extends StatelessWidget {
             children: [
               SettingsNavTile(
                 title: 'How far back to sync',
-                subtitle: '${account.maxPastDays} days',
-                onTap: onMaxPastDaysTap,
+                subtitle: '$_maxPastDays days',
+                onTap: () async {
+                  final selected = await widget.onMaxPastDaysTap();
+                  if (selected != null && mounted) {
+                    setState(() => _maxPastDays = selected);
+                  }
+                },
               ),
               SettingsSwitchTile(
                 title: 'Sync only on Wi-Fi',
                 subtitle: 'Avoid syncing on mobile data',
                 leading: const Icon(AppSymbols.wifi),
-                value: account.syncOnlyOnWiFi,
-                onChanged: onSyncOnlyWifiChanged,
+                value: _syncOnlyOnWiFi,
+                onChanged: (value) async {
+                  setState(() => _syncOnlyOnWiFi = value);
+                  await widget.onSyncOnlyWifiChanged(value);
+                },
               ),
               SettingsSwitchTile(
                 title: 'Sync only when charging',
                 subtitle: 'Reduce battery use during automatic sync',
                 leading: const Icon(AppSymbols.battery_charging_full),
-                value: account.syncOnlyWhenCharging,
-                onChanged: onSyncOnlyWhenChargingChanged,
+                value: _syncOnlyWhenCharging,
+                onChanged: (value) async {
+                  setState(() => _syncOnlyWhenCharging = value);
+                  await widget.onSyncOnlyWhenChargingChanged(value);
+                },
               ),
             ],
           ),
@@ -1417,7 +1544,7 @@ class _SyncSettingsPage extends StatelessWidget {
                 title: 'Sync history',
                 subtitle: 'View recent manual and background sync activity',
                 leading: const Icon(AppSymbols.history),
-                onTap: onSyncHistoryTap,
+                onTap: widget.onSyncHistoryTap,
               ),
             ],
           ),
@@ -1427,7 +1554,7 @@ class _SyncSettingsPage extends StatelessWidget {
   }
 }
 
-class _GestureSettingsPage extends StatelessWidget {
+class _GestureSettingsPage extends StatefulWidget {
   const _GestureSettingsPage({
     required this.swipeRightDescription,
     required this.swipeLeftDescription,
@@ -1437,8 +1564,34 @@ class _GestureSettingsPage extends StatelessWidget {
 
   final String swipeRightDescription;
   final String swipeLeftDescription;
-  final VoidCallback onSwipeRightTap;
-  final VoidCallback onSwipeLeftTap;
+  final Future<int?> Function() onSwipeRightTap;
+  final Future<int?> Function() onSwipeLeftTap;
+
+  @override
+  State<_GestureSettingsPage> createState() => _GestureSettingsPageState();
+}
+
+class _GestureSettingsPageState extends State<_GestureSettingsPage> {
+  late String _swipeRightDescription;
+  late String _swipeLeftDescription;
+
+  @override
+  void initState() {
+    super.initState();
+    _swipeRightDescription = widget.swipeRightDescription;
+    _swipeLeftDescription = widget.swipeLeftDescription;
+  }
+
+  String _describe(int action) {
+    switch (action) {
+      case 1:
+        return 'Mark read / unread';
+      case 2:
+        return 'Star / unstar';
+      default:
+        return 'None';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1455,15 +1608,25 @@ class _GestureSettingsPage extends StatelessWidget {
             children: [
               SettingsNavTile(
                 title: 'Swipe right action',
-                subtitle: swipeRightDescription,
+                subtitle: _swipeRightDescription,
                 leading: const Icon(AppSymbols.swipe_right),
-                onTap: onSwipeRightTap,
+                onTap: () async {
+                  final selected = await widget.onSwipeRightTap();
+                  if (selected != null && mounted) {
+                    setState(() => _swipeRightDescription = _describe(selected));
+                  }
+                },
               ),
               SettingsNavTile(
                 title: 'Swipe left action',
-                subtitle: swipeLeftDescription,
+                subtitle: _swipeLeftDescription,
                 leading: const Icon(AppSymbols.swipe_left),
-                onTap: onSwipeLeftTap,
+                onTap: () async {
+                  final selected = await widget.onSwipeLeftTap();
+                  if (selected != null && mounted) {
+                    setState(() => _swipeLeftDescription = _describe(selected));
+                  }
+                },
               ),
             ],
           ),
@@ -1472,4 +1635,6 @@ class _GestureSettingsPage extends StatelessWidget {
     );
   }
 }
+
+/* old stateless implementations removed below */
 

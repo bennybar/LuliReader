@@ -25,6 +25,12 @@ class ArticleReaderScreen extends ConsumerStatefulWidget {
   ConsumerState<ArticleReaderScreen> createState() => _ArticleReaderScreenState();
 }
 
+enum _ReaderMenuAction {
+  toggleRead,
+  toggleMode,
+  appearance,
+  openOriginal,
+}
 class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   String? _fullContent;
   bool _isLoadingFullContent = false;
@@ -41,6 +47,9 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   String _readingTime = '';
   html_dom.Element? _parsedFullContentBody;
   bool _heroImageInFullContent = false;
+  final SharedPreferencesService _prefs = SharedPreferencesService();
+  final ScrollController _scrollController = ScrollController();
+  double _scrollProgress = 0.0;
 
   @override
   void initState() {
@@ -53,15 +62,23 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     _loadReadingPrefs();
     _loadFeed();
     _markAsRead();
+    _scrollController.addListener(_updateScrollProgress);
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_updateScrollProgress)
+      ..dispose();
+    super.dispose();
   }
 
   Future<void> _loadReadingPrefs() async {
-    final prefs = SharedPreferencesService();
-    await prefs.init();
-    final font = await prefs.getDouble('articleFontScale') ?? 1.0;
-    final titleFont = await prefs.getDouble('titleFontScale') ?? 1.0;
-    final pad = await prefs.getDouble('articlePadding') ?? 16.0;
-    final openLinksExternally = await prefs.getBool('openLinksExternally') ?? false;
+    await _prefs.init();
+    final font = await _prefs.getDouble('articleFontScale') ?? 1.0;
+    final titleFont = await _prefs.getDouble('titleFontScale') ?? 1.0;
+    final pad = await _prefs.getDouble('articlePadding') ?? 16.0;
+    final openLinksExternally = await _prefs.getBool('openLinksExternally') ?? false;
     if (mounted) {
       setState(() {
         _fontScale = font;
@@ -83,7 +100,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         // Check both feed-level and account-level full content setting
         final shouldUseFullContent = feed.isFullContent || (account?.isFullContent ?? false);
         setState(() {
-          _feed = feed as Feed;
+          _feed = feed;
           _useFullContent = shouldUseFullContent;
         });
         if (_useFullContent) {
@@ -137,13 +154,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   }
 
   Future<void> _toggleFullContent() async {
-    setState(() {
-      _useFullContent = !_useFullContent;
-    });
-    
-    if (_useFullContent) {
-      _loadFullContent();
-    }
+    await _setReaderMode(!_useFullContent);
   }
 
   String _calculateReadingTime(String? content) {
@@ -215,13 +226,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       setState(() {
         _isStarred = !_isStarred;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_isStarred ? 'Added to starred' : 'Removed from starred'),
-          ),
-        );
-      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -281,24 +285,26 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     }
   }
 
-  Future<void> _showFontSizeDialog(BuildContext context) async {
-    // Get base font sizes
+  Future<void> _showReaderAppearanceSheet(BuildContext context) async {
     final baseTitleSize = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
     final baseArticleSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
-    
+
     double tempTitleFontSize = baseTitleSize * _titleFontScale;
     double tempArticleFontSize = baseArticleSize * _fontScale;
-    
-    await showDialog(
+
+    await showModalBottomSheet(
       context: context,
+      showDragHandle: true,
+      useSafeArea: true,
+      isScrollControlled: true,
       builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
+        builder: (context, setSheetState) {
           Future<void> updateTitleSize(double newSize) async {
-            setDialogState(() {
+            setSheetState(() {
               tempTitleFontSize = newSize.clamp(12.0, 48.0);
             });
             final newScale = tempTitleFontSize / baseTitleSize;
-            await _saveFontSize('titleFontScale', newScale);
+            await _saveReadingDouble('titleFontScale', newScale);
             if (mounted) {
               setState(() {
                 _titleFontScale = newScale;
@@ -307,119 +313,115 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           }
           
           Future<void> updateArticleSize(double newSize) async {
-            setDialogState(() {
+            setSheetState(() {
               tempArticleFontSize = newSize.clamp(10.0, 32.0);
             });
             final newScale = tempArticleFontSize / baseArticleSize;
-            await _saveFontSize('articleFontScale', newScale);
+            await _saveReadingDouble('articleFontScale', newScale);
             if (mounted) {
               setState(() {
                 _fontScale = newScale;
               });
             }
           }
+
+          Future<void> updatePadding(double newPadding) async {
+            final clamped = newPadding.clamp(8.0, 32.0);
+            await _saveReadingDouble('articlePadding', clamped);
+            if (mounted) {
+              setState(() {
+                _contentPadding = clamped;
+              });
+            }
+            setSheetState(() {});
+          }
           
           Future<void> resetFontSizes() async {
             await updateTitleSize(baseTitleSize);
             await updateArticleSize(baseArticleSize);
+            await updatePadding(16.0);
           }
-          
-          return AlertDialog(
-            title: const Text('Font Size'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
+
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 24),
+              child: ListView(
+                shrinkWrap: true,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Title:'),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(AppSymbols.remove),
-                          onPressed: () => updateTitleSize(tempTitleFontSize - 1),
-                        ),
-                        SizedBox(
-                          width: 60,
-                          child: Text(
-                            '${tempTitleFontSize.toStringAsFixed(0)} px',
-                            style: Theme.of(context).textTheme.titleMedium,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(AppSymbols.add),
-                          onPressed: () => updateTitleSize(tempTitleFontSize + 1),
-                        ),
-                      ],
-                    ),
-                  ],
+                Text(
+                  'Reading appearance',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                const SizedBox(height: 6),
+                Text(
+                  'Adjust the reader live while you browse this article.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 18),
+                _buildAppearanceSlider(
+                  context: context,
+                  title: 'Title size',
+                  valueLabel: '${tempTitleFontSize.toStringAsFixed(0)} px',
+                  value: tempTitleFontSize,
+                  min: 18,
+                  max: 42,
+                  divisions: 24,
+                  onChanged: updateTitleSize,
+                ),
+                const SizedBox(height: 8),
+                _buildAppearanceSlider(
+                  context: context,
+                  title: 'Article text size',
+                  valueLabel: '${tempArticleFontSize.toStringAsFixed(0)} px',
+                  value: tempArticleFontSize,
+                  min: 13,
+                  max: 28,
+                  divisions: 15,
+                  onChanged: updateArticleSize,
+                ),
+                const SizedBox(height: 8),
+                _buildAppearanceSlider(
+                  context: context,
+                  title: 'Reading padding',
+                  valueLabel: '${_contentPadding.toStringAsFixed(0)} px',
+                  value: _contentPadding,
+                  min: 8,
+                  max: 32,
+                  divisions: 24,
+                  onChanged: updatePadding,
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    const Text('Article:'),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(AppSymbols.remove),
-                          onPressed: () => updateArticleSize(tempArticleFontSize - 1),
-                        ),
-                        SizedBox(
-                          width: 60,
-                          child: Text(
-                            '${tempArticleFontSize.toStringAsFixed(0)} px',
-                            style: Theme.of(context).textTheme.titleMedium,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(AppSymbols.add),
-                          onPressed: () => updateArticleSize(tempArticleFontSize + 1),
-                        ),
-                      ],
+                    TextButton.icon(
+                      onPressed: resetFontSizes,
+                      icon: const Icon(AppSymbols.refresh),
+                      label: const Text('Reset'),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Done'),
                     ),
                   ],
                 ),
               ],
+              ),
             ),
-            actions: [
-              TextButton(
-                onPressed: resetFontSizes,
-                child: const Text('Reset'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Close'),
-              ),
-            ],
           );
         },
       ),
     );
   }
 
-  Future<void> _saveFontSize(String key, double value) async {
-    final prefs = SharedPreferencesService();
-    await prefs.init();
-    await prefs.setDouble(key, value);
-  }
-
-  bool _isRtl() {
-    // Feed RTL setting takes precedence
-    if (_feed?.isRtl == true) {
-      return true;
-    }
-    // Analyze article content to determine RTL
-    // Check title first, then description, then full content
-    final title = widget.article.title;
-    final description = widget.article.shortDescription;
-    final content = _fullContent ?? widget.article.fullContent ?? '';
-    
-    // Combine all text for analysis
-    final allText = '$title $description $content';
-    return RtlHelper.isRtlContent(allText);
+  Future<void> _saveReadingDouble(String key, double value) async {
+    await _prefs.init();
+    await _prefs.setDouble(key, value);
   }
 
   TextDirection _getTextDirection() {
@@ -433,6 +435,44 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     return RtlHelper.getTextDirectionFromContent(allText, feedRtl: _feed?.isRtl);
   }
 
+  void _updateScrollProgress() {
+    if (!_scrollController.hasClients) return;
+    final maxExtent = _scrollController.position.maxScrollExtent;
+    final nextProgress = maxExtent <= 0
+        ? 0.0
+        : (_scrollController.offset / maxExtent).clamp(0.0, 1.0);
+    if ((nextProgress - _scrollProgress).abs() < 0.01) return;
+    setState(() {
+      _scrollProgress = nextProgress;
+    });
+  }
+
+  Future<void> _setReaderMode(bool useFullContent) async {
+    if (_useFullContent == useFullContent) return;
+    setState(() {
+      _useFullContent = useFullContent;
+    });
+    if (useFullContent) {
+      await _loadFullContent();
+    }
+  }
+
+  bool get _hasFullArticleContent {
+    final content = _fullContent ?? widget.article.fullContent;
+    return content != null && content.trim().isNotEmpty;
+  }
+
+  bool get _shouldShowHeroImage {
+    final image = widget.article.img;
+    if (image == null || image.isEmpty) {
+      return false;
+    }
+    if (_useFullContent && _heroImageInFullContent) {
+      return false;
+    }
+    return true;
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
@@ -442,164 +482,62 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     return MediaQuery(
       data: scaledMedia,
       child: Scaffold(
-        appBar: AppBar(
-          title: Text(
-            widget.article.title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(AppSymbols.text_fields),
-              tooltip: 'Font Size',
-              onPressed: () => _showFontSizeDialog(context),
-            ),
-            IconButton(
-              icon: Icon(
-                _useFullContent ? AppSymbols.article : AppSymbols.article_outlined,
-                color: _useFullContent 
-                    ? Theme.of(context).colorScheme.primary 
-                    : null,
-              ),
-              tooltip: 'Parse Full Content',
-              onPressed: _toggleFullContent,
-            ),
-            IconButton(
-              icon: Icon(_isUnread ? AppSymbols.mark_email_unread : AppSymbols.mark_email_read),
-              tooltip: _isUnread ? 'Mark as read' : 'Mark as unread',
-              onPressed: _toggleRead,
-            ),
-            IconButton(
-              icon: Icon(_isStarred ? AppSymbols.star : AppSymbols.star_border),
-              onPressed: _toggleStarred,
-            ),
-            IconButton(
-              icon: const Icon(AppSymbols.share),
-              onPressed: _shareArticle,
-            ),
-            IconButton(
-              icon: const Icon(AppSymbols.open_in_browser),
-              onPressed: _openInBrowser,
-            ),
-          ],
-        ),
         body: Builder(
           builder: (context) {
             final finalTextDir = _getTextDirection();
             
             return Directionality(
               textDirection: finalTextDir,
-              child: SingleChildScrollView(
+              child: CustomScrollView(
+                controller: _scrollController,
                 physics: const ClampingScrollPhysics(),
-                padding: EdgeInsets.all(_contentPadding),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Directionality(
-                      textDirection: finalTextDir,
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: Text(
-                          widget.article.title,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                fontSize: (Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24) * _titleFontScale,
-                              ),
-                          textAlign: TextAlign.start,
+                slivers: [
+                  SliverAppBar(
+                    pinned: true,
+                    surfaceTintColor: Colors.transparent,
+                    title: Text(
+                      widget.article.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    actions: [
+                      IconButton(
+                        icon: Icon(_isStarred ? AppSymbols.star : AppSymbols.star_border),
+                        tooltip: _isStarred ? 'Remove star' : 'Star article',
+                        onPressed: _toggleStarred,
+                      ),
+                      IconButton(
+                        icon: const Icon(AppSymbols.share),
+                        tooltip: 'Share',
+                        onPressed: _shareArticle,
+                      ),
+                      _buildReaderOverflowMenu(),
+                    ],
+                    bottom: PreferredSize(
+                      preferredSize: const Size.fromHeight(2),
+                      child: Opacity(
+                        opacity: _scrollProgress <= 0 || _scrollProgress >= 1 ? 0 : 1,
+                        child: LinearProgressIndicator(
+                          value: _scrollProgress,
+                          minHeight: 2,
+                          backgroundColor: Colors.transparent,
                         ),
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Center(
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 4,
-                        alignment: WrapAlignment.center,
-                        children: [
-                        if (widget.article.author != null) ...[
-                          Text(
-                            widget.article.author!,
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                          Text(
-                            '•',
-                            style: Theme.of(context).textTheme.bodyMedium,
-                          ),
-                        ],
-                        Text(
-                          _formatDate(widget.article.date),
-                          style: Theme.of(context).textTheme.bodyMedium,
-                        ),
-                        if (_readingTime.isNotEmpty)
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                '•',
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                              const SizedBox(width: 4),
-                              Icon(
-                                AppSymbols.timer_outlined,
-                                size: 16,
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                _readingTime,
-                                style: Theme.of(context).textTheme.bodyMedium,
-                              ),
-                            ],
-                          ),
-                      ],
-                      ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(_contentPadding, 16, _contentPadding, 0),
+                      child: _buildReaderHeader(context, finalTextDir),
                     ),
-                    const Divider(height: 32),
-                    if (_useFullContent)
-                      if (_isLoadingFullContent)
-                        const Center(
-                          child: Padding(
-                            padding: EdgeInsets.all(32.0),
-                            child: CircularProgressIndicator(),
-                          ),
-                        )
-                      else if (_fullContent != null)
-                        Column(
-                          children: [
-                            if (widget.article.img != null &&
-                                widget.article.img!.isNotEmpty &&
-                                !_heroImageInFullContent) ...[
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: CachedNetworkImage(
-                                  imageUrl: widget.article.img!,
-                                  width: double.infinity,
-                                  height: 200,
-                                  fit: BoxFit.cover,
-                                  memCacheWidth: _targetImageCacheWidth(
-                                    MediaQuery.of(context).size.width - (_contentPadding * 2),
-                                  ),
-                                  maxWidthDiskCache: _targetImageCacheWidth(
-                                    MediaQuery.of(context).size.width - (_contentPadding * 2),
-                                  ),
-                                  fadeInDuration: Duration.zero,
-                                  fadeOutDuration: Duration.zero,
-                                  errorWidget: (context, url, error) => const SizedBox.shrink(),
-                                  placeholder: (context, url) => _buildImagePlaceholder(200),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                            ],
-                            _buildHtmlContent(_parsedFullContentBody),
-                          ],
-                        )
-                      else
-                        _buildFallbackContent()
-                    else
-                      _buildFallbackContent(),
-                    const SizedBox(height: 24),
-                  ],
-                ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(_contentPadding, 24, _contentPadding, 32),
+                      child: _buildBodyContent(context, finalTextDir),
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -658,6 +596,583 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     }
 
     return false;
+  }
+
+  Widget _buildReaderHeader(BuildContext context, TextDirection textDirection) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(28),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildSourceRow(context, textDirection),
+              const SizedBox(height: 18),
+              Directionality(
+                textDirection: textDirection,
+                child: Text(
+                  widget.article.title,
+                  textAlign: TextAlign.start,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        height: 1.15,
+                        fontSize:
+                            (Theme.of(context).textTheme.headlineMedium?.fontSize ?? 28) *
+                                _titleFontScale,
+                      ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              _buildMetadataRow(context, textDirection),
+              const SizedBox(height: 18),
+              _buildReaderModeToggle(context, textDirection),
+              const SizedBox(height: 14),
+              _buildReaderQuickActions(context, textDirection),
+            ],
+          ),
+        ),
+        if (_shouldShowHeroImage) ...[
+          const SizedBox(height: 16),
+          _buildHeroImage(context),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildSourceRow(BuildContext context, TextDirection textDirection) {
+    final scheme = Theme.of(context).colorScheme;
+    final sourceDomain = Uri.tryParse(widget.article.link)?.host.replaceFirst('www.', '') ?? '';
+    return Directionality(
+      textDirection: textDirection,
+      child: Row(
+        children: [
+          _buildFeedAvatar(context),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _feed?.name ?? 'Source',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                if (sourceDomain.isNotEmpty)
+                  Text(
+                    sourceDomain,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeedAvatar(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final iconUrl = _feed?.icon;
+    return Container(
+      width: 40,
+      height: 40,
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: iconUrl != null && iconUrl.isNotEmpty
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: CachedNetworkImage(
+                imageUrl: iconUrl,
+                fit: BoxFit.cover,
+                fadeInDuration: Duration.zero,
+                fadeOutDuration: Duration.zero,
+                errorWidget: (_, __, ___) => Icon(
+                  AppSymbols.rss_feed,
+                  color: scheme.onSecondaryContainer,
+                  size: 18,
+                ),
+                placeholder: (_, __) => Icon(
+                  AppSymbols.rss_feed,
+                  color: scheme.onSecondaryContainer,
+                  size: 18,
+                ),
+              ),
+            )
+          : Icon(
+              AppSymbols.rss_feed,
+              color: scheme.onSecondaryContainer,
+              size: 18,
+            ),
+    );
+  }
+
+  Widget _buildMetadataRow(BuildContext context, TextDirection textDirection) {
+    final items = <Widget>[
+      _buildMetadataChip(
+        context,
+        icon: _isUnread ? AppSymbols.mark_email_unread : AppSymbols.mark_email_read,
+        label: _isUnread ? 'Unread' : 'Read',
+      ),
+      if (widget.article.author != null && widget.article.author!.trim().isNotEmpty)
+        _buildMetadataChip(
+          context,
+          icon: AppSymbols.account_circle,
+          label: widget.article.author!.trim(),
+        ),
+      _buildMetadataChip(
+        context,
+        icon: AppSymbols.calendar_today,
+        label: _formatFriendlyDate(widget.article.date),
+      ),
+      if (_readingTime.isNotEmpty)
+        _buildMetadataChip(
+          context,
+          icon: AppSymbols.timer_outlined,
+          label: _readingTime,
+        ),
+    ];
+
+    return Align(
+      alignment:
+          textDirection == TextDirection.rtl ? Alignment.centerRight : Alignment.centerLeft,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: items,
+      ),
+    );
+  }
+
+  Widget _buildMetadataChip(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.6),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 14,
+            color: scheme.onSurfaceVariant,
+          ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReaderModeToggle(BuildContext context, TextDirection textDirection) {
+    final scheme = Theme.of(context).colorScheme;
+    return Directionality(
+      textDirection: textDirection,
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          ChoiceChip(
+            label: const Text('Summary'),
+            selected: !_useFullContent,
+            onSelected: (selected) {
+              if (selected) {
+                _setReaderMode(false);
+              }
+            },
+          ),
+          ChoiceChip(
+            label: Text(
+              _isLoadingFullContent
+                  ? 'Loading full article...'
+                  : (_hasFullArticleContent ? 'Full article' : 'Load full article'),
+            ),
+            selected: _useFullContent,
+            avatar: _isLoadingFullContent
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: scheme.primary,
+                    ),
+                  )
+                : Icon(
+                    AppSymbols.article_outlined,
+                    size: 18,
+                    color: _useFullContent ? scheme.primary : scheme.onSurfaceVariant,
+                  ),
+            onSelected: (selected) {
+              if (selected) {
+                _setReaderMode(true);
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReaderQuickActions(BuildContext context, TextDirection textDirection) {
+    return Directionality(
+      textDirection: textDirection,
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          FilledButton.tonalIcon(
+            onPressed: () => _showReaderAppearanceSheet(context),
+            icon: const Icon(AppSymbols.text_fields),
+            label: const Text('Reading appearance'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _openInBrowser,
+            icon: const Icon(AppSymbols.open_in_browser),
+            label: const Text('Open original'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHeroImage(BuildContext context) {
+    final imageUrl = widget.article.img!;
+    return GestureDetector(
+      onTap: () => _showFullscreenImage(imageUrl),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: CachedNetworkImage(
+          imageUrl: imageUrl,
+          width: double.infinity,
+          height: 240,
+          fit: BoxFit.cover,
+          memCacheWidth: _targetImageCacheWidth(
+            MediaQuery.of(context).size.width - (_contentPadding * 2),
+          ),
+          maxWidthDiskCache: _targetImageCacheWidth(
+            MediaQuery.of(context).size.width - (_contentPadding * 2),
+          ),
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          errorWidget: (context, url, error) => const SizedBox.shrink(),
+          placeholder: (context, url) => _buildImagePlaceholder(240),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBodyContent(BuildContext context, TextDirection textDirection) {
+    if (_useFullContent) {
+      if (_isLoadingFullContent) {
+        return _buildLoadingState(context);
+      }
+
+      if (_hasFullArticleContent) {
+        return _buildHtmlContent(_parsedFullContentBody);
+      }
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildFallbackNotice(context, textDirection),
+          const SizedBox(height: 20),
+          _buildSummaryContent(context, textDirection),
+        ],
+      );
+    }
+
+    return _buildSummaryContent(context, textDirection);
+  }
+
+  Widget _buildLoadingState(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: Column(
+        children: [
+          const SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Loading full article',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Fetching a cleaner reading view from the original page.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryContent(BuildContext context, TextDirection textDirection) {
+    return Directionality(
+      textDirection: textDirection,
+      child: SizedBox(
+        width: double.infinity,
+        child: Text(
+          widget.article.shortDescription,
+          textAlign: TextAlign.start,
+          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                height: 1.62,
+              ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFallbackNotice(BuildContext context, TextDirection textDirection) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
+      child: Directionality(
+        textDirection: textDirection,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    AppSymbols.article_outlined,
+                    color: scheme.onPrimaryContainer,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Full article not loaded yet',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'You are viewing the feed summary. Load the full article for a cleaner reading view, or open the original page.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              height: 1.35,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              alignment:
+                  textDirection == TextDirection.rtl ? WrapAlignment.end : WrapAlignment.start,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => _setReaderMode(true),
+                  icon: const Icon(AppSymbols.download),
+                  label: const Text('Load full article'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _openInBrowser,
+                  icon: const Icon(AppSymbols.open_in_browser),
+                  label: const Text('Open original article'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReaderOverflowMenu() {
+    return PopupMenuButton<_ReaderMenuAction>(
+      tooltip: 'More',
+      onSelected: _handleReaderMenuAction,
+      itemBuilder: (context) => [
+        PopupMenuItem<_ReaderMenuAction>(
+          value: _ReaderMenuAction.toggleRead,
+          child: _buildMenuItem(
+            context,
+            icon: _isUnread ? AppSymbols.mark_email_unread : AppSymbols.mark_email_read,
+            label: _isUnread ? 'Mark as read' : 'Mark as unread',
+          ),
+        ),
+        PopupMenuItem<_ReaderMenuAction>(
+          value: _ReaderMenuAction.toggleMode,
+          enabled: !_isLoadingFullContent,
+          child: _buildMenuItem(
+            context,
+            icon: _useFullContent ? AppSymbols.article_outlined : AppSymbols.article,
+            label: _useFullContent
+                ? 'Show summary'
+                : (_hasFullArticleContent ? 'Show full article' : 'Load full article'),
+          ),
+        ),
+        PopupMenuItem<_ReaderMenuAction>(
+          value: _ReaderMenuAction.appearance,
+          child: _buildMenuItem(
+            context,
+            icon: AppSymbols.text_fields,
+            label: 'Reading appearance',
+          ),
+        ),
+        PopupMenuItem<_ReaderMenuAction>(
+          value: _ReaderMenuAction.openOriginal,
+          child: _buildMenuItem(
+            context,
+            icon: AppSymbols.open_in_browser,
+            label: 'Open original article',
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMenuItem(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, size: 20),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label)),
+      ],
+    );
+  }
+
+  Future<void> _handleReaderMenuAction(_ReaderMenuAction action) async {
+    switch (action) {
+      case _ReaderMenuAction.toggleRead:
+        await _toggleRead();
+        break;
+      case _ReaderMenuAction.toggleMode:
+        await _toggleFullContent();
+        break;
+      case _ReaderMenuAction.appearance:
+        await _showReaderAppearanceSheet(context);
+        break;
+      case _ReaderMenuAction.openOriginal:
+        await _openInBrowser();
+        break;
+    }
+  }
+
+  Widget _buildAppearanceSlider({
+    required BuildContext context,
+    required String title,
+    required String valueLabel,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required ValueChanged<double> onChanged,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: scheme.secondaryContainer.withValues(alpha: 0.75),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                valueLabel,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      color: scheme.onSecondaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+            ),
+          ],
+        ),
+        Slider(
+          value: value,
+          min: min,
+          max: max,
+          divisions: divisions,
+          onChanged: onChanged,
+        ),
+      ],
+    );
   }
 
   Widget _buildHtmlContent(html_dom.Element? body) {
@@ -781,7 +1296,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       final node = nodes[i];
       if (node is html_dom.Text) {
         // Preserve all text including whitespace
-        final nodeText = node.text ?? '';
+        final nodeText = node.text;
         if (nodeText.isNotEmpty) {
           spans.add(TextSpan(
             text: nodeText,
@@ -793,7 +1308,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         bool needsSpaceBefore = false;
         if (i > 0) {
           if (nodes[i - 1] is html_dom.Text) {
-            final prevText = (nodes[i - 1] as html_dom.Text).text ?? '';
+            final prevText = (nodes[i - 1] as html_dom.Text).text;
             // Add space if previous text doesn't end with whitespace
             needsSpaceBefore = prevText.isNotEmpty && 
                 !prevText.endsWith(' ') && 
@@ -810,11 +1325,13 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         }
         
         if (node.localName == 'a') {
-          final linkText = node.text ?? '';
+          final linkText = node.text;
           final href = node.attributes['href']?.toString();
-          final linkSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
+          final linkSpans = _buildTextSpansFromNodes(node.nodes, baseStyle?.copyWith(
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.9),
             decoration: TextDecoration.underline,
+            decorationColor:
+                Theme.of(context).colorScheme.primary.withValues(alpha: 0.65),
           ));
           if (linkSpans.isEmpty && linkText.isNotEmpty) {
             linkSpans.add(TextSpan(text: linkText));
@@ -824,7 +1341,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             recognizer: href != null && href.isNotEmpty
                 ? (TapGestureRecognizer()
                   ..onTap = () async {
-                    final uri = Uri.parse(href);
+                    final resolvedHref = _resolveUrl(href);
+                    final uri = Uri.parse(resolvedHref);
                     if (await canLaunchUrl(uri)) {
                       try {
                         final mode = _openLinksExternally 
@@ -845,18 +1363,41 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                 : null,
           ));
         } else if (node.localName == 'strong' || node.localName == 'b') {
-          final strongSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle?.copyWith(
+          final strongSpans = _buildTextSpansFromNodes(node.nodes, baseStyle?.copyWith(
             fontWeight: FontWeight.bold,
           ));
           spans.addAll(strongSpans);
+        } else if (node.localName == 'code') {
+          final codeSpans = _buildTextSpansFromNodes(
+            node.nodes,
+            baseStyle?.copyWith(
+              fontFamily: 'monospace',
+              backgroundColor:
+                  Theme.of(context).colorScheme.surfaceContainerHighest,
+              letterSpacing: 0.15,
+            ),
+          );
+          if (codeSpans.isEmpty && node.text.isNotEmpty) {
+            codeSpans.add(
+              TextSpan(
+                text: node.text,
+                style: baseStyle?.copyWith(
+                  fontFamily: 'monospace',
+                  backgroundColor:
+                      Theme.of(context).colorScheme.surfaceContainerHighest,
+                ),
+              ),
+            );
+          }
+          spans.addAll(codeSpans);
         } else if (node.localName == 'em' || node.localName == 'i') {
-          final emSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle?.copyWith(
+          final emSpans = _buildTextSpansFromNodes(node.nodes, baseStyle?.copyWith(
             fontStyle: FontStyle.italic,
           ));
           spans.addAll(emSpans);
         } else {
           // For other inline elements, just process their text content
-          final otherSpans = _buildTextSpansFromNodes(node.nodes ?? [], baseStyle);
+          final otherSpans = _buildTextSpansFromNodes(node.nodes, baseStyle);
           spans.addAll(otherSpans);
         }
         
@@ -864,7 +1405,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         bool needsSpaceAfter = false;
         if (i < nodes.length - 1) {
           if (nodes[i + 1] is html_dom.Text) {
-            final nextText = (nodes[i + 1] as html_dom.Text).text ?? '';
+            final nextText = (nodes[i + 1] as html_dom.Text).text;
             // Add space if next text doesn't start with whitespace
             needsSpaceAfter = nextText.isNotEmpty && 
                 !nextText.startsWith(' ') && 
@@ -886,15 +1427,13 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   Widget _buildHtmlElement(dynamic element) {
     final children = <Widget>[];
-    final isRtl = _isRtl();
     final textDir = _getTextDirection();
     
     if (element.nodes != null) {
-      for (final node in element.nodes!) {
-        if (node is html_dom.Text && node.text?.trim().isNotEmpty == true) {
-          final nodeText = node.text!
+      for (final node in element.nodes) {
+        if (node is html_dom.Text && node.text.trim().isNotEmpty) {
+          final nodeText = node.text
               .replaceAll(RegExp(r'^[ \t]+', multiLine: true), '');
-          final nodeIsRtl = RtlHelper.isRtlContent(nodeText) || isRtl;
           final nodeTextDir = RtlHelper.getTextDirectionFromContent(nodeText, feedRtl: _feed?.isRtl);
           children.add(Directionality(
             textDirection: nodeTextDir,
@@ -915,15 +1454,14 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
     switch (element.localName) {
       case 'p':
-        final text = element.text ?? '';
-        final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
+        final text = element.text;
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         // Skip empty paragraphs (they create unwanted spacing)
         if (text.trim().isEmpty && children.isEmpty) {
           return const SizedBox.shrink();
         }
         // If paragraph has children (like links), build them using RichText; otherwise use text
-        if (children.isNotEmpty || (element.nodes != null && element.nodes!.any((n) => n is html_dom.Element && n.localName == 'a'))) {
+        if (children.isNotEmpty || element.nodes.any((n) => n is html_dom.Element && n.localName == 'a')) {
           // Build TextSpan list from nodes for RichText
           final baseStyle = Theme.of(context).textTheme.bodyLarge;
           final scaledStyle = baseStyle?.copyWith(
@@ -935,7 +1473,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           );
           
           return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.only(bottom: 14),
             child: Directionality(
               textDirection: textDir,
               child: SizedBox(
@@ -952,7 +1490,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           );
         }
         return Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.only(bottom: 14),
           child: Directionality(
             textDirection: textDir,
             child: SizedBox(
@@ -969,11 +1507,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         );
       case 'h1':
       case 'h2':
-        final text = element.text ?? '';
-        final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
+        final text = element.text;
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         return Padding(
-          padding: const EdgeInsets.only(top: 24, bottom: 8),
+          padding: const EdgeInsets.only(top: 28, bottom: 12),
           child: Directionality(
             textDirection: textDir,
             child: SizedBox(
@@ -991,11 +1528,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         );
       case 'h3':
       case 'h4':
-        final text = element.text ?? '';
-        final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
+        final text = element.text;
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         return Padding(
-          padding: const EdgeInsets.only(top: 16, bottom: 8),
+          padding: const EdgeInsets.only(top: 24, bottom: 10),
           child: Directionality(
             textDirection: textDir,
             child: SizedBox(
@@ -1064,30 +1600,32 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           _seenContentImages.add(imageUrl);
           
           return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: CachedNetworkImage(
-                imageUrl: imageUrl,
-                fit: BoxFit.cover,
-                memCacheWidth: _targetImageCacheWidth(
-                  MediaQuery.of(context).size.width - (_contentPadding * 2),
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            child: GestureDetector(
+              onTap: () => _showFullscreenImage(imageUrl),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.cover,
+                  memCacheWidth: _targetImageCacheWidth(
+                    MediaQuery.of(context).size.width - (_contentPadding * 2),
+                  ),
+                  maxWidthDiskCache: _targetImageCacheWidth(
+                    MediaQuery.of(context).size.width - (_contentPadding * 2),
+                  ),
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  errorWidget: (context, url, error) => const SizedBox.shrink(),
+                  placeholder: (context, url) => _buildImagePlaceholder(220),
                 ),
-                maxWidthDiskCache: _targetImageCacheWidth(
-                  MediaQuery.of(context).size.width - (_contentPadding * 2),
-                ),
-                fadeInDuration: Duration.zero,
-                fadeOutDuration: Duration.zero,
-                errorWidget: (context, url, error) => const SizedBox.shrink(),
-                placeholder: (context, url) => _buildImagePlaceholder(200),
               ),
             ),
           );
         }
         return const SizedBox.shrink();
       case 'a':
-        final text = element.text ?? '';
-        final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
+        final text = element.text;
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         // If link has children (like formatted text), use them; otherwise use plain text
         final linkWidget = children.isNotEmpty
@@ -1109,7 +1647,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           onTap: () async {
             final href = element.attributes['href']?.toString();
             if (href != null && href.isNotEmpty) {
-              final uri = Uri.parse(href);
+              final resolvedHref = _resolveUrl(href);
+              final uri = Uri.parse(resolvedHref);
               if (await canLaunchUrl(uri)) {
                 try {
                   final mode = _openLinksExternally 
@@ -1131,21 +1670,22 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           },
           child: DefaultTextStyle(
             style: TextStyle(
-              color: Theme.of(context).colorScheme.primary,
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.9),
               decoration: TextDecoration.underline,
+              decorationColor:
+                  Theme.of(context).colorScheme.primary.withValues(alpha: 0.65),
             ),
             child: linkWidget,
           ),
         );
       case 'ul':
       case 'ol':
-        final text = element.text ?? '';
-        final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
+        final text = element.text;
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         return Padding(
           padding: EdgeInsetsDirectional.only(
-            start: 16,
-            bottom: 16,
+            start: 18,
+            bottom: 20,
           ),
           child: Directionality(
             textDirection: textDir,
@@ -1156,13 +1696,12 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           ),
         );
       case 'li':
-        final text = element.text ?? '';
-        final isRtl = RtlHelper.isRtlContent(text) || _isRtl();
+        final text = element.text;
         final textDir = RtlHelper.getTextDirectionFromContent(text, feedRtl: _feed?.isRtl);
         
         // Check if list item has mixed content (text + links/bold)
-        final hasMixedContent = element.nodes != null && 
-            element.nodes!.any((n) => n is html_dom.Element && (n.localName == 'a' || n.localName == 'strong' || n.localName == 'b'));
+        final hasMixedContent =
+            element.nodes.any((n) => n is html_dom.Element && (n.localName == 'a' || n.localName == 'strong' || n.localName == 'b'));
         
         // Build the content widget
         final contentWidget = hasMixedContent
@@ -1182,7 +1721,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               );
         
         return Padding(
-          padding: const EdgeInsets.only(bottom: 4),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Directionality(
             textDirection: textDir,
             child: Row(
@@ -1197,6 +1736,112 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
             ),
           ),
         );
+      case 'blockquote':
+        final quoteText = element.text.trim();
+        final quoteChildren = children.isNotEmpty
+            ? _processChildrenForSpacing(children)
+            : [
+                Text(
+                  quoteText,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        fontSize:
+                            (Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16) *
+                                _fontScale,
+                        height: 1.55,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontStyle: FontStyle.italic,
+                      ),
+                ),
+              ];
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          child: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                    child: Directionality(
+                      textDirection: textDir,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: quoteChildren,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      case 'pre':
+        final codeText = element.text.trimRight();
+        if (codeText.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 18),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Text(
+                codeText,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontFamily: 'monospace',
+                      height: 1.5,
+                    ),
+              ),
+            ),
+          ),
+        );
+      case 'code':
+        if (element.parent?.localName == 'pre') {
+          return const SizedBox.shrink();
+        }
+        final codeText = element.text.trim();
+        if (codeText.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        return Container(
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            codeText,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontFamily: 'monospace',
+                ),
+          ),
+        );
+      case 'hr':
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 28),
+          child: Divider(
+            height: 1,
+            color: Theme.of(context).colorScheme.outlineVariant.withValues(alpha: 0.55),
+          ),
+        );
       default:
         if (children.isEmpty) {
           return const SizedBox.shrink();
@@ -1209,11 +1854,27 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   Widget _buildImagePlaceholder(double height) {
     return Container(
       height: height,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      ),
       child: Center(
-        child: Icon(
-          AppSymbols.photo_outlined,
-          color: Theme.of(context).colorScheme.outline,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Icon(
+              AppSymbols.photo_outlined,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ],
         ),
       ),
     );
@@ -1224,38 +1885,89 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     return (logicalWidth * devicePixelRatio).round();
   }
 
-  Widget _buildFallbackContent() {
-    final isRtl = _isRtl();
-    final textDir = _getTextDirection();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Directionality(
-          textDirection: textDir,
-          child: SizedBox(
-            width: double.infinity,
-            child: Text(
-              widget.article.shortDescription,
-              style: Theme.of(context).textTheme.bodyLarge,
-              textAlign: TextAlign.start,
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Align(
-          alignment: isRtl ? Alignment.centerRight : Alignment.centerLeft,
-          child: OutlinedButton.icon(
-            onPressed: _loadFullContent,
-            icon: const Icon(AppSymbols.download),
-            label: const Text('Download Full Article'),
-          ),
-        ),
-      ],
-    );
+  String _formatFriendlyDate(DateTime date) {
+    final localDate = date.toLocal();
+    final now = DateTime.now();
+    final yesterday = now.subtract(const Duration(days: 1));
+
+    if (DateUtils.isSameDay(localDate, now)) {
+      return 'Today';
+    }
+    if (DateUtils.isSameDay(localDate, yesterday)) {
+      return 'Yesterday';
+    }
+
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${localDate.day} ${monthNames[localDate.month - 1]} ${localDate.year}';
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
+  String _resolveUrl(String value) {
+    if (value.startsWith('http://') ||
+        value.startsWith('https://') ||
+        value.startsWith('data:')) {
+      return value;
+    }
+
+    try {
+      final baseUri = Uri.parse(widget.article.link);
+      if (value.startsWith('/')) {
+        return '${baseUri.scheme}://${baseUri.host}$value';
+      }
+      return baseUri.resolve(value).toString();
+    } catch (_) {
+      return value;
+    }
+  }
+
+  Future<void> _showFullscreenImage(String imageUrl) async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.92),
+      builder: (context) {
+        return Dialog.fullscreen(
+          backgroundColor: Colors.black,
+          child: Stack(
+            children: [
+              Center(
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4,
+                  child: CachedNetworkImage(
+                    imageUrl: imageUrl,
+                    fit: BoxFit.contain,
+                    fadeInDuration: Duration.zero,
+                    fadeOutDuration: Duration.zero,
+                    errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                    placeholder: (_, __) => _buildImagePlaceholder(220),
+                  ),
+                ),
+              ),
+              PositionedDirectional(
+                top: 16,
+                end: 16,
+                child: IconButton.filledTonal(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(AppSymbols.close),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   /// Check if two image URLs refer to the same image
