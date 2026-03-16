@@ -12,7 +12,6 @@ import '../models/feed.dart';
 import '../providers/app_provider.dart';
 import '../services/rss_service.dart';
 import '../utils/rtl_helper.dart';
-import '../utils/reading_time.dart';
 import '../services/shared_preferences_service.dart';
 import '../theme/app_symbols.dart';
 
@@ -46,7 +45,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   double _titleFontScale = 1.0;
   double _contentPadding = 16.0;
   bool _openLinksExternally = false; // false = in-app browser (default), true = external browser
-  String _readingTime = '';
   html_dom.Element? _parsedFullContentBody;
   bool _heroImageInFullContent = false;
   final SharedPreferencesService _prefs = SharedPreferencesService();
@@ -58,9 +56,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     super.initState();
     _isStarred = widget.article.isStarred;
     _isUnread = widget.article.isUnread;
-    _readingTime = _calculateReadingTime(
-      widget.article.fullContent ?? widget.article.rawDescription,
-    );
     _loadReadingPrefs();
     _loadFeed();
     _markAsRead();
@@ -160,17 +155,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     await _setReaderMode(!_useFullContent);
   }
 
-  String _calculateReadingTime(String? content) {
-    return ReadingTime.calculateAndFormat(content);
-  }
-
   void _cacheFullContent(String? content) {
     _fullContent = content;
     _parsedFullContentBody = null;
     _heroImageInFullContent = false;
-    _readingTime = _calculateReadingTime(
-      content ?? widget.article.fullContent ?? widget.article.rawDescription,
-    );
 
     if (content == null || content.isEmpty) {
       return;
@@ -743,12 +731,6 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
         icon: AppSymbols.calendar_today,
         label: _formatFriendlyDate(widget.article.date),
       ),
-      if (_readingTime.isNotEmpty)
-        _buildMetadataChip(
-          context,
-          icon: AppSymbols.timer_outlined,
-          label: _readingTime,
-        ),
     ];
 
     return Align(
