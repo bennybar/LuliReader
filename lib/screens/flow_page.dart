@@ -573,9 +573,9 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         bottom: _isBatchMode
             ? null
             : PreferredSize(
-                preferredSize: const Size.fromHeight(56),
+                preferredSize: const Size.fromHeight(52),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: SegmentedButton<String>(
