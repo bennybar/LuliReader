@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
+import '../theme/app_symbols.dart';
 
 class AddFreshRssAccountScreen extends ConsumerStatefulWidget {
   const AddFreshRssAccountScreen({super.key});
@@ -141,7 +142,7 @@ class _AddFreshRssAccountScreenState extends ConsumerState<AddFreshRssAccountScr
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.cloud),
+                    : const Icon(AppSymbols.cloud),
                 label: Text(_isLoading ? 'Working...' : 'Add FreshRSS'),
               ),
               if (_status != null) ...[

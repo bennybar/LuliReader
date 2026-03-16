@@ -14,6 +14,7 @@ import '../services/rss_service.dart';
 import '../utils/rtl_helper.dart';
 import '../utils/reading_time.dart';
 import '../services/shared_preferences_service.dart';
+import '../theme/app_symbols.dart';
 
 class ArticleReaderScreen extends ConsumerStatefulWidget {
   final Article article;
@@ -335,7 +336,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.remove),
+                          icon: const Icon(AppSymbols.remove),
                           onPressed: () => updateTitleSize(tempTitleFontSize - 1),
                         ),
                         SizedBox(
@@ -347,7 +348,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.add),
+                          icon: const Icon(AppSymbols.add),
                           onPressed: () => updateTitleSize(tempTitleFontSize + 1),
                         ),
                       ],
@@ -362,7 +363,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                     Row(
                       children: [
                         IconButton(
-                          icon: const Icon(Icons.remove),
+                          icon: const Icon(AppSymbols.remove),
                           onPressed: () => updateArticleSize(tempArticleFontSize - 1),
                         ),
                         SizedBox(
@@ -374,7 +375,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.add),
+                          icon: const Icon(AppSymbols.add),
                           onPressed: () => updateArticleSize(tempArticleFontSize + 1),
                         ),
                       ],
@@ -449,13 +450,13 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.text_fields),
+              icon: const Icon(AppSymbols.text_fields),
               tooltip: 'Font Size',
               onPressed: () => _showFontSizeDialog(context),
             ),
             IconButton(
               icon: Icon(
-                _useFullContent ? Icons.article : Icons.article_outlined,
+                _useFullContent ? AppSymbols.article : AppSymbols.article_outlined,
                 color: _useFullContent 
                     ? Theme.of(context).colorScheme.primary 
                     : null,
@@ -464,20 +465,20 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               onPressed: _toggleFullContent,
             ),
             IconButton(
-              icon: Icon(_isUnread ? Icons.mark_email_unread : Icons.mark_email_read),
+              icon: Icon(_isUnread ? AppSymbols.mark_email_unread : AppSymbols.mark_email_read),
               tooltip: _isUnread ? 'Mark as read' : 'Mark as unread',
               onPressed: _toggleRead,
             ),
             IconButton(
-              icon: Icon(_isStarred ? Icons.star : Icons.star_border),
+              icon: Icon(_isStarred ? AppSymbols.star : AppSymbols.star_border),
               onPressed: _toggleStarred,
             ),
             IconButton(
-              icon: const Icon(Icons.share),
+              icon: const Icon(AppSymbols.share),
               onPressed: _shareArticle,
             ),
             IconButton(
-              icon: const Icon(Icons.open_in_browser),
+              icon: const Icon(AppSymbols.open_in_browser),
               onPressed: _openInBrowser,
             ),
           ],
@@ -539,7 +540,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                               ),
                               const SizedBox(width: 4),
                               Icon(
-                                Icons.timer_outlined,
+                                AppSymbols.timer_outlined,
                                 size: 16,
                                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                               ),
@@ -1211,7 +1212,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Center(
         child: Icon(
-          Icons.photo_outlined,
+          AppSymbols.photo_outlined,
           color: Theme.of(context).colorScheme.outline,
         ),
       ),
@@ -1245,7 +1246,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
           alignment: isRtl ? Alignment.centerRight : Alignment.centerLeft,
           child: OutlinedButton.icon(
             onPressed: _loadFullContent,
-            icon: const Icon(Icons.download),
+            icon: const Icon(AppSymbols.download),
             label: const Text('Download Full Article'),
           ),
         ),

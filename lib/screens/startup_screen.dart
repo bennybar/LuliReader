@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
 import 'main_navigation.dart';
 import 'add_account_screen.dart';
+import '../theme/app_symbols.dart';
 
 class StartupScreen extends ConsumerStatefulWidget {
   const StartupScreen({super.key});
@@ -46,7 +47,7 @@ class _StartupScreenState extends ConsumerState<StartupScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.article,
+              AppSymbols.article,
               size: 80,
               color: Theme.of(context).colorScheme.primary,
             ),

@@ -6,6 +6,7 @@ import '../providers/app_provider.dart';
 import '../database/feed_dao.dart';
 import '../database/article_dao.dart';
 import '../database/group_dao.dart';
+import '../theme/app_symbols.dart';
 
 class FeedOptionsScreen extends ConsumerStatefulWidget {
   final Feed feed;
@@ -257,7 +258,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 final isCurrent = group.id == widget.feed.groupId;
                 return ListTile(
                   leading: Icon(
-                    Icons.folder,
+                    AppSymbols.folder,
                     color: isCurrent 
                         ? Theme.of(context).colorScheme.primary 
                         : null,
@@ -270,7 +271,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                   ),
                   trailing: isCurrent 
                       ? Icon(
-                          Icons.check,
+                          AppSymbols.check,
                           color: Theme.of(context).colorScheme.primary,
                         )
                       : null,
@@ -384,7 +385,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 if (_articleCount != null)
                   Card(
                     child: ListTile(
-                      leading: const Icon(Icons.health_and_safety),
+                      leading: const Icon(AppSymbols.health_and_safety),
                       title: const Text('Feed health'),
                       subtitle: Text(
                         'Articles cached: $_articleCount\nLatest: ${_latestArticleDate != null ? _latestArticleDate!.toLocal() : 'N/A'}',
@@ -404,7 +405,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 // Parse Full Content Toggle
                 Card(
                   child: SwitchListTile(
-                    secondary: const Icon(Icons.article_outlined),
+                    secondary: const Icon(AppSymbols.article_outlined),
                     title: const Text('Parse Full Content'),
                     subtitle: const Text(
                       'Automatically download and parse full article content in the background',
@@ -424,7 +425,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 // Open in Browser Toggle
                 Card(
                   child: SwitchListTile(
-                    secondary: const Icon(Icons.open_in_browser),
+                    secondary: const Icon(AppSymbols.open_in_browser),
                     title: const Text('Open in Browser'),
                     subtitle: const Text('Open articles in external browser instead of reader'),
                     value: _isBrowser,
@@ -442,7 +443,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 // Force RTL Toggle
                 Card(
                   child: SwitchListTile(
-                    secondary: const Icon(Icons.format_textdirection_r_to_l),
+                    secondary: const Icon(AppSymbols.format_textdirection_r_to_l),
                     title: const Text('Force Right-to-Left'),
                     subtitle: const Text('Force RTL layout and right alignment for this feed'),
                     value: _isRtl == true,
@@ -465,7 +466,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 const SizedBox(height: 12),
                 Card(
                   child: SwitchListTile(
-                    secondary: const Icon(Icons.notifications_outlined),
+                    secondary: const Icon(AppSymbols.notifications_outlined),
                     title: const Text('Allow Notifications'),
                     subtitle: const Text('Receive notifications for new articles'),
                     value: _isNotification,
@@ -488,7 +489,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 const SizedBox(height: 12),
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.edit),
+                    leading: const Icon(AppSymbols.edit),
                     title: const Text('Rename'),
                     onTap: _renameFeed,
                   ),
@@ -496,7 +497,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 const SizedBox(height: 8),
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.clear_all, color: Colors.orange),
+                    leading: const Icon(AppSymbols.clear_all, color: Colors.orange),
                     title: const Text('Clear Articles'),
                     subtitle: const Text('Remove all articles from this feed'),
                     onTap: _clearFeed,
@@ -505,7 +506,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 const SizedBox(height: 8),
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.folder),
+                    leading: const Icon(AppSymbols.folder),
                     title: const Text('Change Folder'),
                     subtitle: const Text('Move this feed to a different folder'),
                     onTap: _changeFolder,
@@ -514,7 +515,7 @@ class _FeedOptionsScreenState extends ConsumerState<FeedOptionsScreen> {
                 const SizedBox(height: 8),
                 Card(
                   child: ListTile(
-                    leading: const Icon(Icons.delete, color: Colors.red),
+                    leading: const Icon(AppSymbols.delete, color: Colors.red),
                     title: const Text('Delete Feed'),
                     subtitle: const Text('Permanently delete this feed and all articles'),
                     onTap: _deleteFeed,

@@ -10,6 +10,7 @@ import '../services/sync_log_service.dart';
 import 'opml_import_export_screen.dart';
 import 'startup_screen.dart';
 import 'blacklist_screen.dart';
+import '../theme/app_symbols.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -468,10 +469,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               // Account Info
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.account_circle),
+                  leading: const Icon(AppSymbols.account_circle),
                   title: const Text('Account'),
                   subtitle: Text(account.name),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                 ),
               ),
               const SizedBox(height: 8),
@@ -479,7 +480,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.15),
                 child: ListTile(
                   leading: Icon(
-                    Icons.delete_forever,
+                    AppSymbols.delete_forever,
                     color: Theme.of(context).colorScheme.error,
                   ),
                   title: Text(
@@ -497,7 +498,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               Card(
                 color: Theme.of(context).colorScheme.errorContainer.withOpacity(0.1),
                 child: ListTile(
-                  leading: const Icon(Icons.delete_sweep),
+                  leading: const Icon(AppSymbols.delete_sweep),
                   title: const Text('Clear Downloaded Articles'),
                   subtitle: const Text('Delete all stored articles and reset sync markers'),
                   onTap: _confirmClearArticles,
@@ -516,24 +517,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 12),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.home),
+                  leading: const Icon(AppSymbols.home),
                   title: const Text('Default Screen'),
                   subtitle: Text(
                     account.defaultScreen == 0
                         ? 'Feeds (opens on the folder view)'
                         : 'Articles (Flow stream)',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showDefaultScreenDialog(context, account),
                 ),
               ),
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.brightness_6),
+                  leading: const Icon(AppSymbols.brightness_6),
                   title: const Text('Theme'),
                   subtitle: Text(_themeSubtitle(ref)),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showThemeDialog(context),
                 ),
               ),
@@ -605,7 +606,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton.icon(
-                          icon: const Icon(Icons.refresh),
+                          icon: const Icon(AppSymbols.refresh),
                           label: const Text('Reset Reading'),
                           onPressed: () async {
                             setState(() {
@@ -657,7 +658,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton.icon(
-                          icon: const Icon(Icons.refresh),
+                          icon: const Icon(AppSymbols.refresh),
                           label: const Text('Reset'),
                           onPressed: () async {
                             setState(() => _articleListFontScale = 1.0);
@@ -672,7 +673,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
               Card(
                 child: SwitchListTile(
-                  secondary: const Icon(Icons.image),
+                  secondary: const Icon(AppSymbols.image),
                   title: const Text('Show Hero Image'),
                   subtitle: const Text('Toggle article thumbnail in lists'),
                   value: _showHeroImage,
@@ -689,7 +690,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
               Card(
                 child: SwitchListTile(
-                  secondary: const Icon(Icons.text_fields),
+                  secondary: const Icon(AppSymbols.text_fields),
                   title: const Text('Show Preview Text'),
                   subtitle: const Text('Display 2 rows of article preview text'),
                   value: _showPreviewText,
@@ -716,7 +717,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 12),
               Card(
                 child: SwitchListTile(
-                  secondary: const Icon(Icons.article_outlined),
+                  secondary: const Icon(AppSymbols.article_outlined),
                   title: const Text('Parse Full Content'),
                   subtitle: const Text(
                     'Automatically download and parse full article content for ALL feeds in the background during sync',
@@ -728,30 +729,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.open_in_browser),
+                  leading: const Icon(AppSymbols.open_in_browser),
                   title: const Text('Open Links In'),
                   subtitle: Text(_openLinksExternally ? 'External Browser' : 'In-app Browser'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showOpenLinksDialog(context),
                 ),
               ),
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.history),
+                  leading: const Icon(AppSymbols.history),
                   title: const Text('Keep Read Items'),
                   subtitle: Text('$_keepReadItemsDays ${_keepReadItemsDays == 1 ? 'day' : 'days'} • Read articles older than this will be deleted'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showKeepReadItemsDialog(context),
                 ),
               ),
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.timer),
+                  leading: const Icon(AppSymbols.timer),
                   title: const Text('Feed Timeout'),
                   subtitle: Text('$_feedTimeoutSeconds seconds • Timeout for fetching feeds'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showFeedTimeoutDialog(context),
                 ),
               ),
@@ -768,20 +769,20 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 12),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.swipe_left),
+                  leading: const Icon(AppSymbols.swipe_left),
                   title: const Text('Swipe to Start'),
                   subtitle: Text(_getSwipeActionDescription(account.swipeStartAction)),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showSwipeActionDialog(context, account, true),
                 ),
               ),
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.swipe_right),
+                  leading: const Icon(AppSymbols.swipe_right),
                   title: const Text('Swipe to End'),
                   subtitle: Text(_getSwipeActionDescription(account.swipeEndAction)),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showSwipeActionDialog(context, account, false),
                 ),
               ),
@@ -798,17 +799,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 12),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.sync),
+                  leading: const Icon(AppSymbols.sync),
                   title: const Text('Sync Interval'),
                   subtitle: Text('${account.syncInterval} minutes'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showSyncIntervalDialog(context, account),
                 ),
               ),
               const SizedBox(height: 8),
               Card(
                 child: SwitchListTile(
-                  secondary: const Icon(Icons.sync_lock),
+                  secondary: const Icon(AppSymbols.sync_lock),
                   title: const Text('Background Sync'),
                   subtitle: const Text('Allow background worker to run sync'),
                   value: _backgroundSyncEnabled,
@@ -831,7 +832,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
               Card(
                 child: SwitchListTile(
-                  secondary: const Icon(Icons.play_circle_outline),
+                  secondary: const Icon(AppSymbols.play_circle_outline),
                   title: const Text('Sync on App Start'),
                   subtitle: const Text('Automatically sync when the app starts'),
                   value: account.syncOnStart,
@@ -841,19 +842,19 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.history),
+                  leading: const Icon(AppSymbols.history),
                   title: const Text('Max Past Days to Sync'),
                   subtitle: Text(
                     '${account.maxPastDays} days • Older items will be skipped on sync',
                   ),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showMaxPastDaysDialog(context, account),
                 ),
               ),
               const SizedBox(height: 8),
               Card(
                 child: SwitchListTile(
-                  secondary: const Icon(Icons.wifi),
+                  secondary: const Icon(AppSymbols.wifi),
                   title: const Text('Sync Only on Wi-Fi'),
                   subtitle: const Text('Only sync when connected to Wi-Fi'),
                   value: account.syncOnlyOnWiFi,
@@ -863,7 +864,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
               Card(
                 child: SwitchListTile(
-                  secondary: const Icon(Icons.battery_charging_full),
+                  secondary: const Icon(AppSymbols.battery_charging_full),
                   title: const Text('Sync Only When Charging'),
                   subtitle: const Text('Only sync when device is charging'),
                   value: account.syncOnlyWhenCharging,
@@ -873,7 +874,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.restart_alt),
+                  leading: const Icon(AppSymbols.restart_alt),
                   title: const Text('Resync All Articles'),
                   subtitle: const Text('Clear local articles and re-download everything'),
                   trailing: _isResyncing
@@ -882,17 +883,17 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           height: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.chevron_right),
+                      : const Icon(AppSymbols.chevron_right),
                   onTap: _isResyncing ? null : () => _confirmResync(context, account),
                 ),
               ),
               const SizedBox(height: 8),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.history),
+                  leading: const Icon(AppSymbols.history),
                   title: const Text('Sync Log'),
                   subtitle: const Text('View background sync history'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () => _showSyncLog(context),
                 ),
               ),
@@ -909,10 +910,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               const SizedBox(height: 12),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.block),
+                  leading: const Icon(AppSymbols.block),
                   title: const Text('Blacklist'),
                   subtitle: const Text('Block articles by title patterns'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const Icon(AppSymbols.chevron_right),
                   onTap: () async {
                     await Navigator.of(context).push(
                       MaterialPageRoute(
@@ -924,10 +925,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const SizedBox(height: 24),
               ListTile(
-                leading: const Icon(Icons.import_export),
+                leading: const Icon(AppSymbols.import_export),
                 title: const Text('OPML Import/Export'),
                 subtitle: const Text('Import or export feeds'),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const Icon(AppSymbols.chevron_right),
                 onTap: () async {
                   final result = await Navigator.of(context).push(
                     MaterialPageRoute(
@@ -942,10 +943,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
               const Divider(),
               ListTile(
-                leading: const Icon(Icons.help_outline),
+                leading: const Icon(AppSymbols.help_outline),
                 title: const Text('Help & Support'),
                 subtitle: const Text('Report issues or get help'),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const Icon(AppSymbols.chevron_right),
                 onTap: () async {
                   final uri = Uri.parse('https://github.com/bennybar/LuliReader/issues');
                   if (await canLaunchUrl(uri)) {
@@ -962,10 +963,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.info),
+                leading: const Icon(AppSymbols.info),
                 title: const Text('About'),
                 subtitle: const Text('Luli Reader v1.1.80'),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const Icon(AppSymbols.chevron_right),
               ),
             ],
           );
@@ -1282,7 +1283,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.refresh, size: 20),
+                          icon: const Icon(AppSymbols.refresh, size: 20),
                           onPressed: () async {
                             setState(() {});
                           },
@@ -1330,7 +1331,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                                   vertical: 4,
                                 ),
                                 leading: Icon(
-                                  entry.success ? Icons.check_circle : Icons.error,
+                                  entry.success ? AppSymbols.check_circle : AppSymbols.error,
                                   color: entry.success ? Colors.green : Colors.red,
                                   size: 18,
                                 ),

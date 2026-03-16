@@ -9,6 +9,7 @@ import '../services/shared_preferences_service.dart';
 import 'article_reader_screen.dart';
 import '../widgets/filter_drawer.dart';
 import '../utils/rtl_helper.dart';
+import '../theme/app_symbols.dart';
 
 class ArticleListScreen extends ConsumerStatefulWidget {
   final Feed feed;
@@ -95,7 +96,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.remove),
+                  icon: const Icon(AppSymbols.remove),
                   onPressed: () => updateSize(tempFontSize - 1),
                 ),
                 SizedBox(
@@ -107,7 +108,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(AppSymbols.add),
                   onPressed: () => updateSize(tempFontSize + 1),
                 ),
               ],
@@ -139,7 +140,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
             children: ArticleSortOption.values.map((option) {
               return ListTile(
                 leading: Icon(
-                  _sortOption == option ? Icons.radio_button_checked : Icons.radio_button_off,
+                  _sortOption == option ? AppSymbols.radio_button_checked : AppSymbols.radio_button_off,
                 ),
                 title: Text(option.displayName),
                 onTap: () {
@@ -433,7 +434,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
         title: Row(
           children: [
             IconButton(
-              icon: const Icon(Icons.arrow_back),
+              icon: const Icon(AppSymbols.arrow_back),
               tooltip: 'Back',
               onPressed: () => Navigator.of(context).maybePop(),
             ),
@@ -448,7 +449,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
         actions: [
           if (_isBatchMode) ...[
             IconButton(
-              icon: const Icon(Icons.close),
+              icon: const Icon(AppSymbols.close),
               tooltip: 'Cancel Selection',
               onPressed: () {
                 setState(() {
@@ -463,7 +464,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'delete',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.delete_outline),
+                    leading: Icon(AppSymbols.delete_outline),
                     title: Text('Delete Selected'),
                   ),
                 ),
@@ -471,7 +472,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'star',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.star_outline),
+                    leading: Icon(AppSymbols.star_outline),
                     title: Text('Star Selected'),
                   ),
                 ),
@@ -479,7 +480,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'unstar',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.star_border),
+                    leading: Icon(AppSymbols.star_border),
                     title: Text('Unstar Selected'),
                   ),
                 ),
@@ -487,7 +488,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'read',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.done_all),
+                    leading: Icon(AppSymbols.done_all),
                     title: Text('Mark Selected Read'),
                   ),
                 ),
@@ -495,7 +496,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'unread',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.mark_email_unread),
+                    leading: Icon(AppSymbols.mark_email_unread),
                     title: Text('Mark Selected Unread'),
                   ),
                 ),
@@ -522,7 +523,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
             ),
           ] else ...[
             IconButton(
-              icon: const Icon(Icons.sort),
+              icon: const Icon(AppSymbols.sort),
               tooltip: 'Sort',
               onPressed: _showSortBottomSheet,
             ),
@@ -532,7 +533,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'font_size',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.text_fields),
+                    leading: Icon(AppSymbols.text_fields),
                     title: Text('List Font Size'),
                   ),
                 ),
@@ -540,7 +541,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'select',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.select_all),
+                    leading: Icon(AppSymbols.select_all),
                     title: Text('Select Articles'),
                   ),
                 ),
@@ -548,7 +549,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'mark_all_read',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.done_all),
+                    leading: Icon(AppSymbols.done_all),
                     title: Text('Mark All as Read'),
                   ),
                 ),
@@ -556,7 +557,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                   value: 'sync',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.sync),
+                    leading: Icon(AppSymbols.sync),
                     title: Text('Sync Feed'),
                   ),
                 ),
@@ -595,7 +596,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Icon(
-                                  Icons.article,
+                                  AppSymbols.article,
                                   size: 64,
                                   color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                                 ),
@@ -727,7 +728,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                                 padding:
                                     EdgeInsets.only(left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
                                 child: Icon(
-                                  Icons.star,
+                                  AppSymbols.star,
                                   size: 16,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
@@ -777,7 +778,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    Icons.access_time,
+                                    AppSymbols.access_time,
                                     size: 12,
                                     color: Theme.of(context)
                                         .colorScheme
@@ -863,7 +864,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
       width: heroSize,
       height: heroSize,
       child: Icon(
-        Icons.photo_outlined,
+        AppSymbols.photo_outlined,
         size: placeholderIconSize,
         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
       ),

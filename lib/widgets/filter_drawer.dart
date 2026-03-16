@@ -4,6 +4,7 @@ import '../models/group.dart';
 import '../models/feed.dart';
 import '../providers/app_provider.dart';
 import 'app_count_badge.dart';
+import '../theme/app_symbols.dart';
 
 class FilterDrawer extends ConsumerStatefulWidget {
   final VoidCallback? onFiltersChanged;
@@ -214,7 +215,7 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
                         Row(
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.arrow_back),
+                              icon: const Icon(AppSymbols.arrow_back),
                               color: colorScheme.onSurface,
                               tooltip: 'Close',
                               onPressed: () => Navigator.of(context).maybePop(),
@@ -278,7 +279,7 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Icon(
-                                    Icons.folder_outlined,
+                                    AppSymbols.folder_outlined,
                                     size: 48,
                                     color: colorScheme.onSurface.withOpacity(0.38),
                                   ),
@@ -360,7 +361,7 @@ class _FilterDrawerState extends ConsumerState<FilterDrawer> {
                 ),
                 const SizedBox(width: 4),
                 Icon(
-                  Icons.expand_more,
+                  AppSymbols.expand_more,
                   color: colorScheme.onSurfaceVariant,
                 ),
               ],

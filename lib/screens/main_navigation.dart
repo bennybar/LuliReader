@@ -7,6 +7,7 @@ import '../services/sync_log_service.dart';
 import '../services/shared_preferences_service.dart';
 import 'feeds_page.dart';
 import 'flow_page.dart';
+import '../theme/app_symbols.dart';
 
 class MainNavigation extends ConsumerStatefulWidget {
   const MainNavigation({super.key});
@@ -216,13 +217,13 @@ class _MainNavigationState extends ConsumerState<MainNavigation> with WidgetsBin
             },
             destinations: const [
               NavigationDestination(
-                icon: Icon(Icons.folder_outlined),
-                selectedIcon: Icon(Icons.folder_rounded),
+                icon: Icon(AppSymbols.folder_outlined),
+                selectedIcon: Icon(AppSymbols.folder_rounded),
                 label: 'Feeds',
               ),
               NavigationDestination(
-                icon: Icon(Icons.article_outlined),
-                selectedIcon: Icon(Icons.article_rounded),
+                icon: Icon(AppSymbols.article_outlined),
+                selectedIcon: Icon(AppSymbols.article_rounded),
                 label: 'Articles',
               ),
             ],

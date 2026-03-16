@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../database/blacklist_dao.dart';
 import '../providers/app_provider.dart';
 import '../services/account_service.dart';
+import '../theme/app_symbols.dart';
 
 class BlockedArticlesScreen extends ConsumerStatefulWidget {
   const BlockedArticlesScreen({super.key});
@@ -145,7 +146,7 @@ class _BlockedArticlesScreenState extends ConsumerState<BlockedArticlesScreen> {
         actions: [
           if (_blockedArticles.isNotEmpty)
             IconButton(
-              icon: const Icon(Icons.lock_open),
+              icon: const Icon(AppSymbols.lock_open),
               tooltip: 'Release All',
               onPressed: _releaseAll,
             ),
@@ -159,7 +160,7 @@ class _BlockedArticlesScreenState extends ConsumerState<BlockedArticlesScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.check_circle_outline,
+                        AppSymbols.check_circle_outline,
                         size: 64,
                         color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                       ),
@@ -200,7 +201,7 @@ class _BlockedArticlesScreenState extends ConsumerState<BlockedArticlesScreen> {
                             ],
                           ),
                           trailing: IconButton(
-                            icon: const Icon(Icons.lock_open),
+                            icon: const Icon(AppSymbols.lock_open),
                             color: Theme.of(context).colorScheme.primary,
                             tooltip: 'Release',
                             onPressed: () => _releaseArticle(article),

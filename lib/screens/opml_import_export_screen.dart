@@ -6,6 +6,7 @@ import 'dart:io';
 import 'dart:convert';
 import '../providers/app_provider.dart';
 import '../widgets/sync_progress_dialog.dart';
+import '../theme/app_symbols.dart';
 
 class OpmlImportExportScreen extends ConsumerStatefulWidget {
   const OpmlImportExportScreen({super.key});
@@ -174,7 +175,7 @@ class _OpmlImportExportScreenState extends ConsumerState<OpmlImportExportScreen>
                     Row(
                       children: [
                         Icon(
-                          Icons.upload_file,
+                          AppSymbols.upload_file,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(width: 8),
@@ -198,7 +199,7 @@ class _OpmlImportExportScreenState extends ConsumerState<OpmlImportExportScreen>
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.upload),
+                          : const Icon(AppSymbols.upload),
                       label: Text(_isImporting ? 'Importing...' : 'Select OPML File'),
                     ),
                   ],
@@ -215,7 +216,7 @@ class _OpmlImportExportScreenState extends ConsumerState<OpmlImportExportScreen>
                     Row(
                       children: [
                         Icon(
-                          Icons.download,
+                          AppSymbols.download,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(width: 8),
@@ -239,7 +240,7 @@ class _OpmlImportExportScreenState extends ConsumerState<OpmlImportExportScreen>
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.download),
+                          : const Icon(AppSymbols.download),
                       label: Text(_isExporting ? 'Exporting...' : 'Export OPML'),
                     ),
                   ],

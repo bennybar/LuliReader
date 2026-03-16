@@ -15,6 +15,7 @@ import 'settings_screen.dart';
 import 'search_screen.dart';
 import '../widgets/filter_drawer.dart';
 import 'package:swipe_to_action/swipe_to_action.dart';
+import '../theme/app_symbols.dart';
 
 class FlowPage extends ConsumerStatefulWidget {
   final Future<void> Function()? onSync;
@@ -172,7 +173,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 IconButton(
-                  icon: const Icon(Icons.remove),
+                  icon: const Icon(AppSymbols.remove),
                   onPressed: () => updateSize(tempFontSize - 1),
                 ),
                 SizedBox(
@@ -184,7 +185,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   ),
                 ),
                 IconButton(
-                  icon: const Icon(Icons.add),
+                  icon: const Icon(AppSymbols.add),
                   onPressed: () => updateSize(tempFontSize + 1),
                 ),
               ],
@@ -216,7 +217,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
             children: ArticleSortOption.values.map((option) {
               return ListTile(
                 leading: Icon(
-                  _sortOption == option ? Icons.radio_button_checked : Icons.radio_button_off,
+                  _sortOption == option ? AppSymbols.radio_button_checked : AppSymbols.radio_button_off,
                 ),
                 title: Text(option.displayName),
                 onTap: () {
@@ -594,7 +595,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         actions: [
           if (_isBatchMode) ...[
             IconButton(
-              icon: const Icon(Icons.close),
+              icon: const Icon(AppSymbols.close),
               tooltip: 'Cancel Selection',
               onPressed: () {
                 setState(() {
@@ -606,25 +607,25 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
           ] else ...[
             Builder(
               builder: (context) => IconButton(
-                icon: const Icon(Icons.tune),
+                icon: const Icon(AppSymbols.tune),
                 tooltip: 'Filters',
                 onPressed: () => Scaffold.of(context).openDrawer(),
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.search),
+              icon: const Icon(AppSymbols.search),
               tooltip: 'Search',
               onPressed: _openSearch,
             ),
             PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
+              icon: const Icon(AppSymbols.more_vert),
               tooltip: 'More',
               itemBuilder: (context) => [
                 const PopupMenuItem(
                   value: 'sort',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.sort),
+                    leading: Icon(AppSymbols.sort),
                     title: Text('Change Sort'),
                   ),
                 ),
@@ -632,7 +633,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   value: 'font_size',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.text_fields),
+                    leading: Icon(AppSymbols.text_fields),
                     title: Text('List Font Size'),
                   ),
                 ),
@@ -640,7 +641,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   value: 'select_all',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.select_all),
+                    leading: Icon(AppSymbols.select_all),
                     title: Text('Select Articles'),
                   ),
                 ),
@@ -648,7 +649,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   value: 'mark_all_read',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.done_all),
+                    leading: Icon(AppSymbols.done_all),
                     title: Text('Mark All as Read'),
                   ),
                 ),
@@ -663,7 +664,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.sync),
+                        : const Icon(AppSymbols.sync),
                     title: const Text('Sync'),
                   ),
                 ),
@@ -671,7 +672,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                   value: 'settings',
                   child: ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.settings_outlined),
+                    leading: Icon(AppSymbols.settings_outlined),
                     title: Text('Settings'),
                   ),
                 ),
@@ -704,7 +705,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
           ],
           if (_isBatchMode)
             PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
+              icon: const Icon(AppSymbols.more_vert),
               tooltip: 'More',
               itemBuilder: (context) => [
                 if (_selectedArticleIds.isNotEmpty && _isBatchMode) ...const [
@@ -712,7 +713,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     value: 'mark_selected_read',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.done_all),
+                      leading: Icon(AppSymbols.done_all),
                       title: Text('Mark Selected Read'),
                     ),
                   ),
@@ -720,7 +721,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     value: 'mark_selected_unread',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.mark_email_unread),
+                      leading: Icon(AppSymbols.mark_email_unread),
                       title: Text('Mark Selected Unread'),
                     ),
                   ),
@@ -728,7 +729,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     value: 'star_selected',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.star_outline),
+                      leading: Icon(AppSymbols.star_outline),
                       title: Text('Star Selected'),
                     ),
                   ),
@@ -737,7 +738,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     value: 'sort',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.sort),
+                      leading: Icon(AppSymbols.sort),
                       title: Text('Change Sort'),
                     ),
                   ),
@@ -745,7 +746,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     value: 'font_size',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.text_fields),
+                      leading: Icon(AppSymbols.text_fields),
                       title: Text('List Font Size'),
                     ),
                   ),
@@ -753,7 +754,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     value: 'select_all',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.select_all),
+                      leading: Icon(AppSymbols.select_all),
                       title: Text('Select Articles'),
                     ),
                   ),
@@ -761,7 +762,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     value: 'mark_all_read',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.done_all),
+                      leading: Icon(AppSymbols.done_all),
                       title: Text('Mark All as Read'),
                     ),
                   ),
@@ -776,7 +777,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                               height: 18,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.sync),
+                          : const Icon(AppSymbols.sync),
                       title: const Text('Sync'),
                     ),
                   ),
@@ -784,7 +785,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                     value: 'settings',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.settings_outlined),
+                      leading: Icon(AppSymbols.settings_outlined),
                       title: Text('Settings'),
                     ),
                   ),
@@ -848,7 +849,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                         mainAxisAlignment: MainAxisAlignment.center,
                                         children: [
                                           Icon(
-                                            Icons.article,
+                                            AppSymbols.article,
                                             size: 64,
                                             color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                                           ),
@@ -1022,7 +1023,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                   padding:
                                       EdgeInsets.only(left: isRtl ? 0 : 8, right: isRtl ? 8 : 0),
                                   child: Icon(
-                                    Icons.star,
+                                    AppSymbols.star,
                                     size: 16,
                                     color: Theme.of(context).colorScheme.primary,
                                   ),
@@ -1071,7 +1072,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(
-                                      Icons.access_time,
+                                      AppSymbols.access_time,
                                       size: 12,
                                       color: Theme.of(context)
                                           .colorScheme
@@ -1270,11 +1271,11 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   IconData _getActionIcon(int action) {
     switch (action) {
       case 1: // Toggle Read
-        return Icons.visibility;
+        return AppSymbols.visibility;
       case 2: // Toggle Starred
-        return Icons.star;
+        return AppSymbols.star;
       default:
-        return Icons.help;
+        return AppSymbols.help;
     }
   }
 
@@ -1301,7 +1302,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
         borderRadius: BorderRadius.circular(12),
       ),
       child: Icon(
-        Icons.photo_outlined,
+        AppSymbols.photo_outlined,
         size: placeholderIconSize,
         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
       ),
@@ -1321,7 +1322,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.share),
+              leading: const Icon(AppSymbols.share),
               title: const Text('Share'),
               onTap: () {
                 Navigator.pop(context);
@@ -1329,7 +1330,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               },
             ),
             ListTile(
-              leading: const Icon(Icons.done_all),
+              leading: const Icon(AppSymbols.done_all),
               title: const Text('Mark Below as Read'),
               onTap: () {
                 Navigator.pop(context);
@@ -1337,7 +1338,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               },
             ),
             ListTile(
-              leading: const Icon(Icons.select_all),
+              leading: const Icon(AppSymbols.select_all),
               title: const Text('Select Articles'),
               onTap: () {
                 Navigator.pop(context);
@@ -1613,7 +1614,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
           child: Row(
             children: [
-              const Icon(Icons.history, size: 16),
+              const Icon(AppSymbols.history, size: 16),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -1694,25 +1695,25 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildBatchActionButton(
-                  icon: Icons.star,
+                  icon: AppSymbols.star,
                   label: 'Star',
                   onPressed: _batchStar,
                   color: Colors.orange,
                 ),
                 _buildBatchActionButton(
-                  icon: Icons.star_border,
+                  icon: AppSymbols.star_border,
                   label: 'Unstar',
                   onPressed: _batchUnstar,
                   color: Colors.orange,
                 ),
                 _buildBatchActionButton(
-                  icon: Icons.done_all,
+                  icon: AppSymbols.done_all,
                   label: 'Read',
                   onPressed: _batchMarkAsRead,
                   color: Colors.blue,
                 ),
                 _buildBatchActionButton(
-                  icon: Icons.mark_email_unread,
+                  icon: AppSymbols.mark_email_unread,
                   label: 'Unread',
                   onPressed: _batchMarkAsUnread,
                   color: Colors.blue,

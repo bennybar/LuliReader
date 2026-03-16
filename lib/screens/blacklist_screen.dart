@@ -6,6 +6,7 @@ import '../services/account_service.dart';
 import '../models/feed.dart';
 import 'blocked_articles_screen.dart';
 import 'blacklist_import_export_screen.dart';
+import '../theme/app_symbols.dart';
 
 class BlacklistScreen extends ConsumerStatefulWidget {
   const BlacklistScreen({super.key});
@@ -200,7 +201,7 @@ class _BlacklistScreenState extends ConsumerState<BlacklistScreen> {
             child: const Text('Import/Export'),
           ),
           IconButton(
-            icon: const Icon(Icons.block),
+            icon: const Icon(AppSymbols.block),
             tooltip: 'View Blocked Articles',
             onPressed: () async {
               await Navigator.of(context).push(
@@ -222,7 +223,7 @@ class _BlacklistScreenState extends ConsumerState<BlacklistScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.block,
+                        AppSymbols.block,
                         size: 64,
                         color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                       ),
@@ -248,7 +249,7 @@ class _BlacklistScreenState extends ConsumerState<BlacklistScreen> {
                       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       child: ListTile(
                         leading: Icon(
-                          entry.feedId == null ? Icons.public : Icons.rss_feed,
+                          entry.feedId == null ? AppSymbols.public : AppSymbols.rss_feed,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         title: Text(entry.pattern),
@@ -257,11 +258,11 @@ class _BlacklistScreenState extends ConsumerState<BlacklistScreen> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.edit),
+                              icon: const Icon(AppSymbols.edit),
                               onPressed: () => _editEntry(entry),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete),
+                              icon: const Icon(AppSymbols.delete),
                               color: Theme.of(context).colorScheme.error,
                               onPressed: () => _deleteEntry(entry),
                             ),
@@ -284,14 +285,14 @@ class _BlacklistScreenState extends ConsumerState<BlacklistScreen> {
               // Reload in case articles were released
               await _loadData();
             },
-            icon: const Icon(Icons.block),
+            icon: const Icon(AppSymbols.block),
             label: const Text('View Blocked Articles'),
             heroTag: 'view_blocked',
           ),
           const SizedBox(width: 8),
           FloatingActionButton(
             onPressed: _addEntry,
-            child: const Icon(Icons.add),
+            child: const Icon(AppSymbols.add),
             heroTag: 'add_entry',
           ),
         ],

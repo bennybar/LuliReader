@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_symbols.dart';
 
 class SyncProgressDialog extends StatefulWidget {
   final Future<void> Function(void Function(String) onProgress) syncFunction;
@@ -76,9 +77,9 @@ class _SyncProgressDialogState extends State<SyncProgressDialog> {
                 child: CircularProgressIndicator(strokeWidth: 2),
               )
             else if (_error != null)
-              Icon(Icons.error, color: Theme.of(context).colorScheme.error)
+              Icon(AppSymbols.error, color: Theme.of(context).colorScheme.error)
             else
-              Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary),
+              Icon(AppSymbols.check_circle, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 12),
             const Expanded(child: Text('Syncing Feeds')),
           ],

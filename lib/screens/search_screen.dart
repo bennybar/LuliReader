@@ -10,6 +10,7 @@ import '../services/search_history_service.dart';
 import '../utils/reading_time.dart';
 import 'article_reader_screen.dart';
 import '../utils/rtl_helper.dart';
+import '../theme/app_symbols.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -170,7 +171,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             border: InputBorder.none,
             suffixIcon: _searchController.text.isNotEmpty
                 ? IconButton(
-                    icon: const Icon(Icons.clear),
+                    icon: const Icon(AppSymbols.clear),
                     onPressed: () {
                       _searchController.clear();
                       setState(() {
@@ -196,7 +197,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           Stack(
             children: [
               IconButton(
-                icon: const Icon(Icons.filter_list),
+                icon: const Icon(AppSymbols.filter_list),
                 onPressed: _showFilters,
               ),
               if (_getActiveFilterCount() > 0)
@@ -238,7 +239,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.search_off,
+                            AppSymbols.search_off,
                             size: 64,
                             color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                           ),
@@ -261,7 +262,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.history,
+              AppSymbols.history,
               size: 64,
               color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
             ),
@@ -300,14 +301,14 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             ),
           ),
         ..._searchHistory.map((query) => ListTile(
-              leading: const Icon(Icons.history),
+              leading: const Icon(AppSymbols.history),
               title: Text(query),
               onTap: () {
                 _searchController.text = query;
                 _performSearch(query);
               },
               trailing: IconButton(
-                icon: const Icon(Icons.close, size: 20),
+                icon: const Icon(AppSymbols.close, size: 20),
                 onPressed: () async {
                   if (_accountId != null) {
                     await _searchHistoryService.removeSearchQuery(_accountId!, query);
@@ -364,7 +365,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.timer_outlined,
+                        AppSymbols.timer_outlined,
                         size: 14,
                         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                       ),
@@ -380,7 +381,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons.access_time,
+                      AppSymbols.access_time,
                       size: 14,
                       color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                     ),
@@ -393,7 +394,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                 ),
                 if (article.isStarred)
                   Icon(
-                    Icons.star,
+                    AppSymbols.star,
                     size: 14,
                     color: Theme.of(context).colorScheme.primary,
                   ),
@@ -553,7 +554,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                 ? '${_startDate!.day}/${_startDate!.month}/${_startDate!.year}'
                 : 'No start date'),
             trailing: IconButton(
-              icon: const Icon(Icons.calendar_today),
+              icon: const Icon(AppSymbols.calendar_today),
               onPressed: () => _selectDate(true),
             ),
           ),
@@ -563,7 +564,7 @@ class _FiltersSheetState extends State<_FiltersSheet> {
                 ? '${_endDate!.day}/${_endDate!.month}/${_endDate!.year}'
                 : 'No end date'),
             trailing: IconButton(
-              icon: const Icon(Icons.calendar_today),
+              icon: const Icon(AppSymbols.calendar_today),
               onPressed: () => _selectDate(false),
             ),
           ),

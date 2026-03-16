@@ -12,6 +12,7 @@ import 'feed_options_screen.dart';
 import 'settings_screen.dart';
 import '../widgets/filter_drawer.dart';
 import '../widgets/app_count_badge.dart';
+import '../theme/app_symbols.dart';
 
 class FeedsPage extends ConsumerStatefulWidget {
   final Future<void> Function()? onSync;
@@ -55,7 +56,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
         actions: [
           Builder(
             builder: (context) => IconButton(
-              icon: const Icon(Icons.tune),
+              icon: const Icon(AppSymbols.tune),
               tooltip: 'Filters',
               onPressed: () => Scaffold.of(context).openDrawer(),
             ),
@@ -67,7 +68,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : const Icon(Icons.sync),
+                : const Icon(AppSymbols.sync),
             tooltip: 'Sync All Feeds',
             onPressed: _isSyncing
                 ? null
@@ -106,7 +107,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                   },
           ),
           IconButton(
-            icon: const Icon(Icons.add),
+            icon: const Icon(AppSymbols.add),
             tooltip: 'Add Feed',
             onPressed: _openAddFeed,
           ),
@@ -130,7 +131,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                 value: 'new_folder',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.create_new_folder),
+                  leading: Icon(AppSymbols.create_new_folder),
                   title: Text('New Folder'),
                 ),
               ),
@@ -138,7 +139,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                 value: 'cloud_account',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.cloud_outlined),
+                  leading: Icon(AppSymbols.cloud_outlined),
                   title: Text('Add Cloud Account'),
                 ),
               ),
@@ -146,7 +147,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                 value: 'settings',
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: Icon(Icons.settings_outlined),
+                  leading: Icon(AppSymbols.settings_outlined),
                   title: Text('Settings'),
                 ),
               ),
@@ -178,13 +179,13 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.cloud),
+              leading: const Icon(AppSymbols.cloud),
               title: const Text('FreshRSS'),
               subtitle: const Text('Google Reader compatible'),
               onTap: () => Navigator.pop(context, 'freshrss'),
             ),
             ListTile(
-              leading: const Icon(Icons.cloud),
+              leading: const Icon(AppSymbols.cloud),
               title: const Text('Miniflux'),
               subtitle: const Text('Google Reader compatible'),
               onTap: () => Navigator.pop(context, 'miniflux'),
@@ -244,7 +245,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
-                  visibleGroupIds.isEmpty ? Icons.rss_feed : Icons.filter_alt_off,
+                  visibleGroupIds.isEmpty ? AppSymbols.rss_feed : AppSymbols.filter_alt_off,
                   size: 64,
                   color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
                 ),
@@ -303,7 +304,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
               borderRadius: BorderRadius.circular(14),
             ),
             child: Icon(
-              Icons.folder_rounded,
+              AppSymbols.folder_rounded,
               size: 20,
               color: scheme.onPrimaryContainer,
             ),
@@ -327,7 +328,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                 highlight: groupUnreadCount > 0,
               ),
               PopupMenuButton<String>(
-                icon: const Icon(Icons.more_horiz),
+                icon: const Icon(AppSymbols.more_horiz),
                 tooltip: 'Folder actions',
                 onSelected: (value) {
                   if (value == 'delete') {
@@ -339,7 +340,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                     value: 'delete',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.delete_outline),
+                      leading: Icon(AppSymbols.delete_outline),
                       title: Text('Delete Folder'),
                     ),
                   ),
@@ -385,7 +386,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                         ),
                       ),
                       child: Icon(
-                        Icons.error_outline,
+                        AppSymbols.error_outline,
                         size: 12,
                         color: Theme.of(context).colorScheme.onError,
                       ),
@@ -429,7 +430,7 @@ class FeedsPageState extends ConsumerState<FeedsPage> {
                   highlight: unreadCount > 0,
                 ),
                 IconButton(
-                  icon: const Icon(Icons.more_horiz),
+                  icon: const Icon(AppSymbols.more_horiz),
                   visualDensity: const VisualDensity(horizontal: -2, vertical: -2),
                   onPressed: () async {
                     final result = await Navigator.of(context).push(

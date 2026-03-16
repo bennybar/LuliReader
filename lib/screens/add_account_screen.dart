@@ -4,6 +4,7 @@ import '../providers/app_provider.dart';
 import 'add_freshrss_account_screen.dart';
 import 'add_miniflux_account_screen.dart';
 import 'main_navigation.dart';
+import '../theme/app_symbols.dart';
 
 class AddAccountScreen extends ConsumerStatefulWidget {
   const AddAccountScreen({super.key});
@@ -59,7 +60,7 @@ class _AddAccountScreenState extends ConsumerState<AddAccountScreen> {
             children: [
               const SizedBox(height: 32),
               Icon(
-                Icons.article,
+                AppSymbols.article,
                 size: 80,
                 color: Theme.of(context).colorScheme.primary,
               ),
@@ -107,7 +108,7 @@ class _AddAccountScreenState extends ConsumerState<AddAccountScreen> {
                     );
                   }
                 },
-                icon: const Icon(Icons.cloud),
+                icon: const Icon(AppSymbols.cloud),
                 label: const Text('Add Cloud Account (FreshRSS)'),
               ),
               TextButton.icon(
@@ -123,7 +124,7 @@ class _AddAccountScreenState extends ConsumerState<AddAccountScreen> {
                     );
                   }
                 },
-                icon: const Icon(Icons.cloud),
+                icon: const Icon(AppSymbols.cloud),
                 label: const Text('Add Cloud Account (Miniflux)'),
               ),
             ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/app_provider.dart';
+import '../theme/app_symbols.dart';
 
 class AddMinifluxAccountScreen extends ConsumerStatefulWidget {
   const AddMinifluxAccountScreen({super.key});
@@ -104,7 +105,7 @@ class _AddMinifluxAccountScreenState extends ConsumerState<AddMinifluxAccountScr
                       Row(
                         children: [
                           Icon(
-                            Icons.info_outline,
+                            AppSymbols.info_outline,
                             color: Theme.of(context).colorScheme.primary,
                             size: 20,
                           ),
@@ -184,7 +185,7 @@ class _AddMinifluxAccountScreenState extends ConsumerState<AddMinifluxAccountScr
                           color: Colors.white,
                         ),
                       )
-                    : const Icon(Icons.cloud),
+                    : const Icon(AppSymbols.cloud),
                 label: Text(_isLoading ? 'Working...' : 'Add Miniflux'),
               ),
               if (_status != null) ...[

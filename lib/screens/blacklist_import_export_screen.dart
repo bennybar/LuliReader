@@ -10,6 +10,7 @@ import '../database/feed_dao.dart';
 import '../providers/app_provider.dart';
 import '../services/account_service.dart';
 import '../models/feed.dart';
+import '../theme/app_symbols.dart';
 
 class BlacklistImportExportScreen extends ConsumerStatefulWidget {
   const BlacklistImportExportScreen({super.key});
@@ -255,7 +256,7 @@ class _BlacklistImportExportScreenState extends ConsumerState<BlacklistImportExp
                     Row(
                       children: [
                         Icon(
-                          Icons.upload_file,
+                          AppSymbols.upload_file,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(width: 8),
@@ -279,7 +280,7 @@ class _BlacklistImportExportScreenState extends ConsumerState<BlacklistImportExp
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.upload),
+                          : const Icon(AppSymbols.upload),
                       label: Text(_isImporting ? 'Importing...' : 'Select .txt File'),
                     ),
                   ],
@@ -296,7 +297,7 @@ class _BlacklistImportExportScreenState extends ConsumerState<BlacklistImportExp
                     Row(
                       children: [
                         Icon(
-                          Icons.download,
+                          AppSymbols.download,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                         const SizedBox(width: 8),
@@ -320,7 +321,7 @@ class _BlacklistImportExportScreenState extends ConsumerState<BlacklistImportExp
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.download),
+                          : const Icon(AppSymbols.download),
                       label: Text(_isExporting ? 'Exporting...' : 'Export to .txt File'),
                     ),
                   ],
