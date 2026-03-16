@@ -49,7 +49,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   bool _heroImageInFullContent = false;
   final SharedPreferencesService _prefs = SharedPreferencesService();
   final ScrollController _scrollController = ScrollController();
-  double _scrollProgress = 0.0;
+  final ValueNotifier<double> _scrollProgress = ValueNotifier<double>(0.0);
 
   @override
   void initState() {
@@ -67,6 +67,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
 
   @override
   void dispose() {
+    _scrollProgress.dispose();
     _scrollController
       ..removeListener(_updateScrollProgress)
       ..dispose();
@@ -441,10 +442,8 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
     final nextProgress = maxExtent <= 0
         ? 0.0
         : (_scrollController.offset / maxExtent).clamp(0.0, 1.0);
-    if ((nextProgress - _scrollProgress).abs() < 0.01) return;
-    setState(() {
-      _scrollProgress = nextProgress;
-    });
+    if ((nextProgress - _scrollProgress.value).abs() < 0.01) return;
+    _scrollProgress.value = nextProgress;
   }
 
   Future<void> _setReaderMode(bool useFullContent) async {
@@ -515,13 +514,18 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                     ],
                     bottom: PreferredSize(
                       preferredSize: const Size.fromHeight(2),
-                      child: Opacity(
-                        opacity: _scrollProgress <= 0 || _scrollProgress >= 1 ? 0 : 1,
-                        child: LinearProgressIndicator(
-                          value: _scrollProgress,
-                          minHeight: 2,
-                          backgroundColor: Colors.transparent,
-                        ),
+                      child: ValueListenableBuilder<double>(
+                        valueListenable: _scrollProgress,
+                        builder: (context, progress, child) {
+                          return Opacity(
+                            opacity: progress <= 0 || progress >= 1 ? 0 : 1,
+                            child: LinearProgressIndicator(
+                              value: progress,
+                              minHeight: 2,
+                              backgroundColor: Colors.transparent,
+                            ),
+                          );
+                        },
                       ),
                     ),
                   ),
