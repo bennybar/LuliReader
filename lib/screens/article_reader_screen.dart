@@ -32,6 +32,8 @@ enum _ReaderMenuAction {
   openOriginal,
 }
 class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
+  static const double _baseReaderTitleSize = 22.0;
+  static const double _baseReaderInnerHeadingSize = 16.0;
   String? _fullContent;
   bool _isLoadingFullContent = false;
   bool _isMarkedAsRead = false;
@@ -287,7 +289,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   }
 
   Future<void> _showReaderAppearanceSheet(BuildContext context) async {
-    final baseTitleSize = Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24.0;
+    const baseTitleSize = _baseReaderTitleSize;
     final baseArticleSize = Theme.of(context).textTheme.bodyLarge?.fontSize ?? 16.0;
 
     double tempTitleFontSize = baseTitleSize * _titleFontScale;
@@ -626,9 +628,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                         height: 1.15,
-                        fontSize:
-                            (Theme.of(context).textTheme.headlineMedium?.fontSize ?? 28) *
-                                _titleFontScale,
+                        fontSize: _baseReaderTitleSize * _titleFontScale,
                       ),
                 ),
               ),
@@ -636,7 +636,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
               _buildMetadataRow(context, textDirection),
               const SizedBox(height: 18),
               _buildReaderModeToggle(context, textDirection),
-              const SizedBox(height: 14),
+              const SizedBox(height: 2),
               _buildReaderQuickActions(context, textDirection),
             ],
           ),
@@ -808,7 +808,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+            padding: const EdgeInsetsDirectional.fromSTEB(14, 2, 6, 2),
             decoration: BoxDecoration(
               color: scheme.surface,
               borderRadius: BorderRadius.circular(999),
@@ -822,10 +822,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                 Text(
                   'Full article',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 if (_isLoadingFullContent)
                   SizedBox(
                     width: 16,
@@ -1535,7 +1535,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                 text,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      fontSize: (Theme.of(context).textTheme.headlineSmall?.fontSize ?? 24) * _fontScale,
+                      fontSize: _baseReaderInnerHeadingSize * _fontScale,
                     ),
                 textAlign: TextAlign.start,
               ),
@@ -1556,7 +1556,7 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                 text,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      fontSize: (Theme.of(context).textTheme.titleMedium?.fontSize ?? 20) * _fontScale,
+                      fontSize: _baseReaderInnerHeadingSize * _fontScale,
                     ),
                 textAlign: TextAlign.start,
               ),
