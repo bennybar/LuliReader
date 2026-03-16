@@ -30,6 +30,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
   static const _swipeTriggerThreshold = 0.24;
   static const _swipeMaxOffset = 0.32;
   static const _swipeMovementDuration = Duration(milliseconds: 140);
+  static const Color _starredColor = Color(0xFFFFC107);
 
   List<ArticleWithFeed> _articles = [];
   bool _isLoading = true;
@@ -1037,7 +1038,7 @@ class FlowPageState extends ConsumerState<FlowPage> with WidgetsBindingObserver 
                                   child: Icon(
                                     AppSymbols.star,
                                     size: 16,
-                                    color: Theme.of(context).colorScheme.primary,
+                                    color: _starredColor,
                                   ),
                                 ),
                             ],

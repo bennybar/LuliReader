@@ -21,6 +21,7 @@ class ArticleListScreen extends ConsumerStatefulWidget {
 }
 
 class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
+  static const Color _starredColor = Color(0xFFFFC107);
   List<Article> _articles = [];
   bool _isLoading = true;
   ArticleSortOption _sortOption = ArticleSortOption.dateDesc;
@@ -730,7 +731,7 @@ class _ArticleListScreenState extends ConsumerState<ArticleListScreen> {
                                 child: Icon(
                                   AppSymbols.star,
                                   size: 16,
-                                  color: Theme.of(context).colorScheme.primary,
+                                  color: _starredColor,
                                 ),
                               ),
                           ],

@@ -33,6 +33,7 @@ enum _ReaderMenuAction {
 class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
   static const double _baseReaderTitleSize = 22.0;
   static const double _baseReaderInnerHeadingSize = 16.0;
+  static const Color _starredColor = Color(0xFFFFC107);
   String? _fullContent;
   bool _isLoadingFullContent = false;
   bool _isMarkedAsRead = false;
@@ -491,7 +492,10 @@ class _ArticleReaderScreenState extends ConsumerState<ArticleReaderScreen> {
                     ),
                     actions: [
                       IconButton(
-                        icon: Icon(_isStarred ? AppSymbols.star : AppSymbols.star_border),
+                        icon: Icon(
+                          _isStarred ? AppSymbols.star : AppSymbols.star_border,
+                          color: _isStarred ? _starredColor : null,
+                        ),
                         tooltip: _isStarred ? 'Remove star' : 'Star article',
                         onPressed: _toggleStarred,
                       ),
